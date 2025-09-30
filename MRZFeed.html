@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Extractor MRZ con Tesseract.js</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+    body { margin: 0; padding: 24px; background: #0b1220; color: #e7ecf5; }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    p { margin: 6px 0 14px; color:#b9c2d0 }
+    .app { max-width: 980px; margin: 0 auto; }
+    .card { background: #121a2b; border: 1px solid #1e2a44; border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 900px){ .grid { grid-template-columns: 420px 1fr; } }
+    label.inline { display: inline-flex; align-items: center; gap: 8px; background:#0f1726; border:1px dashed #2b3b60; padding: 10px 12px; border-radius: 12px; cursor: pointer; }
+    input[type=file]{ display:none }
+    button { appearance: none; border: 0; background: #2a6df5; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+    button.secondary { background: #2b3b60 }
+    img { max-width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120 }
+    .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .92rem; }
+    textarea { width: 100%; min-height: 120px; resize: vertical; border-radius: 12px; padding: 10px; border:1px solid #1e2a44; background:#0f1726; color:#e7ecf5 }
+    pre { background:#0f1726; border:1px solid #1e2a44; padding:12px; border-radius:12px; overflow:auto }
+    .badge { font-size: .75rem; background:#0f6; color:#021; padding:3px 8px; border-radius:999px; }
+    progress { width: 100%; height: 10px; accent-color:#2a6df5 }
+    .hint { font-size: .85rem; color:#9fb0cb }
+    .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px; }
+    .kv b{color:#cfe0ff}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>Extractor de código MRZ (Tesseract.js)</h1>
+    <p class="hint">Sube una foto nítida del documento (pasaporte, DNI, etc.). El MRZ son las líneas con <code>«&lt;&lt;»</code> y caracteres <code>A–Z 0–9 &lt;</code> al borde del documento.</p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="row">
+          <label class="inline">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z" fill="#9fb0cb"/><path d="M20 18H4v2h16v-2z" fill="#9fb0cb"/></svg>
+            <span>Seleccionar imagen…</span>
+            <input id="file" type="file" accept="image/*" />
+          </label>
+          <button class="secondary" id="demoBtn" type="button">Usar imagen de prueba</button>
+        </div>
+        <div id="previewWrap" style="margin-top:12px; display:none">
+          <img id="preview" alt="Vista previa" />
+        </div>
+        <div id="ocrBox" style="margin-top:16px; display:none">
+          <div class="row" style="justify-content:space-between">
+            <div class="badge" id="status">Listo</div>
+            <button id="runBtn" type="button">Extraer MRZ</button>
+          </div>
+          <div style="margin-top:8px"><progress id="prog" max="1" value="0"></progress></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:4px 0 6px">Resultados</h3>
+        <div class="kv mono" id="meta"></div>
+        <h4>MRZ detectado</h4>
+        <textarea id="mrzText" class="mono" placeholder="(MRZ en crudo)"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="copyMrz" type="button" class="secondary">Copiar MRZ</button>
+        </div>
+        <h4 style="margin-top:18px">Datos parseados</h4>
+        <pre id="jsonOut" class="mono">{
+  
+}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tesseract.js -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script>
+  const $ = (s)=>document.querySelector(s);
+  const fileEl = $('#file');
+  const preview = $('#preview');
+  const previewWrap = $('#previewWrap');
+  const runBtn = $('#runBtn');
+  const statusEl = $('#status');
+  const prog = $('#prog');
+  const ocrBox = $('#ocrBox');
+  const mrzTextEl = $('#mrzText');
+  const jsonOut = $('#jsonOut');
+  const metaEl = $('#meta');
+  const copyBtn = $('#copyMrz');
+  const demoBtn = $('#demoBtn');
+
+  let currentImageBlob = null;
+
+  demoBtn.addEventListener('click', async () => {
+    // Pequeña imagen de muestra (MRZ de pasaporte ficticio). Base64 embebido solo para demo.
+    const demoData =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAoAAAAEACAYAAABk9s0PAAA...';
+    // La cadena real sería muy larga; sustituye por tu propia imagen de prueba si lo deseas.
+    preview.src = demoData;
+    previewWrap.style.display = 'block';
+    ocrBox.style.display = 'block';
+    currentImageBlob = await (await fetch(demoData)).blob();
+  });
+
+  fileEl.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    preview.src = url;
+    previewWrap.style.display = 'block';
+    ocrBox.style.display = 'block';
+    currentImageBlob = f;
+    mrzTextEl.value = '';
+    jsonOut.textContent = '{\n  \n}';
+    metaEl.innerHTML = '';
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    if (!mrzTextEl.value) return;
+    await navigator.clipboard.writeText(mrzTextEl.value);
+    copyBtn.textContent = '¡Copiado!';
+    setTimeout(()=> copyBtn.textContent = 'Copiar MRZ', 1200);
+  });
+
+  runBtn.addEventListener('click', async () => {
+    if (!currentImageBlob) { alert('Primero selecciona una imagen.'); return; }
+    statusEl.textContent = 'Cargando modelo…';
+    prog.value = 0;
+
+    try {
+      const result = await Tesseract.recognize(currentImageBlob, 'eng', {
+        logger: m => {
+          if (m.status) statusEl.textContent = m.status;
+          if (m.progress) prog.value = m.progress;
+        },
+        // Sugerimos a Tesseract centrarse en el set de caracteres MRZ
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
+      });
+
+      statusEl.textContent = 'Analizando texto…';
+      const raw = (result.data?.text || '').replace(/\u0000/g,'');
+      const cleaned = normalizeOCR(raw);
+      const block = findMRZBlock(cleaned);
+
+      mrzTextEl.value = (block && block.lines.length) ? block.lines.join('\n') : cleaned.trim();
+
+      // Mostrar metadatos básicos
+      metaEl.innerHTML = toKV({
+        'Confianza OCR': (result.data?.confidence != null) ? `${result.data.confidence.toFixed(1)}%` : '—',
+        'Tipo MRZ detectado': block?.type || 'No seguro',
+        'Longitudes de línea': block ? block.lines.map(l=>l.length).join(', ') : '—'
+      });
+
+      // Intentar parsear a campos estructurados
+      let parsed = {};
+      if (block?.type === 'TD3-2x44') parsed = parseTD3(block.lines);
+      else if (block?.type === 'TD1-3x30') parsed = parseTD1(block.lines);
+      else if (block?.type === 'TD2-2x36') parsed = parseTD2(block.lines);
+
+      jsonOut.textContent = JSON.stringify(parsed && Object.keys(parsed).length ? parsed : {
+        notice: 'No se pudo identificar con certeza el formato. Revisa el MRZ en crudo.'
+      }, null, 2);
+
+      statusEl.textContent = 'Listo';
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = 'Error';
+      alert('Ocurrió un error al ejecutar OCR: ' + err.message);
+    }
+  });
+
+  function toKV(obj){
+    return Object.entries(obj).map(([k,v])=>`<div><b>${escapeHtml(k)}</b></div><div>${escapeHtml(String(v))}</div>`).join('');
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+  }
+
+  // —————— Limpieza y detección de bloque MRZ ——————
+  const MRZ_CHARS = /^[A-Z0-9<]+$/;
+
+  function normalizeOCR(text){
+    return text
+      .replace(/[\u2014\u2013\-]/g,'-') // guiones
+      .replace(/[\u00D8]/g,'O') // Ø -> O
+      .replace(/[\u00A0\t]+/g,' ') // espacios raros
+      .replace(/[\r]+/g,'\n')
+      .split('\n')
+      .map(x => x.trim().toUpperCase())
+      .join('\n');
+  }
+
+  function padTo(s, n){ return (s + '<'.repeat(Math.max(0, n - s.length))).slice(0, n); }
+
+  function looksLikeMRZLine(s){
+    const t = s.replace(/\s+/g, '');
+    return t.length >= 28 && MRZ_CHARS.test(t);
+  }
+
+  function findMRZBlock(cleaned){
+    const lines = cleaned.split(/\n+/).map(l=>l.replace(/\s+/g,''))
+      .filter(l => l.length >= 20 && /[A-Z0-9]/.test(l));
+    if (!lines.length) return null;
+
+    // Buscar patrones TD3 (2x44), TD2 (2x36), TD1 (3x30)
+    const candidates = [];
+    for (let i=0;i<lines.length;i++){
+      const a = lines[i];
+      const b = lines[i+1];
+      const c = lines[i+2];
+      // TD3
+      if (a && b && MRZ_CHARS.test(a) && MRZ_CHARS.test(b)){
+        const scoreTD3 = scoreBlock([a,b], 44);
+        candidates.push({ type:'TD3-2x44', lines:[padTo(a,44), padTo(b,44)], score:scoreTD3 });
+      }
+      // TD2
+      if (a && b && MRZ_CHARS.test(a) && MRZ_CHARS.test(b)){
+        const scoreTD2 = scoreBlock([a,b], 36);
+        candidates.push({ type:'TD2-2x36', lines:[padTo(a,36), padTo(b,36)], score:scoreTD2 });
+      }
+      // TD1
+      if (a && b && c && MRZ_CHARS.test(a) && MRZ_CHARS.test(b) && MRZ_CHARS.test(c)){
+        const scoreTD1 = scoreBlock([a,b,c], 30);
+        candidates.push({ type:'TD1-3x30', lines:[padTo(a,30), padTo(b,30), padTo(c,30)], score:scoreTD1 });
+      }
+    }
+    if (!candidates.length) return null;
+    candidates.sort((x,y)=> y.score - x.score);
+    // Filtro mínimo de calidad
+    const best = candidates[0];
+    return best.score > 0.5 ? best : best; // devolvemos el mejor aunque sea bajo para inspección
+  }
+
+  function scoreBlock(lines, targetLen){
+    // Puntuamos por cercanía a longitud esperada y por charset válido
+    let s = 0;
+    for (const l of lines){
+      const len = l.length;
+      const near = 1 - Math.min(1, Math.abs(targetLen - len)/targetLen); // 1 si coincide
+      const charset = MRZ_CHARS.test(l) ? 1 : 0;
+      s += (near*0.7 + charset*0.3);
+    }
+    return s/lines.length;
+  }
+
+  // —————— Utilidades MRZ ——————
+  function valOf(ch){
+    if (ch === '<') return 0;
+    if (ch >= '0' && ch <= '9') return ch.charCodeAt(0) - 48;
+    if (ch >= 'A' && ch <= 'Z') return ch.charCodeAt(0) - 55; // A=10
+    return 0;
+  }
+  function mrzCheck(str){
+    const w = [7,3,1];
+    let sum = 0;
+    for (let i=0;i<str.length;i++) sum += valOf(str[i]) * w[i%3];
+    return String(sum % 10);
+  }
+  function tidy(s){ return s.replace(/<+/g,' ').trim().replace(/\s+/g,' '); }
+  function yymmddToISO(s){
+    if (!/^[0-9]{6}$/.test(s)) return null;
+    const yy = parseInt(s.slice(0,2),10);
+    const mm = parseInt(s.slice(2,4),10);
+    const dd = parseInt(s.slice(4,6),10);
+    // Suponer 1900–1999 si yy>=50; de lo contrario 2000–2099 (heurística)
+    const yyyy = (yy >= 50 ? 1900+yy : 2000+yy);
+    if (mm<1||mm>12||dd<1||dd>31) return null;
+    return `${yyyy.toString().padStart(4,'0')}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+  }
+
+  // —————— Parsers básicos ——————
+  function parseTD3(lines){
+    // Pasaporte: 2 líneas de 44
+    if (!lines || lines.length !== 2) return {};
+    const L1 = padTo(lines[0],44);
+    const L2 = padTo(lines[1],44);
+
+    const docType = L1.slice(0,2).replace('<','');
+    const issuing = L1.slice(2,5);
+    const nameRaw = L1.slice(5);
+    const [surname, givenAndMore] = nameRaw.split('<<');
+    const given = (givenAndMore || '').replace(/<+/g,' ').trim();
+
+    const passportNumber = L2.slice(0,9);
+    const passportCheck = L2[9];
+    const nationality = L2.slice(10,13);
+    const birthYYMMDD = L2.slice(13,19);
+    const birthCheck = L2[19];
+    const sex = L2[20];
+    const expYYMMDD = L2.slice(21,27);
+    const expCheck = L2[27];
+    const optData = L2.slice(28,42);
+    const finalCheck = L2[43];
+
+    const composite = passportNumber + passportCheck + nationality + birthYYMMDD + birthCheck + sex + expYYMMDD + expCheck + optData;
+
+    const out = {
+      format: 'TD3-2x44 (Pasaporte)',
+      documentType: docType,
+      issuingCountry: issuing,
+      surname: tidy(surname || ''),
+      givenNames: tidy(given || ''),
+      documentNumber: passportNumber,
+      documentNumberCheck: passportCheck,
+      nationality,
+      birthDate: yymmddToISO(birthYYMMDD),
+      birthCheck,
+      sex: sex === 'M' ? 'M' : (sex === 'F' ? 'F' : sex),
+      expiryDate: yymmddToISO(expYYMMDD),
+      expiryCheck: expCheck,
+      optionalData: optData.replace(/<+$/,''),
+      compositeCheck: finalCheck,
+      checks: {
+        documentNumber: mrzCheck(passportNumber) === passportCheck,
+        birthDate: mrzCheck(birthYYMMDD) === birthCheck,
+        expiryDate: mrzCheck(expYYMMDD) === expCheck,
+        composite: mrzCheck(composite) === finalCheck
+      }
+    };
+    return out;
+  }
+
+  function parseTD1(lines){
+    if (!lines || lines.length !== 3) return {};
+    const A = padTo(lines[0],30);
+    const B = padTo(lines[1],30);
+    const C = padTo(lines[2],30);
+
+    const docType = A.slice(0,1);
+    const issuing = A.slice(2,5);
+    // Algunas variantes colocan el número a partir de la pos 5
+    const docNum = A.slice(5,14).replace(/<+$/,'');
+    const docCheck = A[14];
+    const opt1 = A.slice(15,30);
+
+    const birthYYMMDD = B.slice(0,6);
+    const birthCheck = B[6];
+    const sex = B[7];
+    const expYYMMDD = B.slice(8,14);
+    const expCheck = B[14];
+    const nationality = B.slice(15,18);
+    const opt2 = B.slice(18,29);
+    const opt2Check = B[29];
+
+    const [surname, givenRest] = C.split('<<');
+
+    return {
+      format: 'TD1-3x30 (ID)',
+      documentType: docType,
+      issuingCountry: issuing,
+      documentNumber: docNum,
+      documentNumberCheck: docCheck,
+      nationality,
+      birthDate: yymmddToISO(birthYYMMDD),
+      birthCheck,
+      sex: sex === 'M' ? 'M' : (sex === 'F' ? 'F' : sex),
+      expiryDate: yymmddToISO(expYYMMDD),
+      expiryCheck: expCheck,
+      optionalData: (opt1 + opt2).replace(/<+$/,''),
+      optionalCheck: opt2Check,
+      surname: tidy(surname || ''),
+      givenNames: tidy((givenRest || '').replace(/<+/g,' ')),
+      checks: {
+        documentNumber: mrzCheck(docNum) === docCheck,
+        birthDate: mrzCheck(birthYYMMDD) === birthCheck,
+        expiryDate: mrzCheck(expYYMMDD) === expCheck
+      }
+    };
+  }
+
+  function parseTD2(lines){
+    if (!lines || lines.length !== 2) return {};
+    const A = padTo(lines[0],36);
+    const B = padTo(lines[1],36);
+
+    const docType = A.slice(0,2).replace('<','');
+    const issuing = A.slice(2,5);
+    const namesRaw = A.slice(5);
+    const [surname, givenRest] = namesRaw.split('<<');
+
+    const docNum = B.slice(0,9);
+    const docCheck = B[9];
+    const nationality = B.slice(10,13);
+    const birthYYMMDD = B.slice(13,19);
+    const birthCheck = B[19];
+    const sex = B[20];
+    const expYYMMDD = B.slice(21,27);
+    const expCheck = B[27];
+    const opt = B.slice(28,35);
+    const finalCheck = B[35];
+
+    const composite = docNum + docCheck + nationality + birthYYMMDD + birthCheck + sex + expYYMMDD + expCheck + opt;
+
+    return {
+      format: 'TD2-2x36 (Documento de viaje)',
+      documentType: docType,
+      issuingCountry: issuing,
+      surname: tidy(surname || ''),
+      givenNames: tidy((givenRest || '').replace(/<+/g,' ')),
+      documentNumber: docNum,
+      documentNumberCheck: docCheck,
+      nationality,
+      birthDate: yymmddToISO(birthYYMMDD),
+      birthCheck,
+      sex: sex === 'M' ? 'M' : (sex === 'F' ? 'F' : sex),
+      expiryDate: yymmddToISO(expYYMMDD),
+      expiryCheck: expCheck,
+      optionalData: opt.replace(/<+$/,''),
+      compositeCheck: finalCheck,
+      checks: {
+        documentNumber: mrzCheck(docNum) === docCheck,
+        birthDate: mrzCheck(birthYYMMDD) === birthCheck,
+        expiryDate: mrzCheck(expYYMMDD) === expCheck,
+        composite: mrzCheck(composite) === finalCheck
+      }
+    };
+  }
+  </script>
+</body>
+</html>
