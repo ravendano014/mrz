@@ -1,0 +1,1419 @@
+<html>
+	<head>
+		<title>Gravity Toy</title>
+		<script src="Gravity.min.js"></script>
+		<script src="Particle.min.js"></script>
+		<script src="Magnetosphere.min.js"></script>
+		<style>
+			body {
+				color: #ffffff;
+				font-family: Courier New;
+				font-size: 11px;
+			}
+			button {
+			  -webkit-border-radius: 0;
+			  -moz-border-radius: 0;
+			  border-radius: 0px;
+			  font-family: Courier New;
+			  color: #ffffff;
+			  font-size: 11px;
+			  background: #000000;
+			  padding: 5px 5px 5px 5px;
+			  border: solid #ffffff 1px;
+			  text-decoration: none;
+			  width: 198px;
+			  margin-top:2px;
+			}
+
+			.txt {
+			  -webkit-border-radius: 0;
+			  -moz-border-radius: 0;
+			  border-radius: 0px;
+			  font-family: Courier New;
+			  color: #ffffff;
+			  font-size: 11px;
+			  background: #000000;
+			  padding: 5px 5px 5px 5px;
+			  border: solid #ffffff 1px;
+			  text-decoration: none;
+			  margin-left:5px;
+			}
+
+			.seltxt {
+			  font-family: Courier New;
+			  color: #ffffff;
+			  font-size: 11px;
+			  background: #000000;
+			}
+
+			button:hover {
+			  background: #ffffff;
+			  color: #000000;
+			  text-decoration: none;
+			}
+			.noselect {
+				-webkit-touch-callout: none;
+				-webkit-user-select: none;
+				-khtml-user-select: none;
+				-moz-user-select: none;
+				-ms-user-select: none;
+				user-select: none;
+			}
+			#controlbox {
+				padding:5px;
+				padding-left:20px;
+				margin-left:-20px;
+				border: solid #ffffff 1px;
+				border-left-width: 0px;
+				width:200px;
+			}
+			#homebox {
+				font-size:20px;
+				position:absolute;
+				right:10px;
+				top:0px;
+				padding:5px;
+				padding-top:10px;
+				margin-top:-10px;
+				padding-right:10px;
+				margin-right:-10px;
+				padding-left:10px;
+				border:solid #ffffff 1px;
+				border-right-width:0px;
+			}
+			a:link {
+				color:#0080FF;
+			}
+			a:visited {
+				color:#0000FF;
+			}
+			#hotkeyHelp {
+				position: absolute;
+				right: 10px;
+				top: 50px;
+				border: solid #ffffff 1px;
+				padding: 10px;
+				background: black;
+				display: none;
+				z-index: 100;
+			}
+			#extraOptionsBox {
+				position: absolute;
+				right: 10px;
+				top: 50px;
+				border: solid #ffffff 1px;
+				padding: 10px;
+				background: black;
+				display: none;
+				z-index: 100;
+			}
+			#zoomLevel {
+				margin-right: 20px;
+			}
+			#simulationTime {
+				margin-left: 20px;
+			}
+			.section-title {
+				margin-top: 10px;
+				margin-bottom: 5px;
+				font-weight: bold;
+				border-bottom: 1px solid #fff;
+			}
+		#statusBar {
+			position: absolute;
+			bottom: 0;
+			left: 0;
+			width: 100%;
+			background: rgba(0, 0, 0, 0.7);
+			padding: 5px;
+			font-size: 11px;
+			border-top: 1px solid #fff;
+			display: flex;
+			justify-content: space-between;
+			flex-wrap: wrap;
+			align-items: center;
+			z-index: 10;
+		}
+		
+		#statusBar span {
+			margin: 0 5px;
+			white-space: nowrap;
+		}
+		
+		#gravityModeSelector {
+			background: black;
+			color: white;
+			border: 1px solid white;
+			font-family: 'Courier New';
+			font-size: 11px;
+			padding: 2px;
+			margin-left: 5px;
+		}
+		
+		.status-section {
+			display: flex;
+			align-items: center;
+		}
+		</style>
+
+		<script>
+			function updateStatusBar() {
+				const modeNames = {
+					"inverseSquare": "1/r²",
+					"exponential": "e^-r",
+					"arctanSquared": "1/arctan²(r)",
+					"sechSquared": "sech²(r)",
+					"sech": "sech(r)"
+				};
+				
+				document.getElementById("zoomLevel").innerHTML = zoomLevel.toFixed(2) + "x";
+				document.getElementById("panX").innerHTML = Math.round(panX);
+				document.getElementById("panY").innerHTML = Math.round(panY);
+				document.getElementById("simulationTime").innerHTML = "Time: " + simulationTime.toFixed(2);
+				document.getElementById("fpsCounter").innerHTML = fps.toFixed(0);
+				document.getElementById("gravityMode").innerHTML = modeNames[gravityMode];
+				document.getElementById("particleCount").innerHTML = particleList.length;
+			}
+
+			function toggleGravityMode() {
+				const modes = [
+					"inverseSquare",
+					"exponential",
+					"arctanSquared",
+					"sechSquared",
+					"sech"
+				];
+				const currentIndex = modes.indexOf(gravityMode);
+				gravityMode = modes[(currentIndex + 1) % modes.length];
+				updateStatusBar();
+			}
+
+			var interval = -1;
+			var newParticleSize = 100;
+			var currentParticleType = 'matter'; // 'matter' or 'antimatter'
+
+			var isPaused = false;
+			var simulationTime = 0;
+			var lastFrameTime = 0;
+			var fps = 0;
+			var frameCount = 0;
+			var lastFpsUpdate = 0;
+			var autoZoomEnabled = false;
+			var trackedParticle = null;
+        
+
+            // Asegura que init() y start() se llamen después de que los scripts estén cargados.
+            window.onload = function() {
+                // `init()` es una función definida en Gravity.min.js
+                // `start()` es una función definida en este mismo script
+                init();
+                start();
+                // Initialize magnetosphere button text
+                document.getElementById("toggleMagnetospheresBtn").innerHTML = showMagnetospheres ? "Hide Magnetospheres (V)" : "Show Magnetospheres (V)";
+                // Initialize orbit button text
+                document.getElementById("toggleOrbitsBtn").innerHTML = showOrbits ? "Hide Orbits (O)" : "Show Orbits (O)";
+                // NEW: Initialize gravity well button text
+                document.getElementById("toggleGravityWellsBtn").innerHTML = showGravityWells ? "Hide Gravity Wells (W)" : "Show Gravity Wells (W)";
+                // NEW: Initialize mass button text
+                document.getElementById("toggleMassBtn").innerHTML = showParticleMass ? "Hide Mass (M)" : "Show Mass (M)";
+                // Set initial moon mass based on the default selected option
+                setMoonMass(document.getElementById("moonSelector").value);
+                // Set initial planet mass based on the default selected option
+                setCelestialBodyMass(document.getElementById("planetSelector").value);
+
+                 // Set initial value for Black Hole mass in solar masses
+                //document.getElementById("blackHoleSolarMass").value = "1"; // Default to 1000 solar masses
+            };
+
+			// Function to toggle help display
+			function toggleHelp() {
+				var help = document.getElementById('hotkeyHelp');
+				help.style.display = help.style.display === 'block' ? 'none' : 'block';
+			}
+
+			// Function to toggle Solar System Scaled
+			function toggleextraOptionsBox() {
+				var extraOptionsBox = document.getElementById('extraOptionsBox');
+				extraOptionsBox.style.display = extraOptionsBox.style.display === 'block' ? 'none' : 'block';
+				setSize(0);
+			}
+
+			// Function to toggle Solar System Scaled
+			function togglecontrolbox() {
+				var controlbox = document.getElementById('controlbox');
+				controlbox.style.display = controlbox.style.display === 'none' ? 'block' : 'none';
+			}
+
+			function handleResize() {
+				var canvas = document.getElementById("canvas");
+				canvas.width = window.innerWidth;
+				canvas.height = window.innerHeight;
+				width = canvas.width;
+				height = canvas.height;
+			}
+        
+			function updateButtonTexts() {
+				document.getElementById("toggleMagnetospheresBtn").innerHTML = showMagnetospheres ? "Hide Magnetospheres (V)" : "Show Magnetospheres (V)";
+				document.getElementById("toggleOrbitsBtn").innerHTML = showOrbits ? "Hide Orbits (O)" : "Show Orbits (O)";
+				document.getElementById("toggleGravityWellsBtn").innerHTML = showGravityWells ? "Hide Gravity Wells (W)" : "Show Gravity Wells (W)";
+				document.getElementById("toggleMassBtn").innerHTML = showParticleMass ? "Hide Mass (M)" : "Show Mass (M)";
+				document.getElementById("toggleLensingBtn").innerHTML = showGravitationalLensing ? "Hide Lensing (Q)" : "Show Lensing (Q)";
+				document.getElementById("particleTypeBtn").innerHTML = currentParticleType.charAt(0).toUpperCase() + currentParticleType.slice(1);
+			}
+        
+			function togglePause() {
+				isPaused = !isPaused;
+				if (!isPaused && interval === -1) {
+					start();
+				}
+			}
+        
+			function increaseTimeStep() {
+				h *= 1.5;
+				updateStatusBar();
+			}
+			
+			function decreaseTimeStep() {
+				h /= 1.5;
+				updateStatusBar();
+			}
+        
+			function centerView() {
+				panX = width / 2;
+				panY = height / 2;
+				zoomLevel = 1.0;
+				updateStatusBar();
+			}
+        
+			function trackParticle() {
+				if (particleList.length > 0) {
+					trackedParticle = particleList[0]; // Track the first particle by default
+					// Could implement UI to select which particle to track
+				}
+			}
+        
+			function toggleAutoZoom() {
+				autoZoomEnabled = !autoZoomEnabled;
+				updateStatusBar();
+			}
+        
+		// Reemplazar la función toggleGravityMode con:
+		function changeGravityMode(mode) {
+			gravityMode = mode;
+			updateStatusBar();
+		}
+
+		// Actualizar updateStatusBar:
+		function updateStatusBar() {
+			document.getElementById("zoomLevel").innerHTML = zoomLevel.toFixed(2) + "x";
+			document.getElementById("panX").innerHTML = Math.round(panX);
+			document.getElementById("panY").innerHTML = Math.round(panY);
+			document.getElementById("simulationTime").innerHTML = "Time: " + simulationTime.toFixed(2);
+			document.getElementById("fpsCounter").innerHTML = fps.toFixed(0);
+			document.getElementById("particleCount").innerHTML = particleList.length;
+			document.getElementById("gravityModeSelector").value = gravityMode;
+		}
+
+			function start() {
+				if (interval === -1) {
+					lastFrameTime = Date.now();
+					interval = window.setInterval(function() {
+						var now = Date.now();
+						var deltaTime = (now - lastFrameTime) / 1000;
+						lastFrameTime = now;
+						
+						frameCount++;
+						if (now - lastFpsUpdate >= 1000) {
+							fps = frameCount / ((now - lastFpsUpdate) / 1000);
+							lastFpsUpdate = now;
+							frameCount = 0;
+							updateStatusBar();
+						}
+						
+						if (!isPaused) {
+							simulationTime += h;
+							main();
+						}
+					}, 20);
+				}
+			}
+
+			function stop(){
+				clearInterval(interval);
+				interval = -1;
+			}
+
+			function generateProto(){
+				for (var i = 0; i < 500; i++){
+					var rand = Math.random()*2*Math.PI;
+					var rand2 = Math.random();
+					var x = (100*rand2)*Math.cos(rand);
+					var y = (100*rand2)*Math.sin(rand);
+					var mag = Math.sqrt(x*x+y*y);
+					var particle = new Particle(1000, width/2+x, height/2+y, y*(mag/70), -x*(mag/70), 'matter');
+					particleList.push(particle);
+				}
+
+			}
+
+			function setSize(size, name = "New Particle", density=1, color, type="matter"){
+				document.getElementById("mass").value=size.toExponential(1).replace("+","");
+				// `setNewMass()` es una función definida en Gravity.min.js
+				setNewMass(size, name, density, color, type);
+			}
+
+			function clearCanvas(){
+				particleList = [];
+			}
+
+			// Function to set predefined celestial body masses
+			function setCelestialBodyMass(body){
+				let mass;
+				let isBlackHole = false; // Nuevo: bandera para agujero negro
+				switch(body){
+					case 'sun':
+						mass = 1.989e6; // A scaled mass for the Sun, adjust as needed for simulation
+						break;
+					case 'mercury':
+						mass = 3.301e2; // Scaled mass for Mercury
+						break;
+					case 'venus':
+						mass = 4.867e3; // Scaled mass for Venus
+						break;
+					case 'earth':
+						mass = 5.972e3; // Scaled mass for Earth
+						break;
+					case 'mars':
+						mass = 6.417e2; // Scaled mass for Mars
+						break;
+					case 'jupiter':
+						mass = 1.898e6; // Scaled mass for Jupiter
+						break;
+					case 'saturn':
+						mass = 5.683e5; // Scaled mass for Saturn
+						break;
+					case 'uranus':
+						mass = 8.681e4; // Scaled mass for Uranus
+						break;
+					case 'neptune':
+						mass = 1.024e5; // Scaled mass for Neptune
+						break;
+					case 'blackhole': // Nuevo caso para agujero negro
+						mass = 1.989e6*10; // Masa muy grande para agujero negro
+						isBlackHole = true;
+						break;
+					default:
+						mass = 1e3; // Default to 'Small' if unknown
+				}
+				setSize(mass);
+				// Actualizar la variable global en Gravity.min.js si es necesario, o manejarla al crear la partícula
+				currentParticleType = isBlackHole ? 'blackhole' : 'matter'; // Actualizar el tipo de partícula
+			}
+
+			// Variable y función para alternar la visibilidad del campo gravitatorio.
+			// La lógica principal de `toggleGravityField` reside en Gravity.min.js.
+			// Aquí solo se llama a esa función y se actualiza el texto del botón.
+			var gravityFieldEnabled = false; // Moved to Gravity.min.js
+			function toggleGravityField(){
+				// This function will be defined in Gravity.min.js
+				// For now, it will simply toggle the state
+				gravityFieldEnabled = !gravityFieldEnabled;
+				document.getElementById("gravityFieldBtn").innerHTML = gravityFieldEnabled ? "Hide Field (F)" : "Show Field (F)";
+			}
+
+            // Function to toggle magnetospheres and update button text
+            function toggleMagnetospheresAndButton() {
+                // Call the function defined in Gravity.min.js
+                toggleMagnetospheres();
+
+                // Update button text
+                document.getElementById("toggleMagnetospheresBtn").innerHTML = showMagnetospheres ? "Hide Magnetospheres (V)" : "Show Magnetospheres (V)";
+            }
+
+            // Function to toggle orbits and update button text
+            function toggleOrbitsAndButton() {
+                // Call the function defined in Gravity.min.js
+                toggleOrbits();
+
+                // Update button text
+                document.getElementById("toggleOrbitsBtn").innerHTML = showOrbits ? "Hide Orbits (O)" : "Show Orbits (O)";
+            }
+
+            // NEW: Function to toggle gravity wells and update button text
+            function toggleGravityWellsAndButton() {
+                // Call the function defined in Gravity.min.js
+                toggleGravityWells();
+
+                // Update button text
+                document.getElementById("toggleGravityWellsBtn").innerHTML = showGravityWells ? "Hide Gravity Wells (W)" : "Show Gravity Wells (W)";
+            }
+
+            // NEW: Function to toggle particle mass and update button text
+            function toggleParticleMassAndButton() {
+                // Call the function defined in Gravity.min.js
+                toggleParticleMass();
+
+                // Update button text
+                document.getElementById("toggleMassBtn").innerHTML = showParticleMass ? "Hide Mass (M)" : "Show Mass (M)";
+            }
+
+            function placeSolarSystem() {
+                clearCanvas();
+                // `width` y `height` son variables globales definidas en Gravity.min.js
+                var centerX = width / 2;
+                var centerY = height / 2;
+
+                // Escalas ajustadas para mejor visibilidad y comportamiento de la simulación.
+                // Puedes ajustar estos valores para cambiar el tamaño y la velocidad del sistema solar.
+                var distanceScale = 0.5;  // Aumentado para que los planetas sean más visibles
+                var massScale = 1e-21;     // Mantener la escala de masa para que el Sol sea dominante
+                // velocityScale ya no se usa directamente para escalar velocidades reales,
+                // sino que la velocidad orbital se calcula.
+
+                // Datos del sistema solar (masa, distancia media en millones de km)
+                var solarSystem = [
+                    // Sol (masa enorme, en el centro)
+                    {
+                        name: "Sun",
+                        mass: 1.989e30,
+                        distance: 0, // Distancia desde el centro del sistema
+                        color: [255, 255, 0], // Amarillo
+                        isBlackHole: false
+                    },
+                    // Planetas (masa, distancia media en millones de km)
+                    // Las velocidades del mundo real se eliminan ya que las calcularemos en función del sistema escalado.
+                    { name: "Mercury", mass: 3.30e23, distance: 57.9 * 1.5, color: [169, 169, 169], isBlackHole: false }, // Gris
+                    { name: "Venus", mass: 4.87e24, distance: 108.2 * 1.5, color: [255, 165, 0], isBlackHole: false },   // Naranja
+                    { name: "Earth", mass: 5.97e24, distance: 149.6 * 1.5, color: [0, 0, 255], isBlackHole: false },     // Azul
+                    { name: "Mars", mass: 6.42e23, distance: 228.0 * 1.5, color: [255, 0, 0], isBlackHole: false },       // Rojo
+                    { name: "Jupiter", mass: 1.90e27, distance: 778.5 * 1.5, color: [255, 223, 0], isBlackHole: false },  // Dorado
+                    { name: "Saturn", mass: 5.68e26, distance: 1432.0 * 1.5, color: [210, 180, 140], isBlackHole: false }, // Canela
+                    { name: "Uranus", mass: 8.68e25, distance: 2867.0 * 1.5, color: [173, 216, 230], isBlackHole: false }, // Azul claro
+                    { name: "Neptune", mass: 1.02e26, distance: 4515.0 * 1.5, color: [65, 105, 225], isBlackHole: false }  // Azul real
+                ];
+
+                // Obtener la masa escalada del Sol primero
+                var sunMassScaled = solarSystem[0].mass * massScale;
+
+                // Crear objetos del sistema solar
+                for (var i = 0; i < solarSystem.length; i++) {
+                    var body = solarSystem[i];
+                    var mass = body.mass * massScale;
+                    var distance = body.distance * distanceScale; // Distancia escalada
+
+                    var x = centerX;
+                    var y = centerY;
+                    var vx = 0;
+                    var vy = 0; // Inicializar velocidades a 0
+
+                    if (body.name === "Sun") {
+                        // El Sol comienza en el centro con una velocidad inicial muy pequeña para estabilidad
+                        vx = 0.01; // Pequeño "empuje" para evitar un estado perfectamente estático
+                        vy = -0.01;
+                    } else {
+                        // Calcular la magnitud de la velocidad orbital requerida para una órbita circular alrededor del Sol
+                        // v = sqrt(G * M_sol / r)
+                        // En nuestra simulación, G es efectivamente 1.
+                        // Necesitamos asegurarnos de que la distancia no sea cero para este cálculo.
+                        if (distance > 0) {
+                            var orbitalVelocityMagnitude = Math.sqrt(sunMassScaled / distance);
+
+                            // Para que los planetas no se superpongan al inicio, los distribuimos aleatoriamente
+                            var initialAngle = Math.random() * 2 * Math.PI;
+                            x = centerX + distance * Math.cos(initialAngle);
+                            y = centerY + distance * Math.sin(initialAngle);
+
+                            // Velocidad inicial tangencial a la órbita.
+                            // vx = -orbitalVelocityMagnitude * sin(ángulo), vy = orbitalVelocityMagnitude * cos(ángulo)
+                            vx = -orbitalVelocityMagnitude * Math.sin(initialAngle);
+                            vy = orbitalVelocityMagnitude * Math.cos(initialAngle);
+                        }
+                    }
+
+                    // Crear partícula
+                    // `Particle` es el constructor de partículas definido en Particle.min.js
+                    var particle = new Particle(mass, x, y, vx, vy, 'matter', body.name);
+
+                    // Asignar color personalizado si existe
+                    if (body.color) {
+                        particle.color = body.color;
+                        // Recalcular color[3] para el nuevo color personalizado (formato hexadecimal)
+                        particle.color[3] = (particle.color[0] << 16 | particle.color[1] << 8 | particle.color[2]).toString(16);
+                    }
+                    particle.isBlackHole = body.isBlackHole; // Asignar la propiedad isBlackHole
+                    // `particleList` es una variable global definida en Gravity.min.js
+                    particleList.push(particle);
+                }
+            }
+
+            // NEW: Function to set moon mass from selector
+            function setMoonMass(mass) {
+                // A scaled mass for moons, adjust this factor as needed
+                var moonMassScale = 1e-24; // Example scale, adjust to fit your simulation
+                var scaledMass = parseFloat(mass) * moonMassScale;
+                setSize(scaledMass); // Reutiliza setSize para actualizar el input y la masa global
+            }
+
+            // NEW: Function to add a moon (assuming current newMass is set to moon's mass)
+            function addMoon() {
+                var x = (width / 2);
+                var y = (height / 2);
+
+                var vx = 0;
+                var vy = 0;
+
+                var targetParticle = null;
+                // Try to find the Sun if it exists
+                for(var i = 0; i < particleList.length; i++) {
+                    if (particleList[i].name === "Sun") {
+                        targetParticle = particleList[i];
+                        break;
+                    }
+                }
+
+                // If no Sun, use the first particle as the target
+                if (!targetParticle && particleList.length > 0) {
+                    targetParticle = particleList[0];
+                }
+
+                if (targetParticle) {
+                    // Place the moon at a random distance from the target particle
+                    // Range for moon distances (adjust as needed for simulation scale)
+                    var minOrbitDistance = targetParticle.radius * 20 + 50; // Ensure it's outside the planet
+                    var maxOrbitDistance = targetParticle.radius * 20 + 200; // Further away
+                    var desiredOrbitDistance = minOrbitDistance + (Math.random() * (maxOrbitDistance - minOrbitDistance));
+
+                    var initialAngle = Math.random() * 2 * Math.PI;
+                    x = targetParticle.x + desiredOrbitDistance * Math.cos(initialAngle);
+                    y = targetParticle.y + desiredOrbitDistance * Math.sin(initialAngle);
+
+                    var relativeX = x - targetParticle.x;
+                    var relativeY = y - targetParticle.y;
+                    var distance = Math.sqrt(relativeX * relativeX + relativeY * relativeY);
+
+                    if (distance > 0) {
+                        var orbitalSpeed = Math.sqrt(targetParticle.mass / distance);
+
+                        vx = -orbitalSpeed * (relativeY / distance) + targetParticle.vx;
+                        vy = orbitalSpeed * (relativeX / distance) + targetParticle.vy;
+                    }
+                } else {
+                    // If no particles, moon appears in the center with a small initial velocity
+                    vx = 0.1;
+                    vy = -0.1;
+                }
+
+                var moonNames = ["Luna", "Phobos", "Deimos", "Io", "Europa", "Ganymede", "Callisto", "Titan", "Rhea", "Iapetus", "Triton", "Charon", "Despina", "Galatea", "Larissa", "Proteus", "Nereid", "Thalassa", "Naiad"];
+                var randomMoonName = moonNames[Math.floor(Math.random() * moonNames.length)] + " " + (Math.floor(Math.random() * 100) + 1); // Add a number to make names more unique
+
+                particleList.push(new Particle(newMass, x, y, vx, vy, currentParticleType, randomMoonName));
+            }
+
+			function setCelestialBodyMass(body){
+				let mass;
+				let isBlackHole = false;
+				switch(body){
+					case 'sun': mass = 1.989e6; break;
+					case 'mercury': mass = 3.301e2; break;
+					case 'venus': mass = 4.867e3; break;
+					case 'earth': mass = 5.972e3; break;
+					case 'mars': mass = 6.417e2; break;
+					case 'jupiter': mass = 1.898e6; break;
+					case 'saturn': mass = 5.683e5; break;
+					case 'uranus': mass = 8.681e4; break;
+					case 'neptune': mass = 1.024e5; break;
+					case 'blackhole': mass = 10000; isBlackHole = true; break;
+					default: mass = 1e3;
+				}
+				setSize(mass);
+				currentParticleType = isBlackHole ? 'blackhole' : 'matter';
+			}
+
+            // NEW: Function to add an asteroid belt
+            function addAsteroidBelt() {
+                const numAsteroids = 500; // Number of asteroids in the belt
+                const asteroidMass = 1e2; // Scaled mass for individual asteroids (small)
+                const minDistance = 200; // Minimum distance from the center (adjust as needed)
+                const maxDistance = 400; // Maximum distance from the center (adjust as needed)
+                const distanceVariation = 50; // How much distance can vary for each asteroid
+
+                var targetParticle = null;
+                // Try to find the Sun if it exists
+                for(var i = 0; i < particleList.length; i++) {
+                    if (particleList[i].name === "Sun") {
+                        targetParticle = particleList[i];
+                        break;
+                    }
+                }
+
+                // If no Sun, use the first particle as the target or the center of the canvas
+                if (!targetParticle) {
+                    if (particleList.length > 0) {
+                         targetParticle = particleList[0];
+                    } else {
+                        // If no particles, place belt around canvas center
+                        targetParticle = {x: width / 2, y: height / 2, vx: 0, vy: 0, mass: 1e6}; // Create a dummy target
+                    }
+                }
+
+                for (var i = 0; i < numAsteroids; i++) {
+                    var asteroidName = "Asteroid " + (i + 1);
+                    var currentDistance = minDistance + (Math.random() * (maxDistance - minDistance));
+                    currentDistance += (Math.random() - 0.5) * distanceVariation; // Add some variation
+
+                    var initialAngle = Math.random() * 2 * Math.PI; // Random angle around the target
+
+                    var x = targetParticle.x + currentDistance * Math.cos(initialAngle);
+                    var y = targetParticle.y + currentDistance * Math.sin(initialAngle);
+
+                    var relativeX = x - targetParticle.x;
+                    var relativeY = y - targetParticle.y;
+                    var distance = Math.sqrt(relativeX * relativeX + relativeY * relativeY);
+
+                    var vx = 0;
+                    var vy = 0;
+
+                    if (distance > 0) {
+                        var orbitalSpeed = Math.sqrt(targetParticle.mass / distance);
+                        // Add some random deviation to orbital speed for a less perfect ring
+                        orbitalSpeed *= (0.9 + Math.random() * 0.2); // +/- 10%
+
+                        vx = -orbitalSpeed * (relativeY / distance) + targetParticle.vx;
+                        vy = orbitalSpeed * (relativeX / distance) + targetParticle.vy;
+                    }
+
+                    particleList.push(new Particle(asteroidMass, x, y, vx, vy, 'matter', asteroidName));
+                }
+            }
+
+			// NEW: Generate a random stable system with multiple moons
+			function generateRandomSystem() {
+            clearCanvas();
+            
+            var systemSize = document.getElementById("systemSize").value;
+            var numBodies;
+            
+            switch(systemSize) {
+                case 'small': numBodies = 3 + Math.floor(Math.random() * 3); break;
+                case 'medium': numBodies = 5 + Math.floor(Math.random() * 4); break;
+                case 'large': numBodies = 8 + Math.floor(Math.random() * 5); break;
+                default: numBodies = 5;
+            }
+            
+            var centerX = width / 2;
+            var centerY = height / 2;
+            
+            // Create central star
+            var starMass = 1e6 + Math.random() * 5e6;
+            var starColors = [
+                [255, 255, 200], // Yellow
+                [255, 200, 150], // Orange
+                [200, 200, 255], // Blue
+                [255, 150, 150]  // Red
+            ];
+            var starColor = starColors[Math.floor(Math.random() * starColors.length)];
+            
+            var star = new Particle(starMass, centerX, centerY, 0, 0, 'matter', 'Central Star');
+            star.color = starColor;
+            star.color[3] = (star.color[0] << 16 | star.color[1] << 8 | star.color[2]).toString(16);
+            particleList.push(star);
+            
+            // Create orbiting bodies with potential moons
+            var planetNames = ['Kepler', 'Gliese', 'Proxima', 'TRAPPIST', 'TOI', 'K2', 'WASP', 'HAT'];
+            var moonNames = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'];
+            
+            for (var i = 1; i < numBodies; i++) {
+                var distance = 150 + i * (80 + Math.random() * 40);
+                var angle = Math.random() * 2 * Math.PI;
+                
+                var planetMass = 1e3 + Math.random() * 1e5;
+                var x = centerX + distance * Math.cos(angle);
+                var y = centerY + distance * Math.sin(angle);
+                
+                // Calculate orbital velocity
+                var orbitalSpeed = Math.sqrt(starMass / distance);
+                var vx = -orbitalSpeed * Math.sin(angle);
+                var vy = orbitalSpeed * Math.cos(angle);
+                
+                var planetName = planetNames[Math.floor(Math.random() * planetNames.length)] + '-' + i;
+                var planet = new Particle(planetMass, x, y, vx, vy, 'matter', planetName);
+                
+                // Random planet colors
+                var planetColors = [
+                    [100, 150, 255], // Blue
+                    [255, 100, 100], // Red
+                    [100, 255, 100], // Green
+                    [255, 255, 100], // Yellow
+                    [200, 100, 255], // Purple
+                    [255, 150, 100]  // Orange
+                ];
+                planet.color = planetColors[Math.floor(Math.random() * planetColors.length)];
+                planet.color[3] = (planet.color[0] << 16 | planet.color[1] << 8 | planet.color[2]).toString(16);
+                
+                particleList.push(planet);
+                
+                // Add moons to some planets (30-60% chance)
+                if (Math.random() > 0.4) {
+                    var numMoons = 1 + Math.floor(Math.random() * 3); // 1-3 moons
+                    
+                    for (var j = 0; j < numMoons; j++) {
+                        var moonDistance = planet.radius * 15 + 20 + j * 25;
+                        var moonAngle = Math.random() * 2 * Math.PI;
+                        var moonMass = planetMass * (0.01 + Math.random() * 0.05); // 1-6% of planet mass
+                        
+                        var moonX = planet.x + moonDistance * Math.cos(moonAngle);
+                        var moonY = planet.y + moonDistance * Math.sin(moonAngle);
+                        
+                        var moonOrbitalSpeed = Math.sqrt(planetMass / moonDistance);
+                        var moonVx = planet.vx - moonOrbitalSpeed * Math.sin(moonAngle);
+                        var moonVy = planet.vy + moonOrbitalSpeed * Math.cos(moonAngle);
+                        
+                        var moonName = planetName + '-' + moonNames[j % moonNames.length];
+                        var moon = new Particle(moonMass, moonX, moonY, moonVx, moonVy, 'matter', moonName);
+                        
+                        // Moon colors (greyish)
+                        moon.color = [150 + Math.random() * 50, 150 + Math.random() * 50, 150 + Math.random() * 50];
+                        moon.color[3] = (moon.color[0] << 16 | moon.color[1] << 8 | moon.color[2]).toString(16);
+                        
+                        particleList.push(moon);
+                    }
+                }
+            }
+        }
+
+        // NEW: Generate multiple random systems
+        function generateRandomMultiSystem() {
+            clearCanvas();
+            
+            var numSystems = 2 + Math.floor(Math.random() * 2); // 2-3 systems
+            var systemCenters = [];
+            
+            // Generate system centers avoiding overlap
+            for (var s = 0; s < numSystems; s++) {
+                var attempts = 0;
+                var centerX, centerY;
+                var validPosition = false;
+                
+                while (!validPosition && attempts < 20) {
+                    centerX = width * 0.2 + Math.random() * width * 0.6;
+                    centerY = height * 0.2 + Math.random() * height * 0.6;
+                    
+                    validPosition = true;
+                    for (var c = 0; c < systemCenters.length; c++) {
+                        var dx = centerX - systemCenters[c].x;
+                        var dy = centerY - systemCenters[c].y;
+                        var distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance < 300) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+                
+                if (validPosition) {
+                    systemCenters.push({x: centerX, y: centerY});
+                }
+            }
+            
+            // Generate each system
+            for (var s = 0; s < systemCenters.length; s++) {
+                var center = systemCenters[s];
+                var numBodies = 3 + Math.floor(Math.random() * 4);
+                
+                // Create central star
+                var starMass = 5e5 + Math.random() * 2e6;
+                var star = new Particle(starMass, center.x, center.y, Math.random() * 10 - 5, Math.random() * 10 - 5, 'matter', 'Star-' + (s + 1));
+                
+                var starColors = [[255, 255, 200], [255, 200, 150], [200, 200, 255]];
+                star.color = starColors[Math.floor(Math.random() * starColors.length)];
+                star.color[3] = (star.color[0] << 16 | star.color[1] << 8 | star.color[2]).toString(16);
+                
+                particleList.push(star);
+                
+                // Create planets with moons
+                for (var i = 1; i < numBodies; i++) {
+                    var distance = 80 + i * 50;
+                    var angle = Math.random() * 2 * Math.PI;
+                    
+                    var planetMass = 1e3 + Math.random() * 5e4;
+                    var x = center.x + distance * Math.cos(angle);
+                    var y = center.y + distance * Math.sin(angle);
+                    
+                    var orbitalSpeed = Math.sqrt(starMass / distance);
+                    var vx = star.vx - orbitalSpeed * Math.sin(angle);
+                    var vy = star.vy + orbitalSpeed * Math.cos(angle);
+                    
+                    var planet = new Particle(planetMass, x, y, vx, vy, 'matter', 'Planet-' + (s + 1) + '-' + i);
+                    
+                    var planetColors = [[100, 150, 255], [255, 100, 100], [100, 255, 100], [255, 255, 100]];
+                    planet.color = planetColors[Math.floor(Math.random() * planetColors.length)];
+                    planet.color[3] = (planet.color[0] << 16 | planet.color[1] << 8 | planet.color[2]).toString(16);
+                    
+                    particleList.push(planet);
+                    
+                    // Add moons
+                    if (Math.random() > 0.5) {
+                        var numMoons = 1 + Math.floor(Math.random() * 2);
+                        
+                        for (var j = 0; j < numMoons; j++) {
+                            var moonDistance = planet.radius * 10 + 15 + j * 20;
+                            var moonAngle = Math.random() * 2 * Math.PI;
+                            var moonMass = planetMass * (0.02 + Math.random() * 0.04);
+                            
+                            var moonX = planet.x + moonDistance * Math.cos(moonAngle);
+                            var moonY = planet.y + moonDistance * Math.sin(moonAngle);
+                            
+                            var moonOrbitalSpeed = Math.sqrt(planetMass / moonDistance);
+                            var moonVx = planet.vx - moonOrbitalSpeed * Math.sin(moonAngle);
+                            var moonVy = planet.vy + moonOrbitalSpeed * Math.cos(moonAngle);
+                            
+                            var moon = new Particle(moonMass, moonX, moonY, moonVx, moonVy, 'matter', 'Moon-' + (s + 1) + '-' + i + '-' + (j + 1));
+                            moon.color = [120, 120, 120];
+                            moon.color[3] = (moon.color[0] << 16 | moon.color[1] << 8 | moon.color[2]).toString(16);
+                            
+                            particleList.push(moon);
+                        }
+                    }
+                }
+            }
+        }
+
+		function generateMultiMoonSystem() {
+		clearCanvas();
+
+		const numPlanets = 5;
+		const moonMass = 5e2;
+		const miniMoonMass = 1e1;
+
+		const centerX = width / 2;
+		const centerY = height / 2;
+
+		for (let i = 0; i < numPlanets; i++) {
+			const angle = (2 * Math.PI / numPlanets) * i;
+			const distanceFromCenter = 300 + Math.random() * 200;
+
+			const x = centerX + distanceFromCenter * Math.cos(angle);
+			const y = centerY + distanceFromCenter * Math.sin(angle);
+
+			const planetMass = 1e4 + Math.random() * 1e4;
+			const planet = new Particle(planetMass, x, y, -Math.sin(angle) * 0.5, Math.cos(angle) * 0.5, 'matter', `Planet ${i + 1}`);
+			particleList.push(planet);
+
+			const numMoons = 2 + Math.floor(Math.random() * 3); // 2–4 lunas
+			for (let j = 0; j < numMoons; j++) {
+				const moonAngle = Math.random() * 2 * Math.PI;
+				const moonDistance = 40 + Math.random() * 40;
+
+				const moonX = planet.x + moonDistance * Math.cos(moonAngle);
+				const moonY = planet.y + moonDistance * Math.sin(moonAngle);
+
+				const orbitalSpeed = Math.sqrt(planet.mass / moonDistance);
+				const moonVx = -orbitalSpeed * Math.sin(moonAngle) + planet.vx;
+				const moonVy = orbitalSpeed * Math.cos(moonAngle) + planet.vy;
+
+				const moon = new Particle(moonMass, moonX, moonY, moonVx, moonVy, 'matter', `Moon ${i + 1}.${j + 1}`);
+				particleList.push(moon);
+
+				// 50% chance of mini-moon
+				if (Math.random() < 0.5) {
+					const miniMoonAngle = Math.random() * 2 * Math.PI;
+					const miniMoonDistance = 10 + Math.random() * 10;
+
+					const miniMoonX = moon.x + miniMoonDistance * Math.cos(miniMoonAngle);
+					const miniMoonY = moon.y + miniMoonDistance * Math.sin(miniMoonAngle);
+
+					const miniOrbitalSpeed = Math.sqrt(moon.mass / miniMoonDistance);
+					const miniMoonVx = -miniOrbitalSpeed * Math.sin(miniMoonAngle) + moon.vx;
+					const miniMoonVy = miniOrbitalSpeed * Math.cos(miniMoonAngle) + moon.vy;
+
+					const miniMoon = new Particle(miniMoonMass, miniMoonX, miniMoonY, miniMoonVx, miniMoonVy, 'matter', `MiniMoon ${i + 1}.${j + 1}`);
+					particleList.push(miniMoon);
+				}
+			}
+		}
+	}
+
+	function generateBinarySystem() {
+		clearCanvas();
+
+		var centerX = width / 2;
+		var centerY = height / 2;
+		var binaryDistance = 100;
+
+		// Create binary stars
+		var star1Mass = 8e5 + Math.random() * 2e6;
+		var star2Mass = 8e5 + Math.random() * 2e6;
+
+		var totalMass = star1Mass + star2Mass;
+		var star1Distance = binaryDistance * star2Mass / totalMass;
+		var star2Distance = binaryDistance * star1Mass / totalMass;
+
+		// Initial positions
+		var star1X = centerX - star1Distance;
+		var star1Y = centerY;
+		var star2X = centerX + star2Distance;
+		var star2Y = centerY;
+
+		// Calculate orbital velocities for a stable orbit
+		// v = sqrt(G * M / r) where G is effectively 1 in this simulation
+		// For a binary system, v1 = sqrt(G * M2^2 / (M1+M2) / r_total)
+		// and v2 = sqrt(G * M1^2 / (M1+M2) / r_total)
+		// Or more simply, v_relative = sqrt(G * (M1+M2) / r_total)
+		// v1 = v_relative * M2 / (M1+M2)
+		// v2 = v_relative * M1 / (M1+M2)
+
+		var relativeOrbitalSpeed = Math.sqrt(totalMass / binaryDistance);
+
+		var star1Vx = 0;
+		var star1Vy = relativeOrbitalSpeed * (star2Mass / totalMass); // Orbiting around common barycenter
+
+		var star2Vx = 0;
+		var star2Vy = -relativeOrbitalSpeed * (star1Mass / totalMass); // Orbiting in opposite direction
+
+		// Randomize initial angle for variety
+		var initialAngle = Math.random() * 2 * Math.PI;
+
+		// Rotate positions
+		var cosAngle = Math.cos(initialAngle);
+		var sinAngle = Math.sin(initialAngle);
+
+		var rotatedStar1X = centerX + (star1X - centerX) * cosAngle - (star1Y - centerY) * sinAngle;
+		var rotatedStar1Y = centerY + (star1X - centerX) * sinAngle + (star1Y - centerY) * cosAngle;
+
+		var rotatedStar2X = centerX + (star2X - centerX) * cosAngle - (star2Y - centerY) * sinAngle;
+		var rotatedStar2Y = centerY + (star2X - centerX) * sinAngle + (star2Y - centerY) * cosAngle;
+
+		// Rotate velocities
+		var rotatedStar1Vx = star1Vx * cosAngle - star1Vy * sinAngle;
+		var rotatedStar1Vy = star1Vx * sinAngle + star1Vy * cosAngle;
+
+		var rotatedStar2Vx = star2Vx * cosAngle - star2Vy * sinAngle;
+		var rotatedStar2Vy = star2Vx * sinAngle + star2Vy * cosAngle;
+
+		var starColors = [
+			[255, 255, 200], // Yellowish
+			[255, 200, 150], // Orange
+			[200, 200, 255], // Bluish
+			[255, 150, 150]  // Reddish
+		];
+
+		var color1 = starColors[Math.floor(Math.random() * starColors.length)];
+		var color2 = starColors[Math.floor(Math.random() * starColors.length)];
+
+
+		var star1 = new Particle(star1Mass, rotatedStar1X, rotatedStar1Y, rotatedStar1Vx, rotatedStar1Vy, 'matter', 'Binary Star 1');
+		star1.color = color1;
+		star1.color[3] = (star1.color[0] << 16 | star1.color[1] << 8 | star1.color[2]).toString(16);
+		particleList.push(star1);
+
+		var star2 = new Particle(star2Mass, rotatedStar2X, rotatedStar2Y, rotatedStar2Vx, rotatedStar2Vy, 'matter', 'Binary Star 2');
+		star2.color = color2;
+		star2.color[3] = (star2.color[0] << 16 | star2.color[1] << 8 | star2.color[2]).toString(16);
+		particleList.push(star2);
+
+		// Optional: Add some orbiting planets around the binary system's barycenter
+			const numPlanets = 0 + Math.floor(Math.random() * 3); // 0-2 planets
+			for (let i = 0; i < numPlanets; i++) {
+				const planetDistance = binaryDistance * 2 + i * 80 + Math.random() * 50;
+				const planetAngle = Math.random() * 2 * Math.PI;
+				const planetMass = 1e3 + Math.random() * 5e3;
+
+				const planetX = centerX + planetDistance * Math.cos(planetAngle);
+				const planetY = centerY + planetDistance * Math.sin(planetAngle);
+
+				const systemMassForOrbit = totalMass; // Use total mass of binary for outer planets
+				const planetOrbitalSpeed = Math.sqrt(systemMassForOrbit / planetDistance);
+				const planetVx = -planetOrbitalSpeed * Math.sin(planetAngle);
+				const planetVy = planetOrbitalSpeed * Math.cos(planetAngle);
+
+				const planetColors = [
+					[100, 150, 255], // Blue
+					[255, 100, 100], // Red
+					[100, 255, 100], // Green
+					[255, 255, 100]  // Yellow
+				];
+				var planetColor = planetColors[Math.floor(Math.random() * planetColors.length)];
+
+				var planet = new Particle(planetMass, planetX, planetY, planetVx, planetVy, 'matter', `Exoplanet ${i + 1}`);
+				planet.color = planetColor;
+				planet.color[3] = (planet.color[0] << 16 | planet.color[1] << 8 | planet.color[2]).toString(16);
+				particleList.push(planet);
+			}
+		}
+
+		// New particle type functions
+        function addNeutronStar() {
+            var x = width / 2 + (Math.random() - 0.5) * 100;
+            var y = height / 2 + (Math.random() - 0.5) * 100;
+            var mass = 15000000 + Math.random() * 50000;
+            var particle = new Particle(mass, x, y, 0, 0, "neutron", "Neutron Star", 9);
+            particleList.push(particle);
+        }
+        
+		// New particle type functions
+        function addBlackHole() {
+            var x = width / 2 + (Math.random() - 0.5) * 100;
+            var y = height / 2 + (Math.random() - 0.5) * 100;
+            var mass = 150000000 + Math.random() * 50000;
+            var particle = new Particle(mass, x, y, 0, 0, "blackhole", "Black Hole", 10);
+            particleList.push(particle);
+        }
+        
+        function addDarkMatter() {
+            var x = width / 2 + (Math.random() - 0.5) * (6750 * Math.random() );
+            var y = height / 2 + (Math.random() - 0.5) * (3625 * Math.random());
+            var mass = 0;
+            var particle = new Particle(mass, x, y, 0, 0, "dark", "Dark Matter",-1, [10,10,10]);
+            particleList.push(particle);
+        }
+        
+		function generateGalaxy() {
+			clearCanvas();
+			var centerX = width / 2 / zoomLevel - panX / zoomLevel;
+			var centerY = height / 2 / zoomLevel - panY / zoomLevel;
+
+			// Crear agujero negro central (o núcleo galáctico)
+			var bhMass = 5e5*10; // Masa ligeramente reducida para el núcleo central
+			var blackHole = new Particle(bhMass, centerX, centerY, 0, 0, "blackhole", "Galactic Core", 10);
+			particleList.push(blackHole);
+
+			// Parámetros de la galaxia
+			var numStars = 12000; // Número fijo de estrellas
+			var numArms = 12 + Math.floor(Math.random() * 3); // 2-4 brazos espirales
+			var maxGalaxyRadius = 1000; // Distancia máxima desde el centro para las estrellas
+			var minGalaxyRadius = 100; // Distancia mínima para evitar colocar estrellas demasiado cerca del BH
+
+			// Coeficientes para los brazos espirales y la curva de rotación
+			var spiralTightness = -1.5 - Math.random() * 0.5; // Controla qué tan ajustada es la espiral
+			var velocityFlatteningFactor = 0.05; // Controla la "planitud" de la curva de rotación para las estrellas exteriores
+			var randomVelocitySpread = 3; // Pequeño componente aleatorio para las velocidades
+
+			for (var i = 0; i < numStars; i++) {
+				var arm = i % numArms;
+				var baseAngle = (arm / numArms) * Math.PI * 2; // Ángulo inicial para cada brazo
+
+				// Distancia desde el centro, con más estrellas concentradas más cerca del centro
+				// Usando Math.pow(Math.random(), 1.5) sesga hacia números más pequeños (más estrellas internas)
+				var distance = minGalaxyRadius + Math.pow(Math.random(), 1.5) * (maxGalaxyRadius - minGalaxyRadius);
+
+				// Calcular el ángulo espiral
+				var spiralAngle = baseAngle + Math.log(distance / minGalaxyRadius) * spiralTightness;
+				
+				// Añadir algo de ruido radial y tangencial a la posición para un aspecto más natural
+				var noiseAngle = (Math.random() - 0.5) * (Math.PI / 10); // Ruido de +/- 18 grados
+				var noiseDistance = (Math.random() - 0.5) * 20; // Ruido de +/- 20 unidades
+				
+				var x = centerX + (distance + noiseDistance) * Math.cos(spiralAngle + noiseAngle);
+				var y = centerY + (distance + noiseDistance) * Math.sin(spiralAngle + noiseAngle);
+
+				// Calcular la velocidad orbital (aproximando una curva de rotación plana)
+				// v = sqrt(G * M_efectiva / r)
+				// M_efectiva incluye el agujero negro central y un componente de masa distribuida (halo de materia oscura)
+				
+				// Aproximación simplificada de una curva de rotación plana:
+				var keplerianVelocity = Math.sqrt(G * bhMass / distance);
+				// Un término inspirado en la "materia oscura" que añade velocidad constante para distancias mayores
+				var haloVelocity = velocityFlatteningFactor * distance;
+
+				var orbitalSpeed = keplerianVelocity + haloVelocity; // Suma de los componentes
+				
+				// Asegurarse de que orbitalSpeed sea un valor razonable; evitar NaN o valores extremadamente grandes
+				if (isNaN(orbitalSpeed) || !isFinite(orbitalSpeed)) {
+					orbitalSpeed = 0; // Por defecto a 0 si el cálculo es incorrecto (por ejemplo, distancia muy pequeña)
+				}
+				
+				// Introducir algo de velocidad perpendicular para la estabilidad
+				var vx = -orbitalSpeed * Math.sin(spiralAngle);
+				var vy = orbitalSpeed * Math.cos(spiralAngle);
+
+				// Añadir una pequeña perturbación aleatoria a la velocidad para un movimiento más natural
+				vx += (Math.random() - 0.5) * randomVelocitySpread;
+				vy += (Math.random() - 0.5) * randomVelocitySpread;
+
+				// Masa aleatoria de las estrellas (mayormente estrellas pequeñas, pocas grandes)
+				// Ajustar el rango de masa para evitar estrellas demasiado dominantes que desestabilicen la galaxia
+				var mass = 50 + Math.pow(Math.random(), 4) * 2000; // Sesgo hacia estrellas más pequeñas, máx 2050
+
+				var star = new Particle(mass, x, y, vx, vy, "matter", "Star " + (i + 1));
+
+				// Color basado en la masa (caliente = azul, fría = roja), refinado para galaxias
+				if (mass > 1500) { // Estrellas grandes y brillantes
+					star.color = [255, 255, 150]; // Amarillento-blanco
+				} else if (mass > 500) { // Estrellas medianas
+					star.color = [255, 255, 255]; // Blanco
+				} else if (mass > 200) { // Estrellas más pequeñas y calientes
+					star.color = [150, 200, 255]; // Azul-blanco
+				} else { // Estrellas más pequeñas y frías (las más comunes)
+					star.color = [255, 180, 180]; // Rojizo
+				}
+				star.color[3] = (star.color[0] << 16 | star.color[1] << 8 | star.color[2]).toString(16);
+
+				particleList.push(star);
+			}
+	}
+
+	function getType(){
+		toggleParticleType();
+	    currentParticleType != 'matter' ? 'matter' : 'antimatter';		
+	} 
+			
+
+	</script>
+	</head>
+	<body style="background-color:black">
+		<div class="noselect">
+			Click and drag to add new particles.</br></br>
+			<div id="controlbox" style="z-index:4">
+                <div id="particleCount" style="margin-bottom: 5px;">Particles: 0</div>
+            	<div class="section-title">Mass Controls</div>
+				<button id="particleTypeBtn" onclick="toggleParticleType()">Matter (U)</button></br>
+				<table>
+					<tr><td>Mass:<input type="text" value="1.0e3" class="txt" style="width:50px;" id="mass"> 0-9</td></tr></br>
+					<tr><button onclick="getType(); setSize(1 , 'Dust')">Dust (0)</button></tr></br>
+					<tr><button onclick="getType(); setSize(100 , 'Tiny')">Tiny (1)</button></tr></br>
+					<tr><button onclick="getType(); setSize(1000 , 'Small')">Small (2)</button></tr></br>
+					<tr><button onclick="getType(); setSize(10000 , 'Medium')">Medium (3)</button></tr></br>
+					<tr><button onclick="getType(); setSize(100000 , 'Huge')">Huge (4)</button></tr></br>
+					<tr><button onclick="getType(); setSize(1000000 , 'Enormous')">Enormous (5)</button></tr>
+					<tr><button onclick="currentParticleType = 'matter'; setSize(300000000 * ( 1 + (Math.random()))  , 'Supernova', 0.5, [253, 238, 150])">Supernova</button></tr>
+					<tr><button onclick="currentParticleType = 'neutron'; setSize(( 15000000 + Math.random() * 50000)  , 'Neutron Star', 8, 'neutron');">Neutron Star</button></tr>
+					<tr><button onclick="currentParticleType = 'blackhole'; setSize(1000000000 * ( 1 + (Math.random()))  , 'Black Hole', 10, 'blackhole');">Black Hole</button></tr>
+				</table>
+				<div class="section-title">Particle Types</div>
+				<button onclick="addMoon()">Add Moon (A)</button></br>
+				<button onclick="addDarkMatter()">Add Dark Matter (J)</button></br>
+
+				<div class="section-title">System Generation</div>
+				<button onclick="generateProto()">Protodisk (D)</button></br>
+				<button onclick="generateRandomSystem()">Random System (R)</button></br>
+				<button onclick="generateRandomMultiSystem()">Multi-System (M)</button></br>
+				<button onclick="generateMultiMoonSystem()">Moon System (L)</button></br>
+				<button onclick="generateBinarySystem()">Binary System (B)</button></br>
+				<button onclick="generateGalaxy()">Spiral Galaxy (Z)</button></br>
+				<button onclick="placeSolarSystem()">Solar System (Y)</button></br>
+				<button onclick="addAsteroidBelt()">Asteroid Belt (K)</button></br>
+
+				<table>
+						<tr>
+							<td><span class="seltxt">Celestial Body Mass:</span></td>
+							<td>
+								<select id="planetSelector" onchange="setCelestialBodyMass(this.value)">
+									<option value="sun">Sun</option>
+									<option value="mercury">Mercury</option>
+									<option value="venus">Venus</option>
+									<option value="earth">Earth</option>
+									<option value="mars">Mars</option>
+									<option value="jupiter">Jupiter</option>
+									<option value="saturn">Saturn</option>
+									<option value="uranus">Uranus</option>
+									<option value="neptune">Neptune</option>
+									<option value="blackhole">Black Hole</option>
+								</select>
+							</td>
+						</tr>
+						<tr>
+							<td><span class="seltxt">Moon Mass:</span></td>
+							<td>
+								<select id="moonSelector" onchange="setMoonMass(this.value)">
+									<option value="1.0e-1">Small Moon</option>
+									<option value="7.342e22">Earth's Moon</option>
+									<option value="1.076e23">Io</option>
+									<option value="4.800e22">Europa</option>
+									<option value="1.481e23">Ganymede</option>
+									<option value="1.076e23">Callisto</option>
+									<option value="1.345e23">Titan</option>
+									<option value="2.115e22">Rhea</option>
+									<option value="1.896e21">Iapetus</option>
+									<option value="1.345e23">Triton</option>
+									<option value="1.620e21">Charon</option>
+								</select>
+							</td>
+						</tr>
+						<tr>
+							<td><span class="seltxt">System Size:</span></td>
+							<td>
+								<select id="systemSize">
+									<option value="small">Small (3-5 bodies)</option>
+									<option value="medium" selected>Medium (5-8 bodies)</option>
+									<option value="large">Large (8-12 bodies)</option>
+								</select>
+							</td>
+						</tr>
+				</table>
+				<table>
+					<tr><button onclick="getType(); setSize(100000000 , 'Sun')">Sun</button></tr> 
+					<tr><button onclick="getType(); setSize(16.6 , 'Mercury')">Mercury</button></tr>
+					<tr><button onclick="getType(); setSize(245 , 'Venus')">Venus</button></tr>
+					<tr><button onclick="getType(); setSize(300 , 'Earth')">Earth</button></tr>
+					<tr><button onclick="getType(); setSize(32.3 , 'Mars')">Mars</button></tr>
+					<tr><button onclick="getType(); setSize(95400 , 'Jupiter')">Jupiter</button></tr>
+					<tr><button onclick="getType(); setSize(28570 , 'Saturn')">Satrun</button></tr>
+					<tr><button onclick="getType(); setSize(4360 , 'Uranus')">Uranus</button></tr>
+					<tr><button onclick="getType(); setSize(5150 , 'Neptune')">Neptune</button></tr>
+
+				</table>
+			</div>
+		</div>
+		<canvas id="canvas" style="z-index:-1;position:absolute;left: 0px;top: 0px;"></canvas>
+		<div id="homebox">Gravity Toy</div>
+		<div id="statusBar" style="z-index:4">
+			<div class="status-section">
+				<span id="simulationTime">Time: 0</span>
+				<span>| Zoom: <span id="zoomLevel">1.00x</span> > Inc. < Dec.</span>
+				<span>| Pan: (<span id="panX">0</span>, <span id="panY">0</span>)</span>
+			</div>
+			
+			<div class="status-section">
+				<span>Gravity:</span>
+				<select id="gravityModeSelector" onchange="changeGravityMode(this.value)">
+					<option value="inverseSquare">1/r² (Newton)</option>
+					<option value="exponential">e^-r</option>
+					<option value="arctanSquared">1/arctan²(r)</option>
+					<option value="sechSquared">sech²(r)</option>
+					<option value="sech">sech(r)</option>
+				</select>
+			</div>
+			
+			<div class="status-section" style="z-index:4">
+				<span>Ver: <span>1.20251026</span><button onclick="togglecontrolbox();">Control Box</button><button onclick="toggleextraOptionsBox();">Extra Controls</button><button onclick="toggleHelp();">Help Controls</button></span>
+				<span>| FPS: <span id="fpsCounter">0</span></span>
+			</div>
+		</div>
+		
+		<div id="extraOptionsBox" style="z-index:4">
+			<h3>Options</h3>
+				<div class="section-title">Visualization</div>
+				<button onclick="toggleTrails()">Toggle Trails (T)</button></br>
+				<button id="gravityFieldBtn" onclick="toggleGravityField()">Show Field (F)</button></br>
+				<button id="toggleNamesBtn" onclick="toggleParticleNames()">Show Names (N)</button></br>
+				<button id="toggleMassBtn" onclick="toggleParticleMassAndButton()">Show Mass (M)</button></br>
+				<button id="toggleMagnetospheresBtn" onclick="toggleMagnetospheresAndButton()">Show Magnetospheres (Q)</button></br>
+				<button id="toggleOrbitsBtn" onclick="toggleOrbitsAndButton()">Show Orbits (O)</button></br>
+				<button id="toggleGravityWellsBtn" onclick="toggleGravityWellsAndButton()">Show Gravity Wells (V)</button></br>
+				<button id="toggleLensingBtn" onclick="toggleGravitationalLensing()">Show Lensing (W)</button></br>
+				<button onclick="clearAllParticleOrbits()">Clear Orbits (X)</button></br>
+            
+				<div class="section-title">Simulation Control</div>
+				<button onclick="start()">Start (S)</button></br>
+				<button onclick="stop()">Stop (S)</button></br>
+				<button onclick="togglePause()">Pause/Resume (P)</button></br>
+				<button onclick="increaseTimeStep()">Faster (+)</button></br>
+				<button onclick="decreaseTimeStep()">Slower (-)</button></br>
+				<button onclick="clearCanvas()">Clear (C)</button></br>
+				
+				<div class="section-title">Camera</div>
+				<button onclick="centerView()">Center View</button></br>
+				<button onclick="trackParticle()">Track Particle</button></br>
+				<button onclick="toggleAutoZoom()">Auto Zoom</button></br>
+
+		</div>
+		<!-- Hotkey Help Box -->
+		<div id="hotkeyHelp" style="z-index:4">
+			<h3>Keyboard Shortcuts</h3>
+			<ul>
+				<li><strong>0-9</strong>: Set size presets</li>
+				<li><strong>S</strong>: Start/Stop simulation</li>
+				<li><strong>P</strong>: Pause/Resume</li>
+				<li><strong>T</strong>: Toggle trails</li>
+				<li><strong>F</strong>: Toggle gravity field</li>
+				<li><strong>W</strong>: Toggle gravity wells</li>
+				<li><strong>O</strong>: Toggle orbits</li>
+				<li><strong>X</strong>: Clear all orbits</li>
+				<li><strong>N</strong>: Toggle particle names</li>
+				<li><strong>M</strong>: Toggle particle mass</li>
+				<li><strong>V</strong>: Toggle magnetospheres</li>
+				<li><strong>Q</strong>: Toggle gravity lensing</li>
+				<li><strong>A</strong>: Add moon</li>
+				<li><strong>K</strong>: Add asteroid belt</li>
+				<li><strong>B</strong>: Create binary system</li>
+				<li><strong>I</strong>: Create multi-system</li>
+				<li><strong>R</strong>: Create random system</li>
+				<li><strong>Y</strong>: Create solar system</li>
+				<li><strong>C</strong>: Clear canvas</li>
+				<li><strong>D</strong>: Create protodisk</li>
+				<li><strong>Space</strong>: Pause while held</li>
+				<li><strong>Arrows</strong>: Pan view</li>
+				<li><strong>>/<</strong>: Zoom in/out</li>
+				<li><strong>+/-</strong>: Speed</li>
+				<li><strong>H</strong>: Show/hide this help</li>
+				<li><strong>?</strong>: Extra Options Box</li>
+				<li><strong>|</strong>: Options Box</li>
+			</ul>
+			Bonus: Three Body Problem <br><br>
+				<button onclick="placeFigure8Orbit()">Infinity</button></br>
+        		<button onclick="placeEclipseScenario()">Eclipse</button></br>
+        		<button onclick="placeLagrangeEquilateral()">Triangle</button></br>
+				<button id="lagrangePointsButton" onclick="toggleLagrangePoints()">Lagrange Pts: OFF</button>
+		</div>
+	<script>
+    // Hotkeys configuration
+    document.addEventListener('keydown', function(event) {
+        switch(event.key.toLowerCase()) {
+            // Particle mass presets
+			case '0': setSize(1); break;          // Dust (0)
+            case '1': setSize(100); break;          // Tiny (1)
+            case '2': setSize(1000); break;         // Small (2)
+            case '3': setSize(10000); break;        // Medium (3)
+            case '4': setSize(100000); break;       // Huge (4)
+            case '5': setSize(1000000); break;      // Enormous (5)
+            case '6': setSize(10000000); break;      // Enormous God (6)
+			case '7': setSize(100000000); break;      // Enormous Oh God (7)
+			case '8': setSize(1000000000); break;      // Enormous Oh My God (8)
+			case '9': setSize(10000000000); break;      // Enormous Oh My F God (9)
+
+            // System generation
+            case 'r': generateRandomSystem(); break;       // Random (R)
+            case 'i': generateRandomMultiSystem(); break;  // Multi-system (I)
+            case 'l': generateMultiMoonSystem(); break;    // Lunar system (L)
+            case 'b': generateBinarySystem(); break;       // Binary (B)
+            
+            // Celestial bodies
+            case 'a': addMoon(); break;                   // Add moon (A)
+            case '?': toggleextraOptionsBox(); break;      // Solar Systema Box (H)
+            case 'k': addAsteroidBelt(); break;           // asteroiD (K - D was taken)
+            
+            // Controls
+            case 's': start(); break;                     // Start (S)
+            case 'p': stop(); break;                      // stoP (P)
+            case 'd': generateProto(); break;             // protodisk (D)
+            case 'c': clearCanvas(); break;               // Clear (C)
+            case 't': toggleTrails(); break;              // Trails (T)
+            case 'f': toggleGravityField(); break;         // Field (F)
+            case 'n': toggleParticleNames(); break;       // Names (N)
+            case 'w': toggleGravityWellsAndButton(); break; // Wells (W)
+			case 'q': toggleGravitationalLensing(); break;
+            case 'o': toggleOrbitsAndButton(); break;     // Orbits (O)
+            case 'x': clearAllParticleOrbits(); break;    // clear orbits (X)
+            case 'y': placeSolarSystem(); break;          // solar sYstem (Y)
+            
+            // Toggles
+            case 'v': toggleMagnetospheresAndButton(); break; // Magnetospheres (V - M taken)
+            case 'm': toggleParticleMassAndButton(); break;   // Mass (G - M taken)
+            case 'u': toggleParticleType(); break;           // matter/antiMatter (U - M taken)
+			case '*': toggleLagrangePoints(); break; // Lagrange Pts (*)
+	
+			case ' ': isPaused = true; break;
+			case 'h': toggleHelp(); break;
+			
+			case 'arrowup': panY -= 20 / zoomLevel; break;
+			case 'arrowdown': panY += 20 / zoomLevel; break;
+			case 'arrowleft': panX -= 20 / zoomLevel; break;
+			case 'arrowright': panX += 20 / zoomLevel; break;
+			case '>': case '=': zoomLevel *= 1.1; break;
+			case '<': case '_': zoomLevel /= 1.1; break;
+
+			case '+': increaseTimeStep(); break;
+			case '-': decreaseTimeStep(); break;
+
+			case '/': addNeutronStar(); break;
+			case 'j': addDarkMatter(); break;
+			case 'z': generateGalaxy(); break;
+			case '|': togglecontrolbox(); break;
+		}
+		
+		updateStatusBar();
+    });
+</script>
+	</body>
+</html>
