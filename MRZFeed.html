@@ -17,6 +17,7 @@
     input[type=file]{ display:none }
     button { appearance: none; border: 0; background: #2a6df5; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
     button.secondary { background: #2b3b60 }
+    button.success { background: #0a6; }
     img { max-width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120 }
     .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .92rem; }
@@ -27,12 +28,70 @@
     .hint { font-size: .85rem; color:#9fb0cb }
     .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px; }
     .kv b{color:#cfe0ff}
+    
+    /* Nuevos estilos para la tabla de resultados */
+    .mrz-guide { 
+      background: #0f1726; 
+      border: 1px solid #1e2a44; 
+      border-radius: 8px; 
+      padding: 8px 12px; 
+      margin: 8px 0 16px; 
+      font-size: 0.85rem;
+    }
+    .result-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .result-table th, .result-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #1e2a44;
+    }
+    .result-table th {
+      background: #0f1726;
+      color: #cfe0ff;
+      font-weight: 600;
+    }
+    .result-table tr:last-child td {
+      border-bottom: none;
+    }
+    .check-ok {
+      color: #0f6;
+    }
+    .check-fail {
+      color: #f06;
+    }
+    .result-summary {
+      background: #0f1726;
+      border: 1px solid #1e2a44;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    .json-container {
+      margin-top: 16px;
+      display: none;
+    }
+    .json-container h4 {
+      margin: 0 0 8px;
+    }
+    .json-pre {
+      background: #0f1726;
+      border: 1px solid #1e2a44;
+      border-radius: 12px;
+      padding: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+    }
   </style>
 </head>
 <body>
   <div class="app">
     <h1>Extractor de código MRZ (Tesseract.js)</h1>
     <p class="hint">Sube una foto nítida del documento (pasaporte, DNI, etc.). El MRZ son las líneas con <code>«&lt;&lt;»</code> y caracteres <code>A–Z 0–9 &lt;</code> al borde del documento.</p>
+    <div class="mrz-guide">Guía rápida de longitudes: TD1: 3×30 · TD2: 2×36 · TD3: 2×44</div>
 
     <div class="grid">
       <div class="card">
@@ -53,6 +112,15 @@
             <button id="runBtn" type="button">Extraer MRZ</button>
           </div>
           <div style="margin-top:8px"><progress id="prog" max="1" value="0"></progress></div>
+          
+          <!-- Contenedor para JSON y botón de copia -->
+          <div id="jsonContainer" class="json-container">
+            <h4>JSON de datos extraídos</h4>
+            <pre id="jsonPre" class="json-pre mono"></pre>
+            <div class="row" style="margin-top:8px">
+              <button id="copyJson" type="button" class="success">Copiar JSON</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -64,8 +132,14 @@
         <div class="row" style="margin-top:8px">
           <button id="copyMrz" type="button" class="secondary">Copiar MRZ</button>
         </div>
+        
+        <!-- Nueva sección para mostrar resultados en tabla -->
         <h4 style="margin-top:18px">Datos parseados</h4>
-        <pre id="jsonOut" class="mono">{
+        <div id="resultSummary" class="result-summary" style="display:none"></div>
+        <div id="resultTable" style="overflow-x:auto;"></div>
+        
+        <!-- JSON original (mantenido para compatibilidad) -->
+        <pre id="jsonOut" class="mono" style="display:none">{
   
 }</pre>
       </div>
@@ -88,8 +162,14 @@
   const metaEl = $('#meta');
   const copyBtn = $('#copyMrz');
   const demoBtn = $('#demoBtn');
+  const resultSummary = $('#resultSummary');
+  const resultTable = $('#resultTable');
+  const jsonContainer = $('#jsonContainer');
+  const jsonPre = $('#jsonPre');
+  const copyJsonBtn = $('#copyJson');
 
   let currentImageBlob = null;
+  let currentParsedData = null;
 
   demoBtn.addEventListener('click', async () => {
     // Pequeña imagen de muestra (MRZ de pasaporte ficticio). Base64 embebido solo para demo.
@@ -113,6 +193,9 @@
     mrzTextEl.value = '';
     jsonOut.textContent = '{\n  \n}';
     metaEl.innerHTML = '';
+    resultSummary.style.display = 'none';
+    resultTable.innerHTML = '';
+    jsonContainer.style.display = 'none';
   });
 
   copyBtn.addEventListener('click', async () => {
@@ -120,6 +203,14 @@
     await navigator.clipboard.writeText(mrzTextEl.value);
     copyBtn.textContent = '¡Copiado!';
     setTimeout(()=> copyBtn.textContent = 'Copiar MRZ', 1200);
+  });
+
+  copyJsonBtn.addEventListener('click', async () => {
+    if (!currentParsedData) return;
+    const jsonString = JSON.stringify(currentParsedData, null, 2);
+    await navigator.clipboard.writeText(jsonString);
+    copyJsonBtn.textContent = '¡JSON Copiado!';
+    setTimeout(()=> copyJsonBtn.textContent = 'Copiar JSON', 1200);
   });
 
   runBtn.addEventListener('click', async () => {
@@ -157,6 +248,17 @@
       else if (block?.type === 'TD1-3x30') parsed = parseTD1(block.lines);
       else if (block?.type === 'TD2-2x36') parsed = parseTD2(block.lines);
 
+      // Generar JSON en el formato solicitado
+      currentParsedData = generateFormattedJSON(parsed, block);
+      
+      // Mostrar JSON en el contenedor
+      jsonPre.textContent = JSON.stringify(currentParsedData, null, 2);
+      jsonContainer.style.display = 'block';
+
+      // Mostrar resultados en tabla
+      displayResultsInTable(parsed, block?.type);
+
+      // Mantener JSON para compatibilidad
       jsonOut.textContent = JSON.stringify(parsed && Object.keys(parsed).length ? parsed : {
         notice: 'No se pudo identificar con certeza el formato. Revisa el MRZ en crudo.'
       }, null, 2);
@@ -168,6 +270,154 @@
       alert('Ocurrió un error al ejecutar OCR: ' + err.message);
     }
   });
+
+  // Función para generar JSON en el formato solicitado
+  function generateFormattedJSON(parsed, block) {
+    if (!parsed || Object.keys(parsed).length === 0) {
+      return { error: "No se pudieron extraer datos del MRZ" };
+    }
+
+    const formatType = parsed.format ? parsed.format.split('-')[0] : 'Desconocido';
+    
+    // Extraer componentes de fecha
+    const birthDateParts = parsed.birthDate ? {
+      yy: parsed.birthDate.slice(2, 4),
+      mm: parsed.birthDate.slice(5, 7),
+      dd: parsed.birthDate.slice(8, 10)
+    } : null;
+    
+    const expiryDateParts = parsed.expiryDate ? {
+      yy: parsed.expiryDate.slice(2, 4),
+      mm: parsed.expiryDate.slice(5, 7),
+      dd: parsed.expiryDate.slice(8, 10)
+    } : null;
+
+    // Construir objeto JSON en el formato solicitado
+    const formattedJSON = {
+      format: formatType,
+      raw: block ? block.lines : [],
+      documentCode: parsed.documentType || '',
+      issuingState: parsed.issuingCountry || '',
+      documentNumber: parsed.documentNumber || '',
+      documentNumberCheck: parsed.documentNumberCheck || '',
+      optionalData1: parsed.optionalData || '',
+      birthDate: birthDateParts,
+      birthDateCheck: parsed.birthCheck || '',
+      sex: parsed.sex || '',
+      expiryDate: expiryDateParts,
+      expiryDateCheck: parsed.expiryCheck || '',
+      nationality: parsed.nationality || '',
+      optionalData2: '', // No disponible en todos los formatos
+      finalCheck: parsed.compositeCheck || parsed.optionalCheck || '',
+      surname: parsed.surname || '',
+      givenNames: parsed.givenNames || '',
+      checks: parsed.checks || {}
+    };
+
+    return formattedJSON;
+  }
+
+  // Nueva función para mostrar resultados en tabla
+  function displayResultsInTable(parsed, formatType) {
+    if (!parsed || Object.keys(parsed).length === 0) {
+      resultSummary.style.display = 'none';
+      resultTable.innerHTML = '<p>No se pudieron extraer datos del MRZ.</p>';
+      return;
+    }
+
+    // Calcular checksums válidos
+    let validChecks = 0;
+    let totalChecks = 0;
+    
+    if (parsed.checks) {
+      Object.values(parsed.checks).forEach(check => {
+        if (typeof check === 'boolean') {
+          totalChecks++;
+          if (check) validChecks++;
+        }
+      });
+    }
+
+    // Mostrar resumen
+    resultSummary.style.display = 'block';
+    resultSummary.innerHTML = `
+      <strong>Detectado ${formatType || 'Formato desconocido'}. Checksums: ${validChecks}/${totalChecks} OK</strong>
+    `;
+
+    // Crear tabla
+    let tableHTML = `
+      <table class="result-table">
+        <thead>
+          <tr>
+            <th>Campo</th>
+            <th>Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    // Función auxiliar para formatear valores
+    const formatValue = (key, value) => {
+      if (key === 'checks') return ''; // Omitir el objeto checks completo
+      
+      // Formatear fechas
+      if ((key === 'birthDate' || key === 'expiryDate') && value) {
+        const dateParts = value.split('-');
+        const yymmdd = `${dateParts[0].slice(2)}${dateParts[1]}${dateParts[2]}`;
+        return `${yymmdd} (${value})`;
+      }
+      
+      // Formatear checksums
+      if (key.endsWith('Check') && key !== 'compositeCheck' && key !== 'optionalCheck') {
+        const checkKey = key.replace('Check', '');
+        const isValid = parsed.checks && parsed.checks[checkKey];
+        return `<span class="${isValid ? 'check-ok' : 'check-fail'}">${isValid ? '✔ válido' : '✖ fallo'}</span>`;
+      }
+      
+      return value || '';
+    };
+
+    // Agregar filas a la tabla
+    Object.entries(parsed).forEach(([key, value]) => {
+      if (key === 'checks' || key === 'format') return;
+      
+      const formattedValue = formatValue(key, value);
+      if (formattedValue === '') return;
+      
+      // Formatear nombres de campos para mejor legibilidad
+      const displayKey = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, str => str.toUpperCase())
+        .replace('Document Number', 'Document Number')
+        .replace('Issuing Country', 'Issuing Country')
+        .replace('Given Names', 'Given Names');
+      
+      tableHTML += `
+        <tr>
+          <td><strong>${displayKey}</strong></td>
+          <td>${formattedValue}</td>
+        </tr>
+      `;
+    });
+
+    // Agregar fila para composite check si existe
+    if (parsed.compositeCheck) {
+      const isValid = parsed.checks && parsed.checks.composite;
+      tableHTML += `
+        <tr>
+          <td><strong>Composite Check</strong></td>
+          <td><span class="${isValid ? 'check-ok' : 'check-fail'}">${isValid ? '✔ válido' : '✖ fallo'}</span></td>
+        </tr>
+      `;
+    }
+
+    tableHTML += `
+        </tbody>
+      </table>
+    `;
+
+    resultTable.innerHTML = tableHTML;
+  }
 
   function toKV(obj){
     return Object.entries(obj).map(([k,v])=>`<div><b>${escapeHtml(k)}</b></div><div>${escapeHtml(String(v))}</div>`).join('');
