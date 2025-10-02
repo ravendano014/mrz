@@ -42,6 +42,17 @@
     .hint{font-size:.92rem;color:#a3e635}
     footer{opacity:.7;text-align:center;padding:1rem}
     a{color:#93c5fd}
+    
+    /* Estilos para la tabla de resultados */
+    .results-table {width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.875rem}
+    .results-table th, .results-table td {padding:.5rem;text-align:left;border-bottom:1px solid #1f2937}
+    .results-table th {color:#9ca3af;font-weight:600;width:40%}
+    .results-table tr:last-child td {border-bottom:none}
+    .check-ok {color:#22c55e}
+    .check-fail {color:#ef4444}
+    .format-guide {background:#0b1220;border:1px solid #1f2937;border-radius:8px;padding:.5rem .75rem;margin:.5rem 0;font-size:.85rem}
+    .json-container {position:relative}
+    .copy-json-btn {position:absolute;top:.5rem;right:.5rem}
   </style>
 </head>
 <body>
@@ -68,6 +79,16 @@
             <input id="rear" type="checkbox" checked/> Cámara trasera
           </label>
         </div>
+        
+        <div id="results-table-container" style="display:none; margin-top:1rem">
+          <h3>Resultados parseados</h3>
+          <table class="results-table">
+            <tbody id="results-body">
+              <!-- Los resultados se insertarán aquí dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+        
         <small class="muted">Privacidad: el video no se envía a ningún servidor; el reconocimiento ocurre en tu dispositivo.</small>
       </div>
 
@@ -83,8 +104,16 @@
         <div class="controls" style="margin-top:.5rem">
           <button id="parse" class="primary" disabled>🧩 Parsear MRZ</button>
         </div>
-        <h3 style="margin-top:1rem">MRZ Parser (decodificado)</h3>
-        <div id="decoded" class="out mono" aria-live="polite" style="min-height:6rem"></div>
+        
+        <div class="format-guide">
+          <strong>Guía rápida de longitudes:</strong> TD1: 3×30 · TD2: 2×36 · TD3: 2×44
+        </div>
+        
+        <h3 style="margin-top:1rem">MRZ Parser (JSON)</h3>
+        <div class="json-container">
+          <div id="decoded" class="out mono" aria-live="polite" style="min-height:6rem; max-height:20rem; overflow-y:auto"></div>
+          <button id="copy-json" class="btn copy-json-btn" disabled>📋 Copiar JSON</button>
+        </div>
 
         <h3 style="margin-top:1rem">Qué se detecta</h3>
         <dl>
@@ -125,6 +154,9 @@
     const parseBtn = $('#parse');
     const decodedEl = $('#decoded');
     const rearCbx = $('#rear');
+    const resultsContainer = $('#results-table-container');
+    const resultsBody = $('#results-body');
+    const copyJsonBtn = $('#copy-json');
 
     let stream = null;
 
@@ -137,7 +169,12 @@
       copyBtn.disabled = !has;
       clearBtn.disabled = !has;
       parseBtn.disabled = !has;
-      if(!has) decodedEl.textContent = '';
+      copyJsonBtn.disabled = !has || !decodedEl.textContent.trim();
+      if(!has) {
+        decodedEl.textContent = '';
+        resultsContainer.style.display = 'none';
+        copyJsonBtn.disabled = true;
+      }
     }
 
     async function startCamera(){
@@ -240,12 +277,20 @@
       const txt = outputEl.textContent.trim();
       if(!txt) return;
       await navigator.clipboard.writeText(txt);
-      statusEl.textContent = 'Copiado al portapapeles.';
+      statusEl.textContent = 'MRZ copiada al portapapeles.';
+    });
+
+    copyJsonBtn.addEventListener('click', async ()=>{
+      const txt = decodedEl.textContent.trim();
+      if(!txt) return;
+      await navigator.clipboard.writeText(txt);
+      statusEl.textContent = 'JSON copiado al portapapeles.';
     });
 
     clearBtn.addEventListener('click', ()=>{
       outputEl.textContent='';
       decodedEl.textContent='';
+      resultsContainer.style.display = 'none';
       setBusy(false,'Listo.');
     });
 
@@ -276,6 +321,85 @@
       if(lines.length===2 && L.every(n=>n>=35 && n<=37)) return 'TD2'; // también MRV-B
       return 'UNKNOWN';
     }
+    
+    function formatDateDisplay(dateObj) {
+      if (!dateObj || !dateObj.yy) return '';
+      const year = parseInt(dateObj.yy) < 50 ? `20${dateObj.yy}` : `19${dateObj.yy}`;
+      return `${dateObj.yy}${dateObj.mm}${dateObj.dd} (${year}-${dateObj.mm}-${dateObj.dd})`;
+    }
+    
+    function displayResults(parsed) {
+      resultsBody.innerHTML = '';
+      
+      if (!parsed.format || parsed.format === 'UNKNOWN') {
+        resultsContainer.style.display = 'none';
+        return;
+      }
+      
+      // Contar checks válidos
+      let validChecks = 0;
+      let totalChecks = 0;
+      
+      if (parsed.checks) {
+        Object.values(parsed.checks).forEach(check => {
+          if (check !== undefined) {
+            totalChecks++;
+            if (check) validChecks++;
+          }
+        });
+      }
+      
+      // Mostrar resumen de formato y checks
+      addTableRow('Formato detectado', parsed.format);
+      addTableRow('Checksums', `${validChecks} de ${totalChecks} OK`, validChecks === totalChecks);
+      
+      // Mostrar campos específicos según el formato
+      if (parsed.documentCode) addTableRow('Document Type', parsed.documentCode);
+      if (parsed.issuingState) addTableRow('Issuing Country', parsed.issuingState);
+      if (parsed.nationality) addTableRow('Nationality', parsed.nationality);
+      if (parsed.surname) addTableRow('Surname', parsed.surname);
+      if (parsed.givenNames) addTableRow('Given Names', parsed.givenNames);
+      if (parsed.documentNumber) {
+        const checkOk = parsed.checks && parsed.checks.documentNumber;
+        addTableRow('Document Number', parsed.documentNumber);
+        addTableRow('Doc No. Check', checkOk ? '✔ válido' : '✖ fallo', checkOk);
+      }
+      if (parsed.birthDate) {
+        const checkOk = parsed.checks && parsed.checks.birthDate;
+        addTableRow('Birth (YYMMDD)', formatDateDisplay(parsed.birthDate));
+        addTableRow('Birth Check', checkOk ? '✔ válido' : '✖ fallo', checkOk);
+      }
+      if (parsed.sex) addTableRow('Sex', parsed.sex);
+      if (parsed.expiryDate) {
+        const checkOk = parsed.checks && parsed.checks.expiryDate;
+        addTableRow('Expiry (YYMMDD)', formatDateDisplay(parsed.expiryDate));
+        addTableRow('Expiry Check', checkOk ? '✔ válido' : '✖ fallo', checkOk);
+      }
+      if (parsed.optionalData1) addTableRow('Optional 1', parsed.optionalData1);
+      if (parsed.optionalData2) addTableRow('Optional 2', parsed.optionalData2);
+      if (parsed.optionalData) addTableRow('Optional Data', parsed.optionalData);
+      if (parsed.optionalNumber) addTableRow('Optional Number', parsed.optionalNumber);
+      
+      resultsContainer.style.display = 'block';
+    }
+    
+    function addTableRow(label, value, isValid) {
+      const row = document.createElement('tr');
+      const labelCell = document.createElement('td');
+      const valueCell = document.createElement('td');
+      
+      labelCell.textContent = label;
+      valueCell.textContent = value;
+      
+      if (isValid !== undefined) {
+        valueCell.className = isValid ? 'check-ok' : 'check-fail';
+      }
+      
+      row.appendChild(labelCell);
+      row.appendChild(valueCell);
+      resultsBody.appendChild(row);
+    }
+
     function parseMRZ(text){
       const lines = text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
       const format = detectFormat(lines);
@@ -359,6 +483,8 @@
       if(!raw) return;
       const parsed = parseMRZ(raw);
       decodedEl.textContent = JSON.stringify(parsed, null, 2);
+      displayResults(parsed);
+      copyJsonBtn.disabled = false;
       statusEl.textContent = parsed && parsed.format ? `MRZ parseada (${parsed.format}).` : 'No se pudo parsear.';
     });
   </script>
