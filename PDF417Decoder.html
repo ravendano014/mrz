@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decodificador de Código PDF417</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #0b1220;
+            --muted: #94a3b8;
+            --accent: #22c55e;
+            --text: #e5e7eb;
+        }
+        
+        body {
+            font-family: system-ui, Segoe UI, Roboto, Arial;
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(180deg, #071022, #0b1220);
+            color: var(--text);
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        .panel {
+            width: 100%;
+            max-width: 1100px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+            border-radius: 10px;
+            padding: 1.25rem;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+        }
+        
+        h1 {
+            margin: 0 0 0.25rem;
+            font-size: 1.25rem;
+        }
+        
+        label {
+            display: block;
+            margin: 0.5rem 0 0.25rem;
+            color: var(--muted);
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 0.6rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            background: #081021;
+            color: var(--text);
+            resize: vertical;
+        }
+        
+        .row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.6rem;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: var(--accent);
+            color: #04210a;
+            border: none;
+            padding: 0.5rem 0.8rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        button:hover {
+            background: #16a34a;
+            transform: translateY(-1px);
+        }
+        
+        button.secondary {
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        
+        button.secondary:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+        }
+        
+        .out {
+            margin-top: 1rem;
+        }
+        
+        .field {
+            background: #06101a;
+            padding: 0.6rem;
+            border-radius: 8px;
+            margin-bottom: 0.6rem;
+            border: 1px solid rgba(255, 255, 255, 0.02);
+        }
+        
+        .meta {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0.35rem;
+        }
+        
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace;
+            font-size: 0.92rem;
+        }
+        
+        .tag {
+            display: inline-block;
+            padding: 0.12rem 0.45rem;
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--muted);
+            border-radius: 6px;
+            margin-right: 0.4rem;
+            font-size: 0.8rem;
+        }
+        
+        .detected {
+            color: var(--accent);
+            font-weight: 600;
+        }
+        
+        .warning {
+            color: #ffb86b;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .title-section h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .title-section p {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .section {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            padding: 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        
+        .section-title {
+            font-size: 1.1rem;
+            margin-top: 0;
+            margin-bottom: 1rem;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+        }
+        
+        .section-title::before {
+            content: "";
+            display: inline-block;
+            width: 4px;
+            height: 16px;
+            background: var(--accent);
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.5rem;
+        }
+        
+        .data-table th, .data-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .data-table th {
+            color: var(--muted);
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+        
+        .field-name {
+            font-weight: 600;
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+        
+        .field-value {
+            word-break: break-word;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        
+        .error-message {
+            color: #f87171;
+            background-color: rgba(248, 113, 113, 0.1);
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 15px;
+            display: none;
+            border-left: 3px solid #f87171;
+        }
+        
+        .success-message {
+            color: var(--accent);
+            background-color: rgba(34, 197, 94, 0.1);
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 15px;
+            display: none;
+            border-left: 3px solid var(--accent);
+        }
+        
+        .info-box {
+            background: rgba(6, 16, 26, 0.5);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        
+        .info-box h3 {
+            margin-top: 0;
+            color: var(--accent);
+            font-size: 0.95rem;
+        }
+        
+        .info-box p {
+            margin: 0.5rem 0 0;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        
+        .stats {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .stat {
+            flex: 1;
+            text-align: center;
+            padding: 0.75rem;
+            background: rgba(6, 16, 26, 0.5);
+            border-radius: 6px;
+        }
+        
+        .stat-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <div class="header">
+            <div class="title-section">
+                <h1>Decodificador de Código PDF417</h1>
+                <p>Extraiga información de códigos PDF417 de documentos de identidad</p>
+            </div>
+        </div>
+        
+        <div class="content-grid">
+            <div class="section">
+                <h2 class="section-title">Entrada de Datos</h2>
+                <label for="inputData">Pegue aquí el código PDF417:</label>
+                <textarea id="inputData" placeholder="Ejemplo: 05679823||AVENDANO CORTEZ||GABRIELA MICHELLE||2||Qo8CBuyBtQIq/4MoAl1kghUCcYBDRgLWYoDlAuupQdgC9Z2DBANBZIIlA0apgrMDUGdCNANl10IqA3TOQmcDdNeC0QO22UCtA7u2QiADu8xBaQQWykDaBCHAgscEd1qAhASGwINvBLlhgnYFH16BxAVMXYFFBaNj||SAN SALVADOR||SAN SALVADOR||NO SABE||F||07/02/1998||16/03/2024||101012500||||SO||7||Qr0C/7hBAwOSKYIvA5cugzID1LmBVAP4JEODBAzGgSIEMJ1BxAR3G4BwBJUbg4MEvmiBJwTDHoPpBMhZguYE3RWCAQTiE4OsBRR3QjkFHw5C+gUkBoFfBUwUgfwFsglBHAW3DIMtBg2CQi8GLACCvQYsAEGwBkD8||72C3D403 '((z=BAi4/+2TlNtqnLOg0BNy=7rjSN744OFWFoOU+eFJQCD7xpMyiOCWf+ylrob4zg9Br/a2JNdbyqCVlzo8t0hDXvc5SwowQ/DrgDvmnN3yHlP1MFpRPwl/PIsKOsk8OHre3CJwvtj01MqiosHXYCuhxKA0OsirENCiBfFVK">05679823||AVENDANO CORTEZ||GABRIELA MICHELLE||2||Qo8CBuyBtQIq/4MoAl1kghUCcYBDRgLWYoDlAuupQdgC9Z2DBANBZIIlA0apgrMDUGdCNANl10IqA3TOQmcDdNeC0QO22UCtA7u2QiADu8xBaQQWykDaBCHAgscEd1qAhASGwINvBLlhgnYFH16BxAVMXYFFBaNj||SAN SALVADOR||SAN SALVADOR||NO SABE||F||07/02/1998||16/03/2024||101012500||||SO||7||Qr0C/7hBAwOSKYIvA5cugzID1LmBVAP4JEODBAzGgSIEMJ1BxAR3G4BwBJUbg4MEvmiBJwTDHoPpBMhZguYE3RWCAQTiE4OsBRR3QjkFHw5C+gUkBoFfBUwUgfwFsglBHAW3DIMtBg2CQi8GLACCvQYsAEGwBkD8||72C3D403 '((z=BAi4/+2TlNtqnLOg0BNy=7rjSN744OFWFoOU+eFJQCD7xpMyiOCWf+ylrob4zg9Br/a2JNdbyqCVlzo8t0hDXvc5SwowQ/DrgDvmnN3yHlP1MFpRPwl/PIsKOsk8OHre3CJwvtj01MqiosHXYCuhxKA0OsirENCiBfFVK</textarea>
+                
+                <div class="row">
+                    <button id="decodeBtn">Decodificar</button>
+                    <button id="clearBtn" class="secondary">Limpiar</button>
+                    <button id="exampleBtn" class="secondary">Cargar Ejemplo</button>
+                </div>
+                
+                <div id="errorMessage" class="error-message"></div>
+                <div id="successMessage" class="success-message"></div>
+                
+                <div class="info-box">
+                    <h3>Información sobre PDF417</h3>
+                    <p>El código PDF417 es un formato de código de barras bidimensional utilizado en documentos de identidad, licencias de conducir y otros documentos oficiales. Contiene información estructurada separada por delimitadores.</p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2 class="section-title">Datos Decodificados</h2>
+                
+                <div class="row">
+                    <button id="exportBtn" class="secondary">Exportar a JSON</button>
+                </div>
+                
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="fieldCount">0</div>
+                        <div class="stat-label">Campos</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="dataSize">0</div>
+                        <div class="stat-label">Caracteres</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="status">-</div>
+                        <div class="stat-label">Estado</div>
+                    </div>
+                </div>
+                
+                <div class="out">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Campo</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody id="outputTable">
+                            <!-- Los datos decodificados se mostrarán aquí -->
+                            <tr>
+                                <td colspan="2" style="text-align: center; color: var(--muted); padding: 2rem;">
+                                    Los datos decodificados aparecerán aquí después de hacer clic en "Decodificar"
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputData = document.getElementById('inputData');
+            const decodeBtn = document.getElementById('decodeBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            const exampleBtn = document.getElementById('exampleBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            const outputTable = document.getElementById('outputTable');
+            const errorMessage = document.getElementById('errorMessage');
+            const successMessage = document.getElementById('successMessage');
+            const fieldCount = document.getElementById('fieldCount');
+            const dataSize = document.getElementById('dataSize');
+            const status = document.getElementById('status');
+            
+            // Ejemplo de código PDF417
+            const exampleCode = "05679823||AVENDANO CORTEZ||GABRIELA MICHELLE||2||Qo8CBuyBtQIq/4MoAl1kghUCcYBDRgLWYoDlAuupQdgC9Z2DBANBZIIlA0apgrMDUGdCNANl10IqA3TOQmcDdNeC0QO22UCtA7u2QiADu8xBaQQWykDaBCHAgscEd1qAhASGwINvBLlhgnYFH16BxAVMXYFFBaNj||SAN SALVADOR||SAN SALVADOR||NO SABE||F||07/02/1998||16/03/2024||101012500||||SO||7||Qr0C/7hBAwOSKYIvA5cugzID1LmBVAP4JEODBAzGgSIEMJ1BxAR3G4BwBJUbg4MEvmiBJwTDHoPpBMhZguYE3RWCAQTiE4OsBRR3QjkFHw5C+gUkBoFfBUwUgfwFsglBHAW3DIMtBg2CQi8GLACCvQYsAEGwBkD8||72C3D403 '((z=BAi4/+2TlNtqnLOg0BNy=7rjSN744OFWFoOU+eFJQCD7xpMyiOCWf+ylrob4zg9Br/a2JNdbyqCVlzo8t0hDXvc5SwowQ/DrgDvmnN3yHlP1MFpRPwl/PIsKOsk8OHre3CJwvtj01MqiosHXYCuhxKA0OsirENCiBfFVK";
+            
+            // Función para decodificar el código PDF417
+            function decodePDF417(code) {
+                // Dividir el código por el separador "||"
+                const parts = code.split('||');
+                
+                // Definir los nombres de los campos basados en la estructura típica de un DUI salvadoreño
+                const fieldNames = [
+                    "Número de DUI",
+                    "Primer Apellido",
+                    "Segundo Apellido y Nombres",
+                    "Tipo de Documento",
+                    "Firma Digital",
+                    "Lugar de Nacimiento",
+                    "Municipio",
+                    "Departamento",
+                    "Nacionalidad",
+                    "Sexo",
+                    "Fecha de Nacimiento",
+                    "Fecha de Emisión",
+                    "Número de Emisión",
+                    "Categoría",
+                    "Fecha de Vencimiento",
+                    "Segunda Firma Digital",
+                    "Código de Verificación"
+                ];
+                
+                // Crear objeto con los datos decodificados
+                const decodedData = {};
+                
+                // Asignar valores a los campos
+                for (let i = 0; i < fieldNames.length; i++) {
+                    if (i < parts.length) {
+                        decodedData[fieldNames[i]] = parts[i];
+                    } else {
+                        decodedData[fieldNames[i]] = "No disponible";
+                    }
+                }
+                
+                return decodedData;
+            }
+            
+            // Función para mostrar los datos decodificados en la tabla
+            function displayDecodedData(data) {
+                outputTable.innerHTML = '';
+                
+                for (const [key, value] of Object.entries(data)) {
+                    const row = document.createElement('tr');
+                    
+                    const fieldCell = document.createElement('td');
+                    fieldCell.className = 'field-name';
+                    fieldCell.textContent = key;
+                    
+                    const valueCell = document.createElement('td');
+                    valueCell.className = 'field-value';
+                    valueCell.textContent = value;
+                    
+                    row.appendChild(fieldCell);
+                    row.appendChild(valueCell);
+                    outputTable.appendChild(row);
+                }
+                
+                // Actualizar estadísticas
+                fieldCount.textContent = Object.keys(data).length;
+                dataSize.textContent = JSON.stringify(data).length;
+                status.textContent = "OK";
+                status.style.color = "var(--accent)";
+            }
+            
+            // Función para mostrar errores
+            function showError(message) {
+                errorMessage.textContent = message;
+                errorMessage.style.display = 'block';
+                successMessage.style.display = 'none';
+                
+                // Actualizar estadísticas
+                status.textContent = "Error";
+                status.style.color = "#f87171";
+            }
+            
+            // Función para mostrar mensajes de éxito
+            function showSuccess(message) {
+                successMessage.textContent = message;
+                successMessage.style.display = 'block';
+                errorMessage.style.display = 'none';
+            }
+            
+            // Función para ocultar mensajes
+            function hideMessages() {
+                errorMessage.style.display = 'none';
+                successMessage.style.display = 'none';
+            }
+            
+            // Evento para decodificar el código
+            decodeBtn.addEventListener('click', function() {
+                const code = inputData.value.trim();
+                
+                if (!code) {
+                    showError('Por favor, ingrese un código PDF417 para decodificar.');
+                    return;
+                }
+                
+                hideMessages();
+                
+                try {
+                    const decodedData = decodePDF417(code);
+                    displayDecodedData(decodedData);
+                    showSuccess('Código decodificado correctamente.');
+                } catch (error) {
+                    showError('Error al decodificar el código: ' + error.message);
+                }
+            });
+            
+            // Evento para limpiar el área de texto
+            clearBtn.addEventListener('click', function() {
+                inputData.value = '';
+                outputTable.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--muted); padding: 2rem;">Los datos decodificados aparecerán aquí después de hacer clic en "Decodificar"</td></tr>';
+                hideMessages();
+                
+                // Restablecer estadísticas
+                fieldCount.textContent = '0';
+                dataSize.textContent = '0';
+                status.textContent = '-';
+                status.style.color = 'var(--text)';
+            });
+            
+            // Evento para cargar el ejemplo
+            exampleBtn.addEventListener('click', function() {
+                inputData.value = exampleCode;
+                hideMessages();
+            });
+            
+            // Evento para exportar a JSON
+            exportBtn.addEventListener('click', function() {
+                const code = inputData.value.trim();
+                
+                if (!code) {
+                    showError('No hay datos para exportar.');
+                    return;
+                }
+                
+                try {
+                    const decodedData = decodePDF417(code);
+                    const jsonData = JSON.stringify(decodedData, null, 2);
+                    
+                    // Crear un blob con los datos JSON
+                    const blob = new Blob([jsonData], { type: 'application/json' });
+                    
+                    // Crear un enlace de descarga
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'datos_decodificados.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // Limpiar
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 100);
+                    
+                    showSuccess('Datos exportados correctamente como JSON.');
+                    
+                } catch (error) {
+                    showError('Error al exportar los datos: ' + error.message);
+                }
+            });
+            
+            // Cargar el ejemplo al iniciar
+            inputData.value = exampleCode;
+        });
+    </script>
+</body>
+</html>
