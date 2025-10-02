@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ICAO TD1 MRZ Generator</title>
+  <style>
+    :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;background:linear-gradient(180deg,#0b1220,#111827);color:var(--text);min-height:100vh}
+    header{padding:1.25rem 1rem 0.5rem;max-width:1000px;margin:auto}
+    h1{margin:0 0 .25rem;font-size:clamp(1.25rem,2.5vw,1.6rem)}
+    p.lead{margin:.25rem 0 1rem;color:var(--muted)}
+    .wrap{max-width:1000px;margin:0 auto;padding:1rem;display:grid;gap:1rem}
+    .grid{display:grid;grid-template-columns:1fr;gap:1rem}
+    @media(min-width:980px){.grid{grid-template-columns:1fr 1.4fr}} /* Columna derecha más ancha */
+    .card{background:var(--card);border:1px solid #1f2937;border-radius:16px;box-shadow:0 6px 28px rgba(0,0,0,.35);overflow:hidden}
+    .card h2{font-size:1rem;margin:0 0 .25rem;color:#cbd5e1}
+    .pad{padding:1.5rem}
+    .controls{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0 0}
+    button, .btn{appearance:none;border:1px solid #1f2937;background:#0b1220;color:var(--text);padding:.6rem .9rem;border-radius:10px;cursor:pointer;font-family:inherit}
+    button:hover{border-color:#374151}
+    .primary{background:var(--accent);border-color:transparent;color:#052e16;font-weight:700}
+    .danger{background:var(--danger);color:#fff;border-color:transparent}
+    .muted{color:var(--muted)}
+
+    .stage{position:relative;border-radius:16px;overflow:hidden;background:#000;padding:1.5rem;min-height:200px;display:flex;justify-content:center;align-items:center}
+    video{width:100%;display:block;max-height:60vh;object-fit:cover}
+    canvas.hidden{display:none}
+
+    /* Marco verde del MRZ - MODIFICADO para encerrar solo el texto MRZ */
+    .frame{position:absolute;border:4px solid #22c55e;border-radius:8px;box-shadow:0 0 0 3px rgba(34,197,94,.15) inset;padding:1rem}
+    .frame::after{content:""; position:absolute; left:6px; right:6px; top:50%; height:2px; background:#22c55e66}
+
+    .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
+    .out{white-space:pre-wrap; word-break:break-word; background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:.75rem; min-height:3.5rem; position:relative; z-index:1;text-align:center;letter-spacing:2px;font-size:16px;line-height:1.3}
+
+    dl{margin:.25rem 0;display:grid;grid-template-columns:max-content 1fr;gap:.25rem .75rem}
+    dt{color:#9ca3af}
+    dd{margin:0}
+    .hint{font-size:.92rem;color:#a3e635}
+    footer{opacity:.7;text-align:center;padding:1rem}
+    a{color:#93c5fd}
+    
+    /* Estilos para la tabla de resultados */
+    .results-table {width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.875rem}
+    .results-table th, .results-table td {padding:.5rem;text-align:left;border-bottom:1px solid #1f2937}
+    .results-table th {color:#9ca3af;font-weight:600;width:40%}
+    .results-table tr:last-child td {border-bottom:none}
+    .check-ok {color:#22c55e}
+    .check-fail {color:#ef4444}
+    .format-guide {background:#0b1220;border:1px solid #1f2937;border-radius:8px;padding:.5rem .75rem;margin:.5rem 0;font-size:.85rem}
+    
+    /* Estilos específicos para el formulario MRZ */
+    .fields label {display: block;margin: 12px 0 6px;color: #cbd5e1;font-size: 0.9rem}
+    .fields input {width: 100%;padding: 10px;font-family: inherit;box-sizing: border-box;background: #0b1220;border: 1px solid #1f2937;border-radius: 8px;color: var(--text);margin-top: 4px}
+    .fields input:focus {outline: none;border-color: #22c55e}
+    
+    .output {background: #0b1220;border: 1px solid #1f2937;border-radius: 12px;padding: 1rem;margin-top: 1.5rem}
+    .output h3 {margin: 0 0 0.75rem;color: #cbd5e1;font-size: 1rem}
+    pre#mrzOutput {white-space: pre;letter-spacing: 2px;font-size: 16px;line-height: 1.3;color: #22c55e;background: #000;padding: 12px;border-radius: 8px;margin: 0;font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    
+    /* Estilos para el JSON */
+    pre#jsonOutput {white-space: pre-wrap;font-size: 14px;line-height: 1.4;color: #e5e7eb;background: #000;padding: 12px;border-radius: 8px;margin: 0;font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;max-height: 300px;overflow-y: auto}
+    .json-controls {display: flex;gap: .5rem;margin-top: .75rem}
+  </style>
+</head>
+
+<body translate="no">
+  <header>
+    <h1>ICAO TD1 MRZ Generator</h1>
+    <p class="lead">Generate Machine Readable Zone data for identity documents</p>
+  </header>
+  
+  <div class="wrap">
+    <div class="grid">
+      <div class="card">
+        <div class="pad">
+          <h2>Document Information</h2>
+          <div class="fields">
+            <label>Document Code (2 chars, e.g. ID):
+              <input id="docCode" maxlength="2" value="ID" />
+            </label>
+            <label>Issuing Country (3 chars):
+              <input id="issuing" maxlength="3" value="SLV" />
+            </label>
+            <label>Document Number (max 9 chars):
+              <input id="docNumber" maxlength="9" value="021335999" />
+            </label>
+            <label>Date of Birth:
+              <input id="dob" type="date" value="1975-10-18" />
+            </label>
+            <label>Sex (M/F/X):
+              <input id="sex" maxlength="1" value="M" />
+            </label>
+            <label>Expiry Date:
+              <input id="expiry" type="date" value="2027-10-04" />
+            </label>
+            <label>Nationality (3 chars):
+              <input id="nationality" maxlength="3" value="SLV" />
+            </label>
+            <label>Surname:
+              <input id="surname" value="AVENDANO MARTELL" />
+            </label>
+            <label>Given Names:
+              <input id="givenName" value="RONALD OSWAL" />
+            </label>
+          </div>
+          
+          <div class="controls">
+            <button id="btnGenerate" class="primary">Generate MRZ</button>
+            <button id="btnCopy">Copy MRZ</button>
+          </div>
+          
+          <div class="output">
+            <h3>Generated MRZ:</h3>
+            <pre id="mrzOutput">---</pre>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="pad">
+          <h2>MRZ Preview</h2>
+          <div class="stage">
+            <div class="frame">
+              <div class="out mono" id="mrzPreview">
+                IDSLV0213359997<<<<<<<<<<<<<<<
+7510186M2710040SLV<<<<<<<<<<<8
+AVENDANO<MARTELL<<RONALD<OSWAL<
+              </div>
+            </div>
+          </div>
+          
+          </div>
+
+          <div class="format-guide">
+            <p class="muted">Format: TD1 (3 lines, 30 characters each)</p>
+          </div>
+          
+          <h2>Check Digits</h2>
+          <table class="results-table">
+            <tr>
+              <th>Document Number:</th>
+              <td class="check-ok">Valid (7)</td>
+            </tr>
+            <tr>
+              <th>Date of Birth:</th>
+              <td class="check-ok">Valid (6)</td>
+            </tr>
+            <tr>
+              <th>Expiry Date:</th>
+              <td class="check-ok">Valid (0)</td>
+            </tr>
+            <tr>
+              <th>Composite Check:</th>
+              <td class="check-ok">Valid (8)</td>
+            </tr>
+          </table>
+
+          <div class="output">
+            <h3>JSON Data:</h3>
+            <pre id="jsonOutput">---</pre>
+            <div class="json-controls">
+              <button id="btnCopyJson">Copy JSON</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p class="muted">ICAO TD1 MRZ Generator</p>
+  </footer>
+
+  <script>
+    // Allowed chars: A-Z, 0-9, <
+    function sanitizeMRZ(s) {
+      if (!s) return '';
+      s = s.toUpperCase();
+      return s.replace(/[^A-Z0-9<]/g, '<');
+    }
+
+    function padMRZ(s, len) {
+      s = sanitizeMRZ(s);
+      if (s.length >= len) return s.slice(0, len);
+      return s + '<'.repeat(len - s.length);
+    }
+
+    // Format date to YYMMDD, return '<<<<<<' if invalid
+    function formatDate(dateStr) {
+      const d = new Date(dateStr);
+      if (isNaN(d)) return '<<<<<<';
+      const yy = String(d.getFullYear()).slice(-2).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return yy + mm + dd;
+    }
+
+    // Calculate ICAO check digit for a string
+    function calcCheckDigit(input) {
+      const weights = [7, 3, 1];
+      let sum = 0;
+      for (let i = 0; i < input.length; i++) {
+        let c = input.charAt(i);
+        let val;
+        if (c >= '0' && c <= '9') val = c.charCodeAt(0) - '0'.charCodeAt(0);
+        else if (c >= 'A' && c <= 'Z') val = c.charCodeAt(0) - 'A'.charCodeAt(0) + 10;
+        else if (c === '<') val = 0;
+        else val = 0; // fallback for unexpected chars
+        sum += val * weights[i % 3];
+      }
+      return (sum % 10).toString();
+    }
+
+    function buildNameField(surname, givenNames) {
+      surname = sanitizeMRZ(surname);
+      givenNames = sanitizeMRZ(givenNames).replace(/ /g, '<');
+      const fullName = surname + '<<' + givenNames;
+      return padMRZ(fullName, 30);
+    }
+
+    function generateMRZ() {
+      let docCode = padMRZ(document.getElementById('docCode').value, 2);
+      let issuing = padMRZ(document.getElementById('issuing').value, 3);
+      let docNumberRaw = sanitizeMRZ(document.getElementById('docNumber').value).slice(0, 9);
+      let dobRaw = document.getElementById('dob').value;
+      let dob = formatDate(dobRaw);
+      let sexRaw = document.getElementById('sex').value.toUpperCase();
+      let sex = sexRaw === 'F' || sexRaw === 'M' || sexRaw === 'X' ? sexRaw : '<';
+      let expiryRaw = document.getElementById('expiry').value;
+      let expiry = formatDate(expiryRaw);
+      let nationality = padMRZ(document.getElementById('nationality').value, 3);
+      let surname = document.getElementById('surname').value;
+      let givenName = document.getElementById('givenName').value;
+
+      // Line 1:
+      let docNumber = padMRZ(docNumberRaw, 9);
+      let docNumberCD = calcCheckDigit(docNumber);
+      let optional1 = '<'.repeat(15);
+      let line1 = docCode + issuing + docNumber + docNumberCD + optional1;
+
+      // Line 2:
+      let dobCD = calcCheckDigit(dob);
+      let expiryCD = calcCheckDigit(expiry);
+      let optional2 = '<'.repeat(11);
+      let compCheckStr = docNumber + docNumberCD + dob + dobCD + expiry + expiryCD + optional2;
+      let compCD = calcCheckDigit(compCheckStr);
+      let line2 = dob + dobCD + sex + expiry + expiryCD + nationality + optional2 + compCD;
+
+      // Line 3:
+      let line3 = buildNameField(surname, givenName);
+
+      let mrz = line1 + '\n' + line2 + '\n' + line3;
+      document.getElementById('mrzOutput').textContent = mrz;
+      
+      // Update preview
+      document.getElementById('mrzPreview').textContent = mrz;
+
+      // Generate and display JSON
+      generateJSON({
+        docCode,
+        issuing,
+        docNumber: docNumberRaw,
+        docNumberCD,
+        optional1,
+        dob,
+        dobCD,
+        sex,
+        expiry,
+        expiryCD,
+        nationality,
+        optional2,
+        compCD,
+        surname,
+        givenName,
+        line1,
+        line2,
+        line3
+      });
+    }
+
+    function generateJSON(data) {
+      // Parse dates
+      const birthDate = {
+        yy: data.dob.substring(0, 2),
+        mm: data.dob.substring(2, 4),
+        dd: data.dob.substring(4, 6)
+      };
+
+      const expiryDate = {
+        yy: data.expiry.substring(0, 2),
+        mm: data.expiry.substring(2, 4),
+        dd: data.expiry.substring(4, 6)
+      };
+
+      // Calculate checks
+      const checks = {
+        documentNumber: calcCheckDigit(data.docNumber) === data.docNumberCD,
+        birthDate: calcCheckDigit(data.dob) === data.dobCD,
+        expiryDate: calcCheckDigit(data.expiry) === data.expiryCD
+      };
+
+      // Build JSON object
+      const jsonData = {
+        format: "TD1",
+        raw: [data.line1, data.line2, data.line3],
+        documentCode: data.docCode,
+        issuingState: data.issuing,
+        documentNumber: data.docNumber,
+        documentNumberCheck: data.docNumberCD,
+        optionalData1: data.optional1.replace(/</g, ''),
+        birthDate: birthDate,
+        birthDateCheck: data.dobCD,
+        sex: data.sex,
+        expiryDate: expiryDate,
+        expiryDateCheck: data.expiryCD,
+        nationality: data.nationality,
+        optionalData2: data.optional2.replace(/</g, ''),
+        finalCheck: data.compCD,
+        surname: data.surname,
+        givenNames: data.givenName,
+        checks: checks
+      };
+
+      // Display JSON
+      document.getElementById('jsonOutput').textContent = JSON.stringify(jsonData, null, 2);
+    }
+
+    document.getElementById('btnGenerate').addEventListener('click', generateMRZ);
+    document.getElementById('btnCopy').addEventListener('click', () => {
+      const text = document.getElementById('mrzOutput').textContent;
+      navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard'));
+    });
+
+    document.getElementById('btnCopyJson').addEventListener('click', () => {
+      const text = document.getElementById('jsonOutput').textContent;
+      navigator.clipboard.writeText(text).then(() => alert('JSON copied to clipboard'));
+    });
+
+    // Initial MRZ generate
+    generateMRZ();
+  </script>
+</body>
+</html>

@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>MRZ Parser – TD1 / TD2 / TD3 (sin módulos)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--bg:#0b1220;--fg:#e5e7eb;--card:#0f172a;--accent:#60a5fa;--muted:#94a3b8;--line:#1f2937}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif}
+  header{padding:16px 18px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:18px}
+  main{display:grid;gap:16px;padding:16px}
+  @media (min-width:960px){ main{grid-template-columns:1.1fr 1fr} }
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .card h2{margin:0;padding:10px 14px;border-bottom:1px solid var(--line);color:var(--accent);font-size:14px}
+  .card .body{padding:12px}
+  textarea{width:100%;min-height:140px;border:1px solid var(--line);border-radius:12px;background:#0b1220;color:var(--fg);padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .btn{background:#2563eb;color:#fff;border:none;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer}
+  .btn.secondary{background:#1f2937}
+  .btn.success{background:#059669}
+  .pill{background:#111827;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--muted)}
+  pre{white-space:pre-wrap;word-break:break-word;max-height:52vh;overflow:auto;background:#0b1220;padding:12px;border-radius:12px;border:1px solid var(--line)}
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid var(--line);padding:8px 6px;font-size:14px}
+  th{color:#93c5fd;text-align:left}
+  .hint{color:var(--muted);font-size:12px;margin:8px 0}
+  .ok{color:#22c55e;font-weight:600}
+  .bad{color:#f87171;font-weight:600}
+  code.k{background:#111827;border:1px solid var(--line);padding:2px 6px;border-radius:8px}
+  .json-container{position:relative}
+  .copy-btn{position:absolute;top:8px;right:8px;z-index:1}
+</style>
+</head>
+<body>
+<header><h1>MRZ Parser (Input → Decodificación)</h1></header>
+
+<main>
+  <section class="card">
+    <h2>Entrada</h2>
+    <div class="body">
+      <label for="mrz" class="hint">Pega 2 o 3 líneas MRZ (TD3 pasaporte, TD2 ID/Visa, TD1 tarjeta ID). Solo A–Z, 0–9 y &lt;.</label>
+      <textarea id="mrz" spellcheck="false" placeholder="Ejemplo TD3 (pasaporte):
+P&lt;UTOERIKSSON&lt;ANNA&lt;MARIA&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;
+L898902C36UTO7408122F1204159ZE184226B&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;"></textarea>
+      <div class="row">
+        <button class="btn" id="btnParse">Parse MRZ</button>
+        <button class="btn secondary" id="btnClear">Limpiar</button>
+        <span class="pill" id="labType">Tipo: —</span>
+        <span class="pill" id="labLens">Líneas: —</span>
+      </div>
+      <p class="hint">Guía rápida de longitudes: <code class="k">TD1: 3×30</code> · <code class="k">TD2: 2×36</code> · <code class="k">TD3: 2×44</code></p>
+    </div>
+    
+    <h2>JSON</h2>
+    <div class="body">
+      <div class="json-container">
+        <button class="btn success copy-btn" id="btnCopyJSON" style="display:none">Copiar JSON</button>
+        <pre id="json">{ }</pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Resultado</h2>
+    <div class="body">
+      <div id="summary" class="hint">Sin datos.</div>
+      <table id="tbl" style="margin-top:8px;display:none">
+        <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+  // ---------- utilidades ----------
+  const $ = sel => document.querySelector(sel);
+  const txt = $('#mrz'), json = $('#json'), tbl = $('#tbl'), tbody = tbl.querySelector('tbody');
+  const labType = $('#labType'), labLens = $('#labLens'), summary = $('#summary');
+  const btnCopyJSON = $('#btnCopyJSON');
+
+  function cleanMRZText(t){
+    return (t||'')
+      .toUpperCase()
+      .replace(/[^\nA-Z0-9<]/g,'')
+      .split(/\n+/).map(s=>s.trim()).filter(Boolean).join('\n');
+  }
+  function near(a,b){ return Math.abs(a-b) <= 2; }
+
+  function detectType(lines){
+    const L = lines.map(s=>s.length);
+    if(lines.length===3 && L[0]===30 && L[1]===30 && L[2]===30) return 'TD1';
+    if(lines.length===2 && L[0]===36 && L[1]===36) return 'TD2';
+    if(lines.length===2 && L[0]===44 && L[1]===44) return 'TD3';
+    if(lines.length===3 && near(L[0],30) && near(L[1],30) && near(L[2],30)) return 'TD1';
+    if(lines.length===2 && near(L[0],36) && near(L[1],36)) return 'TD2';
+    if(lines.length===2 && near(L[0],44) && near(L[1],44)) return 'TD3';
+    return 'UNKNOWN';
+  }
+
+  // checksum MRZ
+  const W=[7,3,1];
+  function v(ch){ if(ch>='0'&&ch<='9') return ch.charCodeAt(0)-48; if(ch>='A'&&ch<='Z') return ch.charCodeAt(0)-55; if(ch==='<') return 0; return 0; }
+  function check(str, c){ let s=0; for(let i=0;i<str.length;i++) s+= v(str[i])*W[i%3]; return (s%10)===v(c); }
+
+  function namesFrom(field){
+    const [s,g=''] = field.split('<<');
+    const clean = s=>s.replace(/<+/g,' ').trim().replace(/\s+/g,' ');
+    return { surname: clean(s||''), given_names: clean(g) };
+  }
+  function prettyDate(YYMMDD){
+    if(!/^\d{6}$/.test(YYMMDD)) return YYMMDD;
+    let YY=+YYMMDD.slice(0,2), MM=+YYMMDD.slice(2,4), DD=+YYMMDD.slice(4,6);
+    // regla simple: >= 50 → 1900s, si no → 2000s (puedes ajustar a tu caso)
+    const year = YY>=50 ? 1900+YY : 2000+YY;
+    const pad = n => String(n).padStart(2,'0');
+    return `${year}-${pad(MM)}-${pad(DD)}`;
+  }
+
+  // ---------- parseadores ----------
+  function parseTD3(lines){
+    const [l1,l2]=lines;
+    const fields = {};
+    fields.doc_type = l1.slice(0,2).replace(/</g,'').trim();
+    fields.issuing_country = l1.slice(2,5).replace(/</g,'');
+    Object.assign(fields, namesFrom(l1.slice(5,44)));
+
+    const doc_number = l2.slice(0,9); fields.doc_number = doc_number.replace(/</g,'');
+    fields.doc_number_check_valid = check(l2.slice(0,9), l2[9]);
+    fields.nationality = l2.slice(10,13).replace(/</g,'');
+    fields.birth = l2.slice(13,19); fields.birth_check_valid = check(fields.birth, l2[19]);
+    fields.sex = l2[20];
+    fields.expiry = l2.slice(21,27); fields.expiry_check_valid = check(fields.expiry, l2[27]);
+    const pnum = l2.slice(28,42); fields.personal_number = pnum.replace(/</g,'');
+    fields.personal_number_check_valid = check(l2.slice(28,42), l2[42]);
+    const compositeStr = l2.slice(0,10) + l2.slice(13,20) + l2.slice(21,43);
+    fields.composite_check_valid = check(compositeStr, l2[43]);
+
+    return { type:'TD3', lines:lines, fields };
+  }
+
+  function parseTD2(lines){
+    const [l1,l2]=lines;
+    const fields = {};
+    fields.doc_type = l1.slice(0,2).replace(/</g,'').trim();
+    fields.issuing_country = l1.slice(2,5).replace(/</g,'');
+    Object.assign(fields, namesFrom(l1.slice(5,36)));
+
+    fields.doc_number = l2.slice(0,9).replace(/</g,'');
+    fields.doc_number_check_valid = check(l2.slice(0,9), l2[9]);
+    fields.nationality = l2.slice(10,13).replace(/</g,'');
+    fields.birth = l2.slice(13,19); fields.birth_check_valid = check(fields.birth, l2[19]);
+    fields.sex = l2[20];
+    fields.expiry = l2.slice(21,27); fields.expiry_check_valid = check(fields.expiry, l2[27]);
+    fields.optional = l2.slice(28,35).replace(/</g,'');
+    const composite = l2.slice(0,10)+l2.slice(13,20)+l2.slice(21,35);
+    fields.composite_check_valid = check(composite, l2[35]);
+
+    return { type:'TD2', lines, fields };
+  }
+
+  function parseTD1(lines){
+    const [l1,l2,l3]=lines;
+    const fields = {};
+    fields.doc_type = l1.slice(0,2).replace(/</g,'').trim();
+    fields.issuing_country = l1.slice(2,5).replace(/</g,'');
+    fields.doc_number = l1.slice(5,14).replace(/</g,'');
+    fields.doc_number_check_valid = check(l1.slice(5,14), l1[14]);
+    fields.optional1 = l1.slice(15,30).replace(/</g,'');
+
+    fields.birth = l2.slice(0,6); fields.birth_check_valid = check(fields.birth, l2[6]);
+    fields.sex = l2[7];
+    fields.expiry = l2.slice(8,14); fields.expiry_check_valid = check(fields.expiry, l2[14]);
+    fields.nationality = l2.slice(15,18).replace(/</g,'');
+    fields.optional2 = l2.slice(18,29).replace(/</g,'');
+    const composite = l1.slice(5,30) + l2.slice(0,7) + l2.slice(8,15) + l2.slice(18,29);
+    fields.composite_check_valid = check(composite, l2[29]);
+
+    Object.assign(fields, namesFrom(l3));
+
+    return { type:'TD1', lines, fields };
+  }
+
+  function detectAndParse(raw){
+    const cleaned = cleanMRZText(raw);
+    const lines = cleaned.split('\n').filter(Boolean);
+    labLens.textContent = 'Líneas: ' + (lines.length?lines.map(s=>s.length).join(', '):'—');
+    const type = detectType(lines);
+    labType.textContent = 'Tipo: ' + type;
+    if(type==='TD3') return parseTD3(lines);
+    if(type==='TD2') return parseTD2(lines);
+    if(type==='TD1') return parseTD1(lines);
+    return { type, lines, fields:{} };
+  }
+
+  // ---------- UI ----------
+  function renderTable(obj){
+    const f = obj.fields || {};
+    const rows = [];
+    const push = (k,v) => rows.push(`<tr><td>${k}</td><td>${v??''}</td></tr>`);
+
+    const dateOr = s => /^\d{6}$/.test(s)? `${s}  <span class="hint">(${prettyDate(s)})</span>` : (s||'');
+
+    // orden amigable
+    if(f.doc_type) push('Document Type', f.doc_type);
+    if(f.issuing_country) push('Issuing Country', f.issuing_country);
+    if(f.nationality) push('Nationality', f.nationality);
+    if(f.surname) push('Surname', f.surname);
+    if(f.given_names) push('Given Names', f.given_names);
+    if(f.doc_number){ push('Document Number', f.doc_number); push('Doc No. Check', f.doc_number_check_valid ? '<span class="ok">✔ válido</span>' : '<span class="bad">✖ fallo</span>'); }
+    if(f.birth){ push('Birth (YYMMDD)', dateOr(f.birth)); push('Birth Check', f.birth_check_valid ? '<span class="ok">✔ válido</span>' : '<span class="bad">✖ fallo</span>'); }
+    if(f.sex) push('Sex', f.sex);
+    if(f.expiry){ push('Expiry (YYMMDD)', dateOr(f.expiry)); push('Expiry Check', f.expiry_check_valid ? '<span class="ok">✔ válido</span>' : '<span class="bad">✖ fallo</span>'); }
+    if('personal_number' in f) push('Personal Number', f.personal_number);
+    if('personal_number_check_valid' in f) push('Personal No. Check', f.personal_number_check_valid ? '<span class="ok">✔ válido</span>' : '<span class="bad">✖ fallo</span>');
+    if('optional1' in f) push('Optional 1', f.optional1);
+    if('optional2' in f) push('Optional 2', f.optional2);
+    if('optional' in f) push('Optional', f.optional);
+    if('composite_check_valid' in f) push('Composite Check', f.composite_check_valid ? '<span class="ok">✔ válido</span>' : '<span class="bad">✖ fallo</span>');
+
+    tbody.innerHTML = rows.join('');
+    tbl.style.display = rows.length ? '' : 'none';
+  }
+
+  $('#btnParse').addEventListener('click', ()=>{
+    const result = detectAndParse(txt.value);
+    renderTable(result);
+    const f = result.fields||{};
+    const nice = {
+      type: result.type,
+      lines: result.lines,
+      fields: {
+        ...f,
+        birth_iso: f.birth? prettyDate(f.birth): undefined,
+        expiry_iso: f.expiry? prettyDate(f.expiry): undefined
+      }
+    };
+    summary.innerHTML = result.type==='UNKNOWN'
+      ? 'No se pudo determinar el tipo de MRZ. Verifica las longitudes.'
+      : `Detectado <b>${result.type}</b>. Checksums: ${
+          Object.keys(f).some(k=>k.endsWith('_check_valid')) 
+            ? (Object.keys(f).filter(k=>k.endsWith('_check_valid') && f[k]).length + ' OK')
+            : '—'
+        }`;
+    json.textContent = JSON.stringify(nice, null, 2);
+    
+    // Mostrar botón de copiar JSON si hay datos
+    btnCopyJSON.style.display = result.type !== 'UNKNOWN' ? 'block' : 'none';
+  });
+
+  $('#btnClear').addEventListener('click', ()=>{
+    txt.value=''; json.textContent='{ }'; tbody.innerHTML=''; tbl.style.display='none';
+    labLens.textContent='Líneas: —'; labType.textContent='Tipo: —'; summary.textContent='Sin datos.';
+    btnCopyJSON.style.display = 'none';
+    txt.focus();
+  });
+
+  // Funcionalidad para copiar JSON
+  btnCopyJSON.addEventListener('click', () => {
+    const jsonText = json.textContent;
+    navigator.clipboard.writeText(jsonText).then(() => {
+      const originalText = btnCopyJSON.textContent;
+      btnCopyJSON.textContent = '¡Copiado!';
+      btnCopyJSON.style.background = '#059669';
+      setTimeout(() => {
+        btnCopyJSON.textContent = originalText;
+        btnCopyJSON.style.background = '#2563eb';
+      }, 2000);
+    }).catch(err => {
+      console.error('Error al copiar: ', err);
+      alert('Error al copiar el JSON. Por favor, selecciona y copia manualmente.');
+    });
+  });
+
+  // ejemplo precargado (TD3 de la imagen)
+  txt.value = "IDSLV0213359991<<<<<<<<<<<<<<<\n7510175M2710039SLV<<<<<<<<<<<8\nAVENDANO<MARTELL<<RONALD<OSWAL";
+})();
+</script>
+</body>
+</html>
