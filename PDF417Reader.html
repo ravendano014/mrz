@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lector PDF417 con Cámara (ZXing)</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;
+    background:linear-gradient(180deg,#0b1220,#111827); color:var(--text);
+  }
+  header{padding:1.25rem 1rem 0.5rem; max-width:1000px; margin:auto}
+  h1{margin:0 0 .25rem; font-size:clamp(1.25rem,2.5vw,1.6rem)}
+  p.lead{margin:.25rem 0 1rem; color:var(--muted); line-height:1.5}
+  .panel{max-width:1000px; margin:0 auto 2rem; padding:1rem; background:linear-gradient(180deg,rgba(255,255,255,0.04),transparent); border:1px solid rgba(255,255,255,0.06); border-radius:12px}
+  .row{display:flex; flex-wrap:wrap; gap:1rem}
+  .col{flex:1 1 320px}
+  .controls{display:flex; gap:.5rem; flex-wrap:wrap; margin:.75rem 0 0}
+  button, select{
+    background:#0b1220; color:var(--text); border:1px solid rgba(255,255,255,0.15);
+    padding:.6rem .8rem; border-radius:.6rem; cursor:pointer
+  }
+  button:hover{border-color:rgba(255,255,255,0.3)}
+  button.accent{border-color:var(--accent)}
+  button.danger{border-color:var(--danger)}
+  .cam-wrap{
+    position:relative; width:100%; aspect-ratio:16/9; background:#0b1220; border:1px solid rgba(255,255,255,0.1); border-radius:12px; overflow:hidden;
+  }
+  video{width:100%; height:100%; object-fit:cover}
+  /* Recuadro verde centrado para ayudar a encuadrar el PDF417 */
+  .aim{
+    position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;
+  }
+  .aim .box{
+    width:min(80%, 700px);
+    height:min(45%, 320px); /* rectangular, similar al aspecto de PDF417 */
+    border:3px solid var(--accent);
+    border-radius:10px;
+    box-shadow:0 0 0 9999px rgba(0,0,0,0.35) inset;
+  }
+  /* Indicadores de estado */
+  .status{
+    margin-top:.75rem; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    background:#0b1220; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:.75rem; white-space:pre-wrap; word-wrap:break-word; min-height:3rem;
+  }
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:1rem}
+  .grid-2 > div{background:#0b1220; border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:.75rem}
+  .hint{color:var(--muted); font-size:.95rem}
+  footer{max-width:1000px; margin:0 auto 3rem; color:var(--muted)}
+  code.k{background:#0b1220; padding:.1rem .35rem; border-radius:.35rem; border:1px solid rgba(255,255,255,0.12)}
+  canvas{max-width:100%; border-radius:8px; border:1px dashed rgba(255,255,255,0.15)}
+</style>
+</head>
+<body>
+  <header>
+    <h1>Lector de Códigos <strong>PDF417</strong> con Cámara (JavaScript)</h1>
+    <p class="lead">
+      <strong>¿Qué es PDF417?</strong> Es un código de barras bidimensional apilado que puede almacenar gran cantidad de datos
+      (texto, números y símbolos). Se usa comúnmente en documentos de identidad, tarjetas de abordar y etiquetas logísticas.  
+      Esta página usa la cámara del dispositivo y la librería <em>ZXing</em> para detectar y decodificar PDF417.
+    </p>
+  </header>
+
+  <section class="panel">
+    <div class="row">
+      <div class="col">
+        <label for="deviceSelect">Cámara:</label>
+        <div class="controls">
+          <select id="deviceSelect" title="Selecciona cámara"></select>
+          <button id="btnStart" class="accent">Iniciar cámara</button>
+          <button id="btnStop" class="danger">Detener cámara</button>
+          <button id="btnCapture">Capturar y decodificar (área del recuadro)</button>
+        </div>
+
+        <div class="cam-wrap" id="camWrap">
+          <video id="video" playsinline muted></video>
+          <div class="aim"><div class="box" id="guideBox" aria-hidden="true"></div></div>
+        </div>
+
+        <div class="status" id="liveStatus">Estado: cámara detenida.</div>
+      </div>
+
+      <div class="col">
+        <div class="grid-2">
+          <div>
+            <strong>Resultado (en vivo)</strong>
+            <div class="status" id="liveResult">—</div>
+          </div>
+          <div>
+            <strong>Resultado (captura fija)</strong>
+            <div class="status" id="snapResult">—</div>
+          </div>
+        </div>
+
+        <div style="margin-top:1rem">
+          <div class="hint"><strong>Última captura (área del recuadro)</strong></div>
+          <canvas id="snapCanvas" width="0" height="0"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="panel">
+    <p class="hint">
+      Consejos: ilumina bien el código, evita reflejos, mantén la cámara estable y alinea el PDF417 dentro del recuadro verde.
+      Si el escaneo en vivo no detecta, usa <em>Capturar y decodificar</em> para intentar con una foto del cuadro.
+    </p>
+  </footer>
+
+  <!-- ZXing UMD (no módulos) -->
+  <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+  <script>
+    // Referencias UI
+    const deviceSelect = document.getElementById('deviceSelect');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    const btnCapture = document.getElementById('btnCapture');
+    const video = document.getElementById('video');
+    const camWrap = document.getElementById('camWrap');
+    const guideBox = document.getElementById('guideBox');
+    const liveStatus = document.getElementById('liveStatus');
+    const liveResult = document.getElementById('liveResult');
+    const snapResult = document.getElementById('snapResult');
+    const snapCanvas = document.getElementById('snapCanvas');
+
+    // ZXing setup con pista a PDF_417
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.PDF_417]);
+    // (Opcional) intensificar búsqueda: TRY_HARDER
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+    let codeReader = new ZXing.BrowserMultiFormatReader(hints);
+    let currentDeviceId = null;
+    let running = false;
+
+    // Listar cámaras
+    async function listCameras() {
+      try {
+        const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+        deviceSelect.innerHTML = "";
+        devices.forEach((d, idx) => {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `Cámara ${idx+1}`;
+          deviceSelect.appendChild(opt);
+        });
+        if (devices.length > 0) {
+          currentDeviceId = devices[0].deviceId;
+          deviceSelect.value = currentDeviceId;
+        }
+      } catch (e) {
+        console.error(e);
+        setStatus(`No se pudieron listar cámaras: ${e.message}`, true);
+      }
+    }
+
+    deviceSelect.addEventListener('change', (e) => {
+      currentDeviceId = e.target.value || null;
+      if (running) {
+        stopCamera().then(startCamera);
+      }
+    });
+
+    function setStatus(msg, error=false) {
+      liveStatus.textContent = (error ? "⚠️ " : "") + msg;
+    }
+
+    // Iniciar cámara + decodificación en vivo
+    async function startCamera() {
+      if (running) return;
+      try {
+        setStatus("Solicitando acceso a la cámara...");
+        liveResult.textContent = "—";
+        const deviceId = currentDeviceId || undefined;
+
+        // decodeFromVideoDevice maneja el stream y los frames
+        await codeReader.decodeFromVideoDevice(deviceId, video, (result, err, controls) => {
+          // Guardamos controls por si queremos detener más tarde (aunque stopCamera ya detiene el stream del video).
+          if (result) {
+            liveResult.textContent = result.getText();
+            setStatus("¡Código PDF417 detectado en vivo!");
+          } else if (err && !(err instanceof ZXing.NotFoundException)) {
+            // Errores distintos a "no encontrado" en este frame
+            console.warn(err);
+          }
+        });
+
+        running = true;
+        setStatus("Cámara en ejecución. Acomoda el PDF417 dentro del recuadro verde.");
+      } catch (e) {
+        console.error(e);
+        setStatus(`No se pudo iniciar la cámara: ${e.message}`, true);
+        running = false;
+      }
+    }
+
+    // Detener cámara
+    async function stopCamera() {
+      try {
+        if (video.srcObject) {
+          video.srcObject.getTracks().forEach(t => t.stop());
+          video.srcObject = null;
+        }
+        // Resetear el reader para limpiar cualquier loop interno
+        if (codeReader) {
+          try { codeReader.reset(); } catch(_) {}
+        }
+      } finally {
+        running = false;
+        setStatus("Cámara detenida.");
+      }
+    }
+
+    // Capturar el área del recuadro y decodificar imagen fija (limitando al ROI)
+    async function captureAndDecodeROI() {
+      try {
+        if (!video.videoWidth || !video.videoHeight) {
+          snapResult.textContent = "No hay imagen de cámara disponible.";
+          return;
+        }
+
+        const wrapRect = camWrap.getBoundingClientRect();
+        const boxRect  = guideBox.getBoundingClientRect();
+        // Medimos el ROI relativo al video
+        // Ajuste: video ocupa todo el camWrap (object-fit: cover); calculamos factor de escala
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const cw = camWrap.clientWidth;
+        const ch = camWrap.clientHeight;
+
+        // Calcula caja de dibujo efectiva del video dentro del contenedor (cover)
+        const videoAspect = vw / vh;
+        const boxAspect = cw / ch;
+        let drawW, drawH, offsetX, offsetY;
+        if (videoAspect > boxAspect) {
+          // video más ancho que contenedor -> recorte horizontal
+          drawH = ch;
+          drawW = ch * videoAspect;
+          offsetX = (cw - drawW) / 2;
+          offsetY = 0;
+        } else {
+          // video más alto -> recorte vertical
+          drawW = cw;
+          drawH = cw / videoAspect;
+          offsetX = 0;
+          offsetY = (ch - drawH) / 2;
+        }
+
+        // Coordenadas del ROI (recuadro verde) en el espacio del video (vw x vh)
+        const roiLeftPx = (boxRect.left - wrapRect.left - offsetX) * (vw / drawW);
+        const roiTopPx  = (boxRect.top  - wrapRect.top  - offsetY) * (vh / drawH);
+        const roiW      = boxRect.width  * (vw / drawW);
+        const roiH      = boxRect.height * (vh / drawH);
+
+        // Pintamos el frame completo en un canvas temporal y luego recortamos ROI a snapCanvas
+        const temp = document.createElement('canvas');
+        temp.width = vw; temp.height = vh;
+        const tctx = temp.getContext('2d');
+        tctx.drawImage(video, 0, 0, vw, vh);
+
+        // Configura canvas de salida al tamaño del ROI
+        snapCanvas.width = Math.max(1, Math.floor(roiW));
+        snapCanvas.height = Math.max(1, Math.floor(roiH));
+        const sctx = snapCanvas.getContext('2d');
+        sctx.drawImage(
+          temp,
+          Math.max(0, roiLeftPx), Math.max(0, roiTopPx), Math.min(vw, roiW), Math.min(vh, roiH),
+          0, 0, snapCanvas.width, snapCanvas.height
+        );
+
+        // Intento de decodificación desde imagen fija (canvas -> dataURL -> img)
+        const dataURL = snapCanvas.toDataURL('image/png');
+        const img = new Image();
+        img.onload = async () => {
+          try {
+            // Usamos un nuevo reader (para evitar estado residual del de video)
+            const stillReader = new ZXing.BrowserMultiFormatReader(hints);
+            const res = await stillReader.decodeFromImageElement(img);
+            snapResult.textContent = res.getText();
+          } catch (err) {
+            if (err instanceof ZXing.NotFoundException) {
+              snapResult.textContent = "No se detectó PDF417 en la captura. Ajusta enfoque/encuadre e inténtalo de nuevo.";
+            } else {
+              console.error(err);
+              snapResult.textContent = "Error al decodificar la captura: " + err.message;
+            }
+          }
+        };
+        img.onerror = () => {
+          snapResult.textContent = "No se pudo preparar la imagen de captura.";
+        };
+        img.src = dataURL;
+      } catch (e) {
+        console.error(e);
+        snapResult.textContent = "Error en la captura: " + e.message;
+      }
+    }
+
+    // Eventos
+    btnStart.addEventListener('click', startCamera);
+    btnStop.addEventListener('click', stopCamera);
+    btnCapture.addEventListener('click', captureAndDecodeROI);
+
+    // Inicialización: pedir permiso "rápido" para listar cámaras con etiqueta
+    (async function init(){
+      try {
+        // Pedimos permiso de forma breve para poder listar con labels en algunos navegadores
+        const tmpStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
+        tmpStream.getTracks().forEach(t=>t.stop());
+      } catch(_) { /* ignorar; seguimos listando lo que se pueda */ }
+      await listCameras();
+      setStatus("Listo. Selecciona cámara y pulsa «Iniciar cámara».");
+    })();
+  </script>
+</body>
+</html>
