@@ -6,3 +6,5 @@
 
 [MRZ Decoder](https://ravendano014.github.io/mrz/MRZReaderPaerser.html)
 
+[PDF417 Decoder](https://ravendano014.github.io/mrz/PDF417Decoder.html)
+
