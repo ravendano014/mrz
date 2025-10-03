@@ -85,12 +85,12 @@
     </div>
   </section>
 
-  <!-- ZXing Browser UMD (exposición global: window.ZXingBrowser) -->
-  <script src="https://unpkg.com/@zxing/browser@latest/umd/index.min.js"></script>
+  <!-- ZXing UMD: primero la librería base (crea window.ZXing), luego el envoltorio de Browser (crea window.ZXingBrowser) -->
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 
   <script>
   (function(){
-    // Elementos de la UI
     const video = document.getElementById('video');
     const videoWrap = document.getElementById('videoWrap');
     const aim = document.getElementById('aim');
@@ -104,10 +104,12 @@
     const camStatus = document.getElementById('camStatus');
 
     let mediaStream = null;
-
-    // Lector especializado para PDF417 (desde la librería UMD)
     let codeReader = null;
+
     function ensureReader(){
+      if(!(window.ZXing && window.ZXingBrowser)){
+        throw new Error('ZXing UMD no cargado. Revisa conexión/CDN o el orden de los <script>. (Se requiere @zxing/library y luego @zxing/browser)');
+      }
       if(!codeReader){ codeReader = new ZXingBrowser.BrowserPDF417Reader(); }
       return codeReader;
     }
@@ -133,7 +135,7 @@
 
     function stopCamera(){
       if(mediaStream){
-        mediaStream.getTracks().forEach(t=>t.stop());
+        mediaStream.getTracks().forEach(function(t){ t.stop(); });
         mediaStream = null;
       }
       video.srcObject = null;
@@ -153,7 +155,6 @@
         return;
       }
 
-      // Calculamos el rectángulo del recuadro verde relativo al video real
       const wrapRect = videoWrap.getBoundingClientRect();
       const aimRect = aim.getBoundingClientRect();
       const scaleX = vw / wrapRect.width;
@@ -164,49 +165,57 @@
       const cropW = Math.min(vw - cropX, Math.round(aimRect.width * scaleX));
       const cropH = Math.min(vh - cropY, Math.round(aimRect.height * scaleY));
 
-      // Dibujamos el recorte en canvas
       snap.width = cropW; snap.height = cropH;
       const ctx = snap.getContext('2d');
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-      // Mostrar vista previa
       preview.src = snap.toDataURL('image/png');
 
-      // Decodificar directamente desde el canvas usando el lector del browser
-      const reader = ensureReader();
-      reader.decodeFromCanvas(snap)
-        .then(res => {
-          resultBox.value = res.getText();
-          // También mostramos un hexdump del PNG (ilustrativo)
-          snap.toBlob(async (blob) => {
-            const arrBuf = await blob.arrayBuffer();
-            hexBox.value = toHex(new Uint8Array(arrBuf));
-          }, 'image/png');
-        })
-        .catch(err => {
-          resultBox.value = '';
-          hexBox.value = '';
-          alert('No se pudo decodificar. Asegúrate de llenar el recuadro con el PDF417, buena iluminación y enfoque. Detalle: ' + (err && err.message ? err.message : err));
-        });
+      try{
+        const reader = ensureReader();
+        reader.decodeFromCanvas(snap)
+          .then(function(res){
+            resultBox.value = res.getText();
+            snap.toBlob(function(blob){
+              blob.arrayBuffer().then(function(arrBuf){
+                hexBox.value = toHex(new Uint8Array(arrBuf));
+              });
+            }, 'image/png');
+          })
+          .catch(function(err){
+            handleDecodeError(err);
+          });
+      }catch(err){
+        handleDecodeError(err);
+      }
+    }
+
+    function handleDecodeError(err){
+      if(String(err).includes('ZXing UMD no cargado')){
+        alert('No se encontró ZXingBrowser. Verifica que no haya bloqueadores y que estas URLs carguen en tu red: - @zxing/library UMD - @zxing/browser UMD');
+      } else {
+        alert('No se pudo decodificar. Asegúrate de llenar el recuadro con el PDF417, buena iluminación y enfoque. Detalle: ' + (err && err.message ? err.message : err));
+      }
+      resultBox.value = '';
+      hexBox.value = '';
     }
 
     function toHex(uint8){
-      const width = 16; let out = '';
-      for(let i=0;i<uint8.length;i++){
+      var width = 16; var out = '';
+      for(var i=0;i<uint8.length;i++){
         if(i % width === 0){ out += (i?"":""); out += ("00000000" + i.toString(16)).slice(-8)+": "; }
         out += ("0" + uint8[i].toString(16)).slice(-2) + ' ';
       }
       return out;
     }
 
-    // Eventos UI
     startBtn.addEventListener('click', startCamera);
     stopBtn.addEventListener('click', stopCamera);
     captureBtn.addEventListener('click', captureAndDecode);
 
-    video.addEventListener('playing', ()=> setStatus(true));
-    video.addEventListener('pause', ()=> setStatus(false));
+    video.addEventListener('playing', function(){ setStatus(true); });
+    video.addEventListener('pause', function(){ setStatus(false); });
   })();
   </script>
 </body>
