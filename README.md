@@ -9,3 +9,5 @@
 [PDF417 Decoder](https://ravendano014.github.io/mrz/PDF417Decoder.html)
 
 [PDF417 Reader](https://ravendano014.github.io/mrz/PDF417Reader.html)
+
+[PDF417 Scannr](https://ravendano014.github.io/mrz/PDF417Scan.html)
