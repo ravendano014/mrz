@@ -2,156 +2,403 @@
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lector PDF417 con Cámara (ZXing 0.20.0 UMD)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lector PDF417 con Barcode Detection API</title>
 <style>
-  :root{--bg:#0f172a;--card:#0b1220;--muted:#94a3b8;--accent:#22c55e;--text:#e5e7eb;--danger:#ef4444}
-  body{margin:0;background:linear-gradient(180deg,#071022,#0b1220);color:var(--text);font-family:system-ui,Segoe UI,Roboto,Arial}
-  header{max-width:1100px;margin:0 auto;padding:1.25rem 1rem .5rem}
-  h1{margin:0 0 .25rem;font-size:clamp(1.15rem,2.6vw,1.6rem)}
-  p.lead{margin:.25rem 0 0;color:var(--muted);font-size:.95rem}
-  .panel{max-width:1100px;margin:0 auto 2rem;background:linear-gradient(180deg,rgba(255,255,255,0.03),transparent);border-radius:12px;padding:1rem;box-shadow:0 6px 18px rgba(0,0,0,.45)}
-  .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
+  :root{--bg:#0f172a;--card:#111827;--muted:#94a3b8;--accent:#22c55e;--danger:#ef4444;--text:#e5e7eb}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;background:linear-gradient(180deg,#0b1220,#111827);color:var(--text)}
+  header{padding:1.25rem 1rem 0.5rem;max-width:1000px;margin:auto}
+  h1{margin:0 0 .25rem;font-size:clamp(1.25rem,2.5vw,1.6rem)}
+  p.lead{margin:.25rem 0 1rem;color:var(--muted)}
+  .panel{max-width:1000px;margin:0 auto 2rem;background:linear-gradient(180deg,rgba(255,255,255,0.03),transparent);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:1rem;box-shadow:0 8px 24px rgba(0,0,0,0.35)}
+  .controls{display:flex;flex-wrap:wrap;gap:.5rem;margin:.75rem 0 1rem}
+  button, select{background:#0b1220;border:1px solid rgba(255,255,255,.1);color:var(--text);padding:.6rem .9rem;border-radius:10px;cursor:pointer}
+  button:hover{border-color:rgba(255,255,255,.25)}
+  button.primary{background:linear-gradient(180deg,#0f2f1c,#0b1f14);border-color:#1e7f45}
+  button.danger{background:linear-gradient(180deg,#3a0d10,#24090b);border-color:#a12a2f}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  .card{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:.75rem}
+  .video-wrap{position:relative;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}
+  video{width:100%;height:100%;object-fit:cover;display:block}
+  canvas#overlay{position:absolute;inset:0;pointer-events:none}
+  .output pre{white-space:pre-wrap;word-break:break-word;margin:0}
+  .badge{display:inline-block;font-size:.8rem;padding:.15rem .5rem;border:1px solid rgba(255,255,255,.2);border-radius:999px;color:var(--muted)}
+  .hint{color:var(--muted);font-size:.95rem}
+  .error{color:var(--danger)}
+  .success{color:var(--accent)}
+  .thumbs{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin-top:.5rem}
+  .thumbs canvas,.thumbs img{width:100%;border-radius:8px;border:1px solid rgba(255,255,255,.08)}
   @media (max-width:900px){.grid{grid-template-columns:1fr}}
-  .card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:1rem}
-  .toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0 0}
-  button{background:var(--accent);color:#05270f;border:none;padding:.6rem .9rem;border-radius:.65rem;font-weight:600;cursor:pointer}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .btn.danger{background:var(--danger);color:#fff}
-  label{display:block;margin:.75rem 0 .35rem;color:var(--muted);font-size:.9rem}
-  textarea{width:100%;padding:.7rem;border-radius:.6rem;border:1px solid rgba(255,255,255,.1);background:#0b1220;color:var(--text)}
-  .video-wrap{position:relative;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.08)}
-  video{width:100%;height:100%;object-fit:cover}
-  canvas#snap{display:none}
-  .aim{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:3px solid var(--accent);border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.25) inset;width:72%;height:26%;}
-  .mini{font-size:.85rem;color:var(--muted)}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
-  .status.ok{color:#86efac}
-  .status.bad{color:#fca5a5}
 </style>
 </head>
 <body>
   <header>
-    <h1>Lector <span style="color:var(--accent)">PDF417</span> con Cámara</h1>
-    <p class="lead">Apunta el código dentro del recuadro verde, luego <strong>Capturar &amp; Decodificar</strong>. Puedes iniciar o detener la cámara en cualquier momento.</p>
+    <h1>Lector PDF417 con Barcode Detection API</h1>
+    <p class="lead">
+      <strong>PDF417</strong> es un código de barras bidimensional apilado (multi-fila) usado para credenciales,
+      boletos y documentos de identidad. Este lector usa <code>BarcodeDetector</code> del navegador para
+      detectar y decodificar el contenido desde la cámara. Usa el recuadro verde como guía para ubicar el código.
+    </p>
   </header>
 
-  <section class="panel grid">
-    <div class="card">
-      <div class="video-wrap" id="videoWrap">
-        <video id="video" playsinline muted></video>
-        <div class="aim" id="aim"></div>
-      </div>
-      <canvas id="snap"></canvas>
-      <div class="toolbar">
-        <button id="startBtn">Iniciar cámara</button>
-        <button id="stopBtn" class="btn danger" disabled>Detener</button>
-        <button id="captureBtn" disabled>Capturar &amp; Decodificar</button>
-        <label class="mini" id="camStatus">Estado: <span class="status bad">apagada</span></label>
-      </div>
-      <label>Imagen capturada:</label>
-      <div class="video-wrap" style="aspect-ratio:4/3">
-        <img id="preview" style="width:100%;height:100%;object-fit:contain;background:#020617;border-radius:8px" />
-      </div>
+  <section class="panel">
+    <div class="controls">
+      <select id="deviceSelect" title="Selecciona cámara"></select>
+      <button id="startBtn" class="primary">Iniciar cámara</button>
+      <button id="stopBtn" class="danger" disabled>Detener cámara</button>
+      <button id="captureBtn" disabled>Capturar y decodificar</button>
+      <button id="scanToggleBtn" disabled>Escaneo continuo: OFF</button>
     </div>
 
-    <div class="card">
-      <label>Resultado PDF417</label>
-      <textarea id="result" rows="10" class="mono"></textarea>
+    <div class="grid">
+      <div class="card">
+        <div class="video-wrap">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+        </div>
+        <div class="hint" style="margin-top:.5rem">
+          Consejo: coloca el PDF417 totalmente dentro del recuadro verde y evita reflejos. Mantén el documento firme.
+        </div>
+      </div>
+
+      <div class="card output">
+        <div style="display:flex;align-items:center;gap:.5rem;justify-content:space-between">
+          <span class="badge" id="supportBadge">Comprobando soporte…</span>
+          <span id="status" class="hint">Listo</span>
+        </div>
+        <h3>Resultado</h3>
+        <pre id="result">(sin datos)</pre>
+
+        <h3 style="margin-top:.75rem">Capturas</h3>
+        <div class="thumbs">
+          <canvas id="lastFrame" title="Frame completo"></canvas>
+          <canvas id="roiFrame" title="Recorte ROI (recuadro verde)"></canvas>
+        </div>
+      </div>
     </div>
   </section>
 
-  <!-- Librería ZXing 0.20.0 UMD -->
-  <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const ctx = overlay.getContext('2d');
+  const deviceSelect = document.getElementById('deviceSelect');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const captureBtn = document.getElementById('captureBtn');
+  const scanToggleBtn = document.getElementById('scanToggleBtn');
+  const supportBadge = document.getElementById('supportBadge');
+  const statusEl = document.getElementById('status');
+  const resultEl = document.getElementById('result');
+  const lastFrame = document.getElementById('lastFrame');
+  const roiFrame = document.getElementById('roiFrame');
 
-  <script>
-  (function(){
-    const video = document.getElementById('video');
-    const videoWrap = document.getElementById('videoWrap');
-    const aim = document.getElementById('aim');
-    const snap = document.getElementById('snap');
-    const preview = document.getElementById('preview');
-    const resultBox = document.getElementById('result');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const captureBtn = document.getElementById('captureBtn');
-    const camStatus = document.getElementById('camStatus');
+  let currentStream = null;
+  let barcodeDetector = null;
+  let continuous = false;
+  let continuousHandle = null;
 
-    let mediaStream = null;
-    let reader = null;
-
-    function ensureReader(){
-      if(!window.ZXing){
-        alert('Error: ZXing no cargó correctamente.');
-        throw new Error('ZXing no cargado');
+  // --- Soporte de API y formatos
+  async function checkSupport(){
+    if(!('BarcodeDetector' in window)){
+      supportBadge.textContent = 'Sin soporte nativo para BarcodeDetector';
+      supportBadge.className = 'badge error';
+      resultEl.textContent = 'Tu navegador no soporta Barcode Detection API. Prueba Chrome/Edge actualizados o considera usar ZXing como alternativa.';
+      disableControls(true);
+      return false;
+    }
+    try{
+      const formats = await BarcodeDetector.getSupportedFormats();
+      if(!formats.includes('pdf417')){
+        supportBadge.textContent = 'BarcodeDetector OK (PDF417 no listado)';
+        supportBadge.className = 'badge';
+        statusEl.innerHTML = 'Intentaremos de todos modos; algunos navegadores no exponen la lista completa.';
+      }else{
+        supportBadge.textContent = 'BarcodeDetector OK (PDF417 soportado)';
+        supportBadge.className = 'badge';
       }
-      if(!reader){
-        const hints = new Map();
-        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.PDF_417]);
-        reader = new ZXing.MultiFormatReader();
-        reader.setHints(hints);
+      barcodeDetector = new BarcodeDetector({ formats: ['pdf417'] });
+      return true;
+    }catch(err){
+      supportBadge.textContent = 'Error iniciando BarcodeDetector';
+      supportBadge.className = 'badge error';
+      resultEl.textContent = 'No fue posible crear BarcodeDetector: ' + err.message;
+      disableControls(true);
+      return false;
+    }
+  }
+
+  function disableControls(full){
+    startBtn.disabled = full ? true : false;
+    stopBtn.disabled = true;
+    captureBtn.disabled = true;
+    scanToggleBtn.disabled = true;
+  }
+
+  // --- Dispositivos de cámara
+  async function listVideoDevices(){
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      deviceSelect.innerHTML = '';
+      cams.forEach((c,i)=>{
+        const opt = document.createElement('option');
+        opt.value = c.deviceId;
+        opt.textContent = c.label || `Cámara ${i+1}`;
+        deviceSelect.appendChild(opt);
+      });
+    }catch(err){
+      status('No se pudo listar cámaras: ' + err.message, true);
+    }
+  }
+
+  // --- Iniciar / Detener cámara
+  async function startCamera(){
+    stopCamera();
+    const deviceId = deviceSelect.value || undefined;
+    const constraints = {
+      video: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    };
+    try{
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = currentStream;
+      await video.play();
+      fitOverlay();
+      drawGuide();
+      stopBtn.disabled = false;
+      captureBtn.disabled = false;
+      scanToggleBtn.disabled = false;
+      status('Cámara iniciada');
+      if(continuous){
+        startContinuous();
       }
-      return reader;
+    }catch(err){
+      status('Error al iniciar cámara: ' + err.message, true);
     }
+  }
 
-    function setStatus(on){
-      camStatus.innerHTML = 'Estado: ' + (on ? '<span class="status ok">encendida</span>' : '<span class="status bad">apagada</span>');
-      startBtn.disabled = on;
-      stopBtn.disabled = !on;
-      captureBtn.disabled = !on;
+  function stopCamera(){
+    if(currentStream){
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
     }
+    if(continuousHandle){
+      cancelAnimationFrame(continuousHandle);
+      continuousHandle = null;
+    }
+    stopBtn.disabled = true;
+    captureBtn.disabled = true;
+    scanToggleBtn.disabled = true;
+    status('Cámara detenida');
+  }
 
-    async function startCamera(){
-      try{
-        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio:false });
-        video.srcObject = mediaStream;
-        await video.play();
-        setStatus(true);
-      }catch(err){
-        alert('No se pudo acceder a la cámara: ' + err.message);
-        setStatus(false);
+  // --- Estado
+  function status(msg, isError=false){
+    statusEl.textContent = msg;
+    statusEl.className = isError ? 'error' : 'success';
+  }
+
+  // --- Canvas overlay y ROI
+  function fitOverlay(){
+    const rect = video.getBoundingClientRect();
+    overlay.width = rect.width * devicePixelRatio;
+    overlay.height = rect.height * devicePixelRatio;
+    overlay.style.width = rect.width + 'px';
+    overlay.style.height = rect.height + 'px';
+  }
+
+  // Calcula un recuadro central (ROI) de relación 5:2 (orientación típica de PDF417)
+  function getRoiBox(){
+    const W = overlay.width, H = overlay.height;
+    const roiW = Math.min(W * 0.8, H * 0.8 * 2.5); // ancho relativo
+    const roiH = roiW / 2.5; // relación 2.5:1 aprox (más ancho que alto)
+    const x = (W - roiW) / 2;
+    const y = (H - roiH) / 2;
+    return {x, y, w: roiW, h: roiH};
+  }
+
+  function drawGuide(){
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    const {x,y,w,h} = getRoiBox();
+    ctx.save();
+    ctx.lineWidth = 6 * devicePixelRatio;
+    ctx.strokeStyle = '#22c55e';
+    // esquinas tipo "L"
+    const c = 26 * devicePixelRatio;
+    // Esquina sup-izq
+    ctx.beginPath();
+    ctx.moveTo(x, y+c); ctx.lineTo(x, y); ctx.lineTo(x+c, y); ctx.stroke();
+    // sup-der
+    ctx.beginPath();
+    ctx.moveTo(x+w-c, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y+c); ctx.stroke();
+    // inf-izq
+    ctx.beginPath();
+    ctx.moveTo(x, y+h-c); ctx.lineTo(x, y+h); ctx.lineTo(x+c, y+h); ctx.stroke();
+    // inf-der
+    ctx.beginPath();
+    ctx.moveTo(x+w-c, y+h); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w, y+h-c); ctx.stroke();
+    ctx.restore();
+  }
+
+  window.addEventListener('resize', ()=>{ if(video.videoWidth) { fitOverlay(); drawGuide(); } });
+
+  // --- Captura y decodificación
+  async function captureAndDecode(){
+    if(!video.videoWidth){
+      status('La cámara no está lista', true);
+      return;
+    }
+    try{
+      // Canvas del frame completo
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      const cFull = document.createElement('canvas');
+      cFull.width = w; cFull.height = h;
+      const g = cFull.getContext('2d');
+      g.drawImage(video, 0, 0, w, h);
+
+      // Mostrar miniatura del frame completo
+      drawToCanvas(lastFrame, cFull);
+
+      // Convertir ROI del overlay a coordenadas del video
+      const ovwCSS = parseFloat(overlay.style.width || overlay.width);
+      const ovhCSS = parseFloat(overlay.style.height || overlay.height);
+      // Si no hay style.width/height, usamos bounding client
+      const b = overlay.getBoundingClientRect();
+      const ovW = ovwCSS || b.width;
+      const ovH = ovhCSS || b.height;
+
+      const {x, y, w: rw, h: rh} = getRoiBox();
+
+      // Escalas: overlay px (devicePixelRatio) -> CSS px -> video px
+      const dpr = devicePixelRatio;
+      const roiCSS = { x: x/dpr, y: y/dpr, w: rw/dpr, h: rh/dpr };
+      const scaleX = w / ovW; // video per CSS px
+      const scaleY = h / ovH;
+
+      const vx = Math.max(0, Math.floor(roiCSS.x * scaleX));
+      const vy = Math.max(0, Math.floor(roiCSS.y * scaleY));
+      const vw = Math.min(w - vx, Math.floor(roiCSS.w * scaleX));
+      const vh = Math.min(h - vy, Math.floor(roiCSS.h * scaleY));
+
+      // Recorte a ROI
+      const cROI = document.createElement('canvas');
+      cROI.width = vw; cROI.height = vh;
+      cROI.getContext('2d').drawImage(cFull, vx, vy, vw, vh, 0, 0, vw, vh);
+
+      // Mostrar miniatura del ROI
+      drawToCanvas(roiFrame, cROI);
+
+      // Crear ImageBitmap para detector (más eficiente)
+      const bitmap = await createImageBitmap(cROI);
+      const barcodes = await barcodeDetector.detect(bitmap);
+
+      if(!barcodes.length){
+        resultEl.textContent = '(sin datos) No se detectó PDF417 en la captura. Ajusta distancia/iluminación e inténtalo de nuevo.';
+        status('Sin lecturas en la captura', true);
+        return;
       }
+
+      // Mostrar resultados (se asume el primero más relevante)
+      const lines = [];
+      barcodes.forEach((b,i)=>{
+        lines.push(`— Resultado #${i+1}`);
+        lines.push(`  formato: ${b.format}`);
+        lines.push(`  valor:`);
+        lines.push(b.rawValue);
+        // Dibujar caja detectada (reproyectada a la miniatura del ROI)
+        if(b.boundingBox){
+          // Opcional: podríamos dibujar en roiFrame con un rectángulo
+          const rctx = roiFrame.getContext('2d');
+          rctx.save();
+          rctx.lineWidth = 3;
+          rctx.strokeStyle = '#22c55e';
+          const bb = b.boundingBox;
+          rctx.strokeRect(bb.x, bb.y, bb.width, bb.height);
+          rctx.restore();
+        }
+        lines.push('');
+      });
+      resultEl.textContent = lines.join('\n');
+      status('Lectura exitosa');
+
+    }catch(err){
+      status('Error en decodificación: ' + err.message, true);
+      console.error(err);
     }
+  }
 
-    function stopCamera(){
-      if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; }
-      video.srcObject = null;
-      setStatus(false);
+  function drawToCanvas(targetCanvas, sourceCanvas){
+    const t = targetCanvas;
+    const ratio = sourceCanvas.width / sourceCanvas.height;
+    // Mantener proporción, ancho máximo del contenedor
+    const maxW = t.parentElement.clientWidth;
+    const displayW = Math.min(maxW, sourceCanvas.width);
+    const displayH = Math.round(displayW / ratio);
+    t.width = displayW;
+    t.height = displayH;
+    const tg = t.getContext('2d');
+    tg.clearRect(0,0,t.width,t.height);
+    tg.drawImage(sourceCanvas, 0, 0, t.width, t.height);
+  }
+
+  // --- Escaneo continuo (opcional)
+  async function loopScan(){
+    if(!continuous || !video.videoWidth) { return; }
+    await captureAndDecode();
+    // Pequeña pausa para no saturar
+    setTimeout(()=>{ continuousHandle = requestAnimationFrame(loopScan); }, 300);
+  }
+
+  function startContinuous(){
+    if(continuousHandle) return;
+    continuousHandle = requestAnimationFrame(loopScan);
+  }
+
+  function stopContinuous(){
+    if(continuousHandle){
+      cancelAnimationFrame(continuousHandle);
+      continuousHandle = null;
     }
+  }
 
-    function captureAndDecode(){
-      if(!mediaStream || video.readyState < 2){ alert('La cámara no está lista'); return; }
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const wrapRect = videoWrap.getBoundingClientRect();
-      const aimRect = aim.getBoundingClientRect();
-      const scaleX = vw / wrapRect.width;
-      const scaleY = vh / wrapRect.height;
-      const cropX = Math.max(0, Math.round((aimRect.left - wrapRect.left) * scaleX));
-      const cropY = Math.max(0, Math.round((aimRect.top - wrapRect.top) * scaleY));
-      const cropW = Math.min(vw - cropX, Math.round(aimRect.width * scaleX));
-      const cropH = Math.min(vh - cropY, Math.round(aimRect.height * scaleY));
-      snap.width = cropW; snap.height = cropH;
-      const ctx = snap.getContext('2d');
-      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-      preview.src = snap.toDataURL('image/png');
+  // --- Eventos UI
+  startBtn.addEventListener('click', startCamera);
+  stopBtn.addEventListener('click', ()=>{
+    stopContinuous();
+    continuous = false;
+    scanToggleBtn.textContent = 'Escaneo continuo: OFF';
+    stopCamera();
+  });
+  captureBtn.addEventListener('click', captureAndDecode);
+  scanToggleBtn.addEventListener('click', ()=>{
+    if(!video.videoWidth){ return; }
+    continuous = !continuous;
+    scanToggleBtn.textContent = 'Escaneo continuo: ' + (continuous ? 'ON' : 'OFF');
+    if(continuous){ startContinuous(); } else { stopContinuous(); }
+  });
 
-      try{
-        const r = ensureReader();
-        const luminance = new ZXing.HTMLCanvasElementLuminanceSource(snap);
-        const binarizer = new ZXing.HybridBinarizer(luminance);
-        const bitmap = new ZXing.BinaryBitmap(binarizer);
-        const res = r.decode(bitmap);
-        resultBox.value = res.getText();
-      }catch(err){
-        alert('No se pudo decodificar: ' + err);
-        resultBox.value='';
-      }
+  // --- Inicialización
+  (async function init(){
+    const ok = await checkSupport();
+    if(!ok) return;
+    await listVideoDevices();
+
+    // Si no hay etiqueta hasta que el usuario conceda permisos, intentamos un arranque mínimo
+    if(!deviceSelect.value){
+      // Dejar que el usuario presione "Iniciar cámara"
     }
-
-    startBtn.addEventListener('click', startCamera);
-    stopBtn.addEventListener('click', stopCamera);
-    captureBtn.addEventListener('click', captureAndDecode);
   })();
-  </script>
+
+})();
+</script>
 </body>
 </html>
