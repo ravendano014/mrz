@@ -29,6 +29,7 @@
   .success{color:var(--accent)}
   .thumbs{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin-top:.5rem}
   .thumbs canvas,.thumbs img{width:100%;border-radius:8px;border:1px solid rgba(255,255,255,.08)}
+  .hidden{display:none}
   @media (max-width:900px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -38,7 +39,7 @@
     <p class="lead">
       <strong>PDF417</strong> es un código de barras bidimensional apilado (multi-fila) usado para credenciales,
       boletos y documentos de identidad. Este lector usa <code>BarcodeDetector</code> del navegador para
-      detectar y decodificar el contenido desde la cámara. Usa el recuadro verde como guía para ubicar el código.
+      detectar y decodificar el contenido desde la cámara o desde una imagen subida. Usa el recuadro verde como guía para ubicar el código.
     </p>
   </header>
 
@@ -49,6 +50,8 @@
       <button id="stopBtn" class="danger" disabled>Detener cámara</button>
       <button id="captureBtn" disabled>Capturar y decodificar</button>
       <button id="scanToggleBtn" disabled>Escaneo continuo: OFF</button>
+      <button id="uploadBtn" class="primary">Subir imagen</button>
+      <input type="file" id="fileInput" accept="image/*" class="hidden">
     </div>
 
     <div class="grid">
@@ -89,6 +92,8 @@
   const stopBtn = document.getElementById('stopBtn');
   const captureBtn = document.getElementById('captureBtn');
   const scanToggleBtn = document.getElementById('scanToggleBtn');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const fileInput = document.getElementById('fileInput');
   const supportBadge = document.getElementById('supportBadge');
   const statusEl = document.getElementById('status');
   const resultEl = document.getElementById('result');
@@ -336,6 +341,74 @@
     }
   }
 
+  // --- Procesar imagen subida
+  async function processUploadedImage(file){
+    if(!file){
+      return;
+    }
+    
+    try{
+      status('Procesando imagen...');
+      
+      // Crear una imagen para cargar el archivo
+      const img = new Image();
+      const imgUrl = URL.createObjectURL(file);
+      
+      img.onload = async () => {
+        try{
+          // Crear canvas para la imagen completa
+          const cFull = document.createElement('canvas');
+          cFull.width = img.width;
+          cFull.height = img.height;
+          const g = cFull.getContext('2d');
+          g.drawImage(img, 0, 0, img.width, img.height);
+          
+          // Mostrar miniatura de la imagen completa
+          drawToCanvas(lastFrame, cFull);
+          
+          // Detectar códigos en toda la imagen
+          const bitmap = await createImageBitmap(cFull);
+          const barcodes = await barcodeDetector.detect(bitmap);
+          
+          if(!barcodes.length){
+            resultEl.textContent = '(sin datos) No se detectó PDF417 en la imagen. Asegúrate de que el código sea visible y nítido.';
+            status('Sin lecturas en la imagen', true);
+            return;
+          }
+          
+          // Mostrar resultados
+          const lines = [];
+          barcodes.forEach((b,i)=>{
+            lines.push(`— Resultado #${i+1}`);
+            lines.push(`  formato: ${b.format}`);
+            lines.push(`  valor:`);
+            lines.push(b.rawValue);
+            lines.push('');
+          });
+          resultEl.textContent = lines.join('\n');
+          status('Lectura exitosa desde imagen');
+          
+          // Limpiar URL del objeto
+          URL.revokeObjectURL(imgUrl);
+        }catch(err){
+          status('Error procesando imagen: ' + err.message, true);
+          console.error(err);
+        }
+      };
+      
+      img.onerror = () => {
+        status('Error cargando la imagen', true);
+        URL.revokeObjectURL(imgUrl);
+      };
+      
+      img.src = imgUrl;
+      
+    }catch(err){
+      status('Error procesando imagen: ' + err.message, true);
+      console.error(err);
+    }
+  }
+
   function drawToCanvas(targetCanvas, sourceCanvas){
     const t = targetCanvas;
     const ratio = sourceCanvas.width / sourceCanvas.height;
@@ -384,6 +457,17 @@
     continuous = !continuous;
     scanToggleBtn.textContent = 'Escaneo continuo: ' + (continuous ? 'ON' : 'OFF');
     if(continuous){ startContinuous(); } else { stopContinuous(); }
+  });
+  
+  // Eventos para subir imagen
+  uploadBtn.addEventListener('click', () => {
+    fileInput.click();
+  });
+  
+  fileInput.addEventListener('change', (e) => {
+    if(e.target.files && e.target.files[0]){
+      processUploadedImage(e.target.files[0]);
+    }
   });
 
   // --- Inicialización
