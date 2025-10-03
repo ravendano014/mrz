@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lector PDF417 con Cámara (UMD ZXingBrowser, sin módulos)</title>
+<style>
+  :root{--bg:#0f172a;--card:#0b1220;--muted:#94a3b8;--accent:#22c55e;--text:#e5e7eb;--danger:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#071022,#0b1220);color:var(--text);font-family:system-ui,Segoe UI,Roboto,Arial}
+  header{max-width:1100px;margin:0 auto;padding:1.25rem 1rem .5rem}
+  h1{margin:0 0 .25rem;font-size:clamp(1.15rem,2.6vw,1.6rem)}
+  p.lead{margin:.25rem 0 0;color:var(--muted);font-size:.95rem}
+  .panel{max-width:1100px;margin:0 auto 2rem;background:linear-gradient(180deg,rgba(255,255,255,0.03),transparent);border-radius:12px;padding:1rem;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+  .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:1rem}
+  .toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0 0}
+  button,.btn{background:var(--accent);color:#05270f;border:none;padding:.6rem .9rem;border-radius:.65rem;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .btn.secondary{background:#1f2937;color:var(--text);border:1px solid rgba(255,255,255,.08)}
+  .btn.danger{background:var(--danger);color:#fff}
+  label{display:block;margin:.75rem 0 .35rem;color:var(--muted);font-size:.9rem}
+  textarea, input[type="text"]{width:100%;padding:.7rem;border-radius:.6rem;border:1px solid rgba(255,255,255,.1);background:#0b1220;color:var(--text)}
+  .video-wrap{position:relative;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+  video{width:100%;height:100%;object-fit:cover}
+  canvas#snap{display:none}
+  /* Recuadro verde de ayuda para centrar el PDF417 */
+  .aim{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:3px solid var(--accent);border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.25) inset}
+  /* proporción aproximada de un PDF417 (más ancho que alto) */
+  .aim{width:72%;height:26%;}
+  .mini{font-size:.85rem;color:var(--muted)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+  .pill{display:inline-block;background:rgba(34,197,94,.15);color:#b8f7cd;border:1px solid rgba(34,197,94,.35);padding:.2rem .5rem;border-radius:999px;font-size:.75rem;margin-left:.35rem}
+  .status.ok{color:#86efac}
+  .status.bad{color:#fca5a5}
+</style>
+</head>
+<body>
+  <header>
+    <h1>Lector <span class="pill">PDF417</span> con Cámara — Captura y Decodificación</h1>
+    <p class="lead">Apunta el código dentro del recuadro verde, pulsa <strong>Capturar &amp; Decodificar</strong> para extraer el contenido. Puedes <strong>iniciar</strong> o <strong>detener</strong> la cámara cuando quieras.</p>
+  </header>
+
+  <section class="panel grid">
+    <!-- Columna izquierda: cámara y controles -->
+    <div class="card">
+      <div class="video-wrap" id="videoWrap">
+        <video id="video" playsinline muted></video>
+        <div class="aim" id="aim"></div>
+      </div>
+      <canvas id="snap"></canvas>
+
+      <div class="toolbar">
+        <button id="startBtn">Iniciar cámara</button>
+        <button id="stopBtn" class="btn danger" disabled>Detener</button>
+        <button id="captureBtn" class="btn secondary" disabled>Capturar &amp; Decodificar</button>
+        <label class="mini" id="camStatus">Estado: <span class="status bad">apagada</span></label>
+      </div>
+      <label>Imagen capturada (recorte del recuadro):</label>
+      <div class="video-wrap" style="aspect-ratio:4/3">
+        <img id="preview" alt="Vista previa de la captura" style="width:100%;height:100%;object-fit:contain;background:#020617;border-radius:8px" />
+      </div>
+    </div>
+
+    <!-- Columna derecha: resultados y definición -->
+    <div class="card">
+      <label>Resultado del PDF417 (texto decodificado)</label>
+      <textarea id="result" rows="10" class="mono" placeholder="Aquí aparecerá el contenido del código PDF417…" spellcheck="false"></textarea>
+
+      <label>Hexdump (útil cuando el contenido trae bytes no imprimibles)</label>
+      <textarea id="hexdump" rows="8" class="mono" placeholder="Representación hexadecimal del payload…" spellcheck="false"></textarea>
+
+      <div style="margin-top:.75rem">
+        <details open>
+          <summary><strong>¿Qué es PDF417?</strong></summary>
+          <p class="mini">PDF417 es un <em>código de barras bidimensional (2D)</em> de tipo apilado, capaz de almacenar entre cientos y miles de caracteres (texto o datos binarios). Se usa en credenciales, guías de envío y boletos electrónicos. La lectura se basa en <strong>patrones de inicio/fin</strong>, <strong>módulos de barras</strong> y <strong>palabras-código</strong> con <em>corrección de errores</em>, lo que permite decodificar incluso con daños parciales.</p>
+          <ul class="mini">
+            <li><strong>Alta capacidad:</strong> más datos que un código 1D tradicional.</li>
+            <li><strong>Tolerante a daño:</strong> integra corrección de errores.</li>
+            <li><strong>Áreas típicas:</strong> identificación, logística, tickets, documentos de viaje.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ZXing Browser UMD (exposición global: window.ZXingBrowser) -->
+  <script src="https://unpkg.com/@zxing/browser@latest/umd/index.min.js"></script>
+
+  <script>
+  (function(){
+    // Elementos de la UI
+    const video = document.getElementById('video');
+    const videoWrap = document.getElementById('videoWrap');
+    const aim = document.getElementById('aim');
+    const snap = document.getElementById('snap');
+    const preview = document.getElementById('preview');
+    const resultBox = document.getElementById('result');
+    const hexBox = document.getElementById('hexdump');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const captureBtn = document.getElementById('captureBtn');
+    const camStatus = document.getElementById('camStatus');
+
+    let mediaStream = null;
+
+    // Lector especializado para PDF417 (desde la librería UMD)
+    let codeReader = null;
+    function ensureReader(){
+      if(!codeReader){ codeReader = new ZXingBrowser.BrowserPDF417Reader(); }
+      return codeReader;
+    }
+
+    function setStatus(on){
+      camStatus.innerHTML = 'Estado: ' + (on ? '<span class="status ok">encendida</span>' : '<span class="status bad">apagada</span>');
+      startBtn.disabled = on;
+      stopBtn.disabled = !on;
+      captureBtn.disabled = !on;
+    }
+
+    async function startCamera(){
+      try{
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: {ideal: 1280}, height: {ideal: 720} }, audio:false });
+        video.srcObject = mediaStream;
+        await video.play();
+        setStatus(true);
+      }catch(err){
+        alert('No se pudo acceder a la cámara: ' + err.message);
+        setStatus(false);
+      }
+    }
+
+    function stopCamera(){
+      if(mediaStream){
+        mediaStream.getTracks().forEach(t=>t.stop());
+        mediaStream = null;
+      }
+      video.srcObject = null;
+      setStatus(false);
+    }
+
+    function captureAndDecode(){
+      if(!mediaStream || video.readyState < 2){
+        alert('La cámara no está lista.');
+        return;
+      }
+
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if(!vw || !vh){
+        alert('El video aún no está listo para capturar.');
+        return;
+      }
+
+      // Calculamos el rectángulo del recuadro verde relativo al video real
+      const wrapRect = videoWrap.getBoundingClientRect();
+      const aimRect = aim.getBoundingClientRect();
+      const scaleX = vw / wrapRect.width;
+      const scaleY = vh / wrapRect.height;
+
+      const cropX = Math.max(0, Math.round((aimRect.left - wrapRect.left) * scaleX));
+      const cropY = Math.max(0, Math.round((aimRect.top - wrapRect.top) * scaleY));
+      const cropW = Math.min(vw - cropX, Math.round(aimRect.width * scaleX));
+      const cropH = Math.min(vh - cropY, Math.round(aimRect.height * scaleY));
+
+      // Dibujamos el recorte en canvas
+      snap.width = cropW; snap.height = cropH;
+      const ctx = snap.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+      // Mostrar vista previa
+      preview.src = snap.toDataURL('image/png');
+
+      // Decodificar directamente desde el canvas usando el lector del browser
+      const reader = ensureReader();
+      reader.decodeFromCanvas(snap)
+        .then(res => {
+          resultBox.value = res.getText();
+          // También mostramos un hexdump del PNG (ilustrativo)
+          snap.toBlob(async (blob) => {
+            const arrBuf = await blob.arrayBuffer();
+            hexBox.value = toHex(new Uint8Array(arrBuf));
+          }, 'image/png');
+        })
+        .catch(err => {
+          resultBox.value = '';
+          hexBox.value = '';
+          alert('No se pudo decodificar. Asegúrate de llenar el recuadro con el PDF417, buena iluminación y enfoque. Detalle: ' + (err && err.message ? err.message : err));
+        });
+    }
+
+    function toHex(uint8){
+      const width = 16; let out = '';
+      for(let i=0;i<uint8.length;i++){
+        if(i % width === 0){ out += (i?"":""); out += ("00000000" + i.toString(16)).slice(-8)+": "; }
+        out += ("0" + uint8[i].toString(16)).slice(-2) + ' ';
+      }
+      return out;
+    }
+
+    // Eventos UI
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    captureBtn.addEventListener('click', captureAndDecode);
+
+    video.addEventListener('playing', ()=> setStatus(true));
+    video.addEventListener('pause', ()=> setStatus(false));
+  })();
+  </script>
+</body>
+</html>
