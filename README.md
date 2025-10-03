@@ -10,4 +10,4 @@
 
 [PDF417 Reader](https://ravendano014.github.io/mrz/PDF417Reader.html)
 
-[PDF417 Scannr](https://ravendano014.github.io/mrz/PDF417Scan.html)
+[PDF417 Scanner](https://ravendano014.github.io/mrz/PDF417Scan.html)
