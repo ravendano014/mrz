@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lector PDF417 — Súper Multimétodo (Cámara + Imagen)</title>
+
+<!-- ZXing (UMD) -->
+<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+<!-- Dynamsoft DBR (opcional) -->
+<script src="https://cdn.jsdelivr.net/npm/dynamsoft-javascript-barcode@9.6.0/dist/dbr.js"></script>
+<!-- Tesseract.js (OCR de rescate, opcional) -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style>
+  :root{--bg:#0f172a;--card:#111827;--muted:#94a3b8;--accent:#22c55e;--danger:#ef4444;--text:#e5e7eb}
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;
+    background:linear-gradient(180deg,#0b1220,#111827);color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;
+    padding:1rem;
+  }
+  .panel{width:100%;max-width:1220px;background:linear-gradient(180deg,rgba(255,255,255,0.03),transparent);
+    border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.5);padding:1rem;}
+  header h1{margin:.25rem 0 .25rem;font-size:clamp(1.2rem,2.3vw,1.6rem)}
+  p.lead{margin:.25rem 0 1rem;color:var(--muted);line-height:1.5}
+  .layout{display:grid;gap:1rem;grid-template-columns:1.25fr .75fr}
+  .grid{display:grid;gap:.75rem}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:.8rem}
+  .card h3{margin:.1rem 0 .5rem;font-size:1rem;color:#d7e0ea}
+  .videoWrap{position:relative;background:#000;border-radius:12px;overflow:hidden;min-height:340px;display:flex;align-items:center;justify-content:center}
+  video{width:100%;height:auto;display:block}
+  canvas#overlay{position:absolute;inset:0;pointer-events:none}
+  .controls{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem}
+  button{
+    background:transparent;border:1px solid rgba(255,255,255,.15);color:var(--text);
+    padding:.6rem .9rem;border-radius:10px;cursor:pointer;transition:transform .05s ease, background .2s ease, border-color .2s ease;
+  }
+  button:hover{border-color:rgba(255,255,255,.35)}
+  button.primary{background:var(--accent);color:#0b1220;border-color:transparent;font-weight:600}
+  button.stop{background:var(--danger);color:#111827;border-color:transparent;font-weight:600}
+  textarea{width:100%;min-height:140px;background:#0b1220;color:var(--text);border:1px dashed rgba(255,255,255,.15);border-radius:10px;padding:.6rem;font-family:ui-monospace,Consolas,monospace}
+  .muted{color:var(--muted)} .small{font-size:.9rem}
+  .uploader{display:grid;gap:.6rem}
+  .row{display:flex;gap:.5rem;flex-wrap:wrap}
+  .drop{border:1px dashed rgba(255,255,255,.2);border-radius:12px;padding:1rem;background:#0b1220;text-align:center;color:var(--muted)}
+  .drop.drag{border-color:var(--accent);color:#eafff1}
+  .previewWrap{display:flex;gap:.6rem;align-items:center}
+  .previewWrap img{max-height:110px;border-radius:8px;border:1px solid rgba(255,255,255,.1)}
+  .side{display:grid;gap:1rem}
+  .methods label{display:flex;align-items:center;gap:.5rem;margin:.25rem 0}
+  .badge{display:inline-block;padding:.15rem .5rem;border-radius:999px;background:#0b1220;border:1px solid rgba(255,255,255,.12);color:var(--muted);font-size:.8rem}
+  .log{max-height:240px;overflow:auto;background:#0b1220;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:.5rem;font-family:ui-monospace,Consolas,monospace;font-size:.85rem;white-space:pre-wrap}
+  .ok{color:#86efac} .fail{color:#fca5a5} .warn{color:#fde68a}
+</style>
+</head>
+<body>
+  <div class="panel">
+    <header>
+      <h1>Lector de PDF417 — Súper Multimétodo</h1>
+      <p class="lead">
+        <span class="badge">PDF417</span> es un <strong>código de barras 2D</strong> de alta densidad usado en IDs, licencias y pases de abordar.
+        Este lector combina <strong>múltiples tecnologías</strong> para maximizar la tasa de lectura desde cámara o imagen.
+      </p>
+    </header>
+
+    <div class="layout">
+      <!-- COLUMNA IZQUIERDA -->
+      <div class="grid">
+        <div class="card">
+          <h3>Cámara</h3>
+          <div class="videoWrap">
+            <video id="video" playsinline></video>
+            <canvas id="overlay"></canvas>
+          </div>
+          <div class="controls">
+            <button id="btnStart" class="primary">Iniciar cámara</button>
+            <button id="btnStop" class="stop">Detener cámara</button>
+            <button id="btnShot">Capturar y extraer</button>
+          </div>
+          <p class="small muted">Tip: llena el <strong>marco verde</strong> con el código y evita reflejos.</p>
+        </div>
+
+        <div class="card">
+          <h3>Desde imagen (archivo)</h3>
+          <div class="uploader">
+            <div id="drop" class="drop">Arrastra y suelta aquí una imagen con PDF417, o usa el botón.</div>
+            <div class="row">
+              <input id="file" type="file" accept="image/*" />
+              <button id="btnExtractFile">Extraer de la imagen</button>
+            </div>
+            <div class="previewWrap">
+              <img id="preview" alt="Vista previa" />
+              <span class="small muted" id="fileInfo">Sin archivo seleccionado.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Resultado</h3>
+          <textarea id="output" placeholder="Aquí verás el texto extraído…" readonly></textarea>
+          <p class="small muted" id="status">Estado: listo.</p>
+        </div>
+      </div>
+
+      <!-- COLUMNA DERECHA -->
+      <div class="side">
+        <div class="card methods">
+          <h3>Métodos activos</h3>
+          <label><input type="checkbox" id="m_bd" checked> 1) BarcodeDetector (nativo)</label>
+          <label><input type="checkbox" id="m_zxbmf" checked> 2) ZXing — BrowserMultiFormatReader</label>
+          <label><input type="checkbox" id="m_dbr" checked> 3) Dynamsoft DBR (con licencia)</label>
+          <label><input type="checkbox" id="m_zxpdf" checked> 4) ZXing — PDF417Reader directo</label>
+          <label><input type="checkbox" id="m_zxvideo" checked> 5) ZXing — decodeOnceFromVideoDevice</label>
+          <label><input type="checkbox" id="m_zxmulti" checked> 6) ZXing — Multiescala + Rotación</label>
+          <label><input type="checkbox" id="m_ocr" checked> 7) Tesseract OCR (rescate; no decodifica PDF417)</label>
+          <p class="small muted">El pipeline intentará en este orden los métodos marcados hasta lograr una lectura.</p>
+        </div>
+
+        <div class="card">
+          <h3>Licencia Dynamsoft (opcional)</h3>
+          <input id="dbrLicense" type="text" style="width:100%;padding:.5rem;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:#0b1220;color:var(--text)"
+                 placeholder="Pega tu licencia DBR aquí para habilitar Dynamsoft…">
+          <p class="small muted">
+            Si lo dejas vacío, se omite DBR. Ejemplo de licencia (la tuya):<br>
+            <code class="small">DLS2eyJoYW5kc2hha2VDb2RlIjoiMjAwMDAxLTE2NDk4Mjk3OTI2MzUiLCJvcmdhbml6YXRpb25JRCI6IjIwMDAwMSIsInNlc3Npb25QYXNzd29yZCI6IndTcGR6Vm05WDJrcEQ5YUoifQ==</code>
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Registro</h3>
+          <div id="log" class="log"></div>
+          <div class="row" style="margin-top:.5rem">
+            <button id="btnClearLog">Limpiar log</button>
+            <button id="btnTest" title="Prueba cada método con la imagen cargada o el cuadro actual del video.">Probar métodos</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ===== DOM =====
+  var video=document.getElementById('video'), overlay=document.getElementById('overlay');
+  var btnStart=document.getElementById('btnStart'), btnStop=document.getElementById('btnStop'), btnShot=document.getElementById('btnShot');
+  var output=document.getElementById('output'), statusP=document.getElementById('status');
+  var fileInput=document.getElementById('file'), btnExtractFile=document.getElementById('btnExtractFile');
+  var dropZone=document.getElementById('drop'), previewImg=document.getElementById('preview'), fileInfo=document.getElementById('fileInfo');
+  var logEl=document.getElementById('log'), btnClearLog=document.getElementById('btnClearLog'), btnTest=document.getElementById('btnTest');
+  var dbrLicenseInput=document.getElementById('dbrLicense');
+
+  // Toggles
+  var chkBD=document.getElementById('m_bd');
+  var chkZXBMF=document.getElementById('m_zxbmf');
+  var chkDBR=document.getElementById('m_dbr');
+  var chkZXPDF=document.getElementById('m_zxpdf');
+  var chkZXVideo=document.getElementById('m_zxvideo');
+  var chkZXMulti=document.getElementById('m_zxmulti');
+  var chkOCR=document.getElementById('m_ocr');
+
+  // ===== Cámara & Overlay =====
+  var mediaStream=null, drawReqId=0, FRAME_RATIO=0.75, FRAME_ASPECT=3.0;
+  var workCanvas=document.createElement('canvas'), workCtx=workCanvas.getContext('2d');
+
+  // ===== ZXing BMF =====
+  var zxingReader=null;
+  function ensureZXingReader(){
+    if (zxingReader) return zxingReader;
+    if (!window.ZXing) return null;
+    try {
+      var hints=new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.PDF_417]);
+      zxingReader=new ZXing.BrowserMultiFormatReader(hints);
+    } catch(e){
+      log('ZXing BMF con hints no disponible, usando por defecto','warn');
+      try{ zxingReader=new ZXing.BrowserMultiFormatReader(); }catch(e2){}
+    }
+    return zxingReader;
+  }
+
+  // ===== Dynamsoft DBR =====
+  var dbrReader=null;
+  async function ensureDBR(){
+    if (!chkDBR.checked) return null;
+    if (!window.Dynamsoft || !Dynamsoft.DBR){ log('DBR no cargado (script faltante).','warn'); return null; }
+    try{
+      var lic=(dbrLicenseInput.value||'').trim();
+      if (!lic){ log('Sin licencia DBR: se omite.','warn'); return null; }
+      Dynamsoft.DBR.BarcodeScanner.license=lic;
+      if (!dbrReader){
+        dbrReader=await Dynamsoft.DBR.BarcodeReader.createInstance();
+        await dbrReader.updateRuntimeSettings("speed");
+        var settings=await dbrReader.getRuntimeSettings();
+        settings.barcodeFormatIds=Dynamsoft.DBR.EnumBarcodeFormat.BF_PDF417;
+        await dbrReader.updateRuntimeSettings(settings);
+      }
+      return dbrReader;
+    }catch(e){ log('No se pudo inicializar DBR: '+e.message,'fail'); return null; }
+  }
+
+  // ===== Utilidades UI =====
+  function setStatus(msg){ statusP.textContent='Estado: '+msg; }
+  function log(msg,cls){ var t=new Date().toLocaleTimeString(); var el=document.createElement('div'); if(cls) el.classList.add(cls); el.textContent='['+t+'] '+msg; logEl.appendChild(el); logEl.scrollTop=logEl.scrollHeight; }
+  btnClearLog.addEventListener('click',function(){ logEl.textContent=''; });
+
+  // ===== Cámara =====
+  btnStart.addEventListener('click',function(){
+    if (mediaStream){ setStatus('La cámara ya está encendida.'); return; }
+    var constraints={ video:{ facingMode:'environment' } };
+    navigator.mediaDevices.getUserMedia(constraints).then(function(stream){
+      mediaStream=stream; video.srcObject=stream; return video.play();
+    }).then(function(){ resizeOverlay(); drawOverlayLoop(); setStatus('Cámara iniciada.'); log('Cámara iniciada','ok'); })
+      .catch(function(err){ setStatus('Error al iniciar cámara: '+err.message); log('Error cámara: '+err.message,'fail'); });
+  });
+
+  btnStop.addEventListener('click',function(){ stopCamera(); setStatus('Cámara detenida.'); log('Cámara detenida'); });
+
+  function stopCamera(){
+    cancelAnimationFrame(drawReqId);
+    if (mediaStream){ mediaStream.getTracks().forEach(function(t){ t.stop(); }); mediaStream=null; }
+    video.srcObject=null; overlay.getContext('2d').clearRect(0,0,overlay.width,overlay.height);
+  }
+
+  function drawOverlayLoop(){
+    drawReqId=requestAnimationFrame(drawOverlayLoop);
+    if (!video.videoWidth||!video.videoHeight) return;
+    resizeOverlay();
+    var ctx=overlay.getContext('2d'); ctx.clearRect(0,0,overlay.width,overlay.height);
+    var w=overlay.width,h=overlay.height,base=Math.min(w,h)*FRAME_RATIO,frameH=base/FRAME_ASPECT,frameW=base,x=(w-frameW)/2,y=(h-frameH)/2;
+    ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(0,0,w,y); ctx.fillRect(0,y,w,frameH); ctx.clearRect(x,y,frameW,frameH); ctx.fillRect(0,y+frameH,w,h-(y+frameH));
+    ctx.lineWidth=3; ctx.strokeStyle='#22c55e'; ctx.strokeRect(x,y,frameW,frameH);
+  }
+  function resizeOverlay(){
+    var rect=video.getBoundingClientRect();
+    overlay.width=rect.width||video.videoWidth||640; overlay.height=rect.height||video.videoHeight||360;
+  }
+
+  // ===== Captura del área del marco =====
+  function captureFramed(){
+    var vw=video.videoWidth,vh=video.videoHeight,ow=overlay.width,oh=overlay.height;
+    var base=Math.min(ow,oh)*FRAME_RATIO,frameH=base/FRAME_ASPECT,frameW=base,ox=(ow-frameW)/2,oy=(oh-frameH)/2;
+    var scaleX=vw/ow, scaleY=vh/oh;
+    var sx=Math.max(0,Math.floor(ox*scaleX)), sy=Math.max(0,Math.floor(oy*scaleY));
+    var sw=Math.min(vw-sx,Math.floor(frameW*scaleX)), sh=Math.min(vh-sy,Math.floor(frameH*scaleY));
+    workCanvas.width=sw; workCanvas.height=sh; workCtx.drawImage(video,sx,sy,sw,sh,0,0,sw,sh);
+    return workCanvas;
+  }
+
+  btnShot.addEventListener('click',function(){
+    if (!mediaStream||!video.videoWidth){ setStatus('Inicia la cámara primero.'); return; }
+    var canvas=captureFramed();
+    runPipeline(canvas).then(function(text){
+      if (text){ output.value=text; setStatus('¡Éxito! PDF417 leído.'); log('Lectura exitosa','ok'); }
+      else { setStatus('No se detectó/decodificó PDF417. Reintenta acercando o mejorando iluminación.'); log('Falló lectura en todos los métodos','fail'); }
+    });
+  });
+
+  // ===== Subida de imagen =====
+  var currentImage=null;
+  fileInput.addEventListener('change',function(){ if (!fileInput.files||!fileInput.files[0]) return; currentImage=fileInput.files[0]; showPreview(currentImage); });
+  ;['dragenter','dragover'].forEach(function(ev){ dropZone.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag'); });});
+  ;['dragleave','drop'].forEach(function(ev){ dropZone.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag'); });});
+  dropZone.addEventListener('drop',function(e){ var dt=e.dataTransfer; if (!dt||!dt.files||!dt.files[0]) return; currentImage=dt.files[0]; fileInput.value=''; showPreview(currentImage); });
+
+  function showPreview(file){
+    if (!file){ previewImg.removeAttribute('src'); fileInfo.textContent='Sin archivo seleccionado.'; return; }
+    if (!file.type||file.type.indexOf('image')!==0){ setStatus('El archivo no es una imagen.'); return; }
+    var reader=new FileReader();
+    reader.onload=function(){ previewImg.src=reader.result; fileInfo.textContent='Archivo: '+(file.name||'imagen')+' ('+(Math.round(file.size/1024))+' KB)'; setStatus('Imagen lista. Presiona “Extraer de la imagen”.'); };
+    reader.onerror=function(){ setStatus('No se pudo leer el archivo.'); };
+    reader.readAsDataURL(file);
+  }
+
+  btnExtractFile.addEventListener('click',function(){
+    if (!currentImage){ setStatus('Selecciona o arrastra una imagen primero.'); return; }
+    var reader=new FileReader();
+    reader.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        var maxSide=2400, iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height, scale=Math.max(iw,ih)>maxSide?(maxSide/Math.max(iw,ih)):1;
+        var dw=Math.max(1,Math.floor(iw*scale)), dh=Math.max(1,Math.floor(ih*scale));
+        workCanvas.width=dw; workCanvas.height=dh; workCtx.imageSmoothingEnabled=true; workCtx.imageSmoothingQuality='high';
+        workCtx.clearRect(0,0,dw,dh); workCtx.drawImage(img,0,0,dw,dh);
+        runPipeline(workCanvas).then(function(text){
+          if (text){ output.value=text; setStatus('¡Éxito! PDF417 leído desde la imagen.'); log('Lectura desde imagen exitosa','ok'); }
+          else { setStatus('No se detectó PDF417 en la imagen. Prueba otra o recorta alrededor del código.'); log('Falló lectura desde imagen','fail'); }
+        });
+      };
+      img.onerror=function(){ setStatus('No se pudo cargar la imagen.'); };
+      img.src=reader.result;
+    };
+    reader.onerror=function(){ setStatus('No se pudo leer el archivo.'); };
+    reader.readAsDataURL(currentImage);
+  });
+
+  // ===== Test individual =====
+  btnTest.addEventListener('click',function(){
+    var sourceCanvas=null;
+    if (previewImg&&previewImg.src){ var iw=previewImg.naturalWidth||0, ih=previewImg.naturalHeight||0; if (iw&&ih){ workCanvas.width=iw; workCanvas.height=ih; workCtx.drawImage(previewImg,0,0,iw,ih); sourceCanvas=workCanvas; } }
+    if (!sourceCanvas&&video&&video.videoWidth){ workCanvas.width=video.videoWidth; workCanvas.height=video.videoHeight; workCtx.drawImage(video,0,0); sourceCanvas=workCanvas; }
+    if (!sourceCanvas){ setStatus('No hay imagen ni video para probar.'); return; }
+    testMethodsIndividually(sourceCanvas);
+  });
+
+  async function testMethodsIndividually(canvas){
+    log('--- Prueba individual de métodos ---','warn');
+    await report('BarcodeDetector', tryBarcodeDetector(canvas));
+    await report('ZXing BMF', tryZXingBMF(canvas));
+    await report('Dynamsoft DBR', tryDynamsoft(canvas));
+    await report('ZXing PDF417Reader', tryZXingPDF417(canvas));
+    await report('ZXing decodeOnceFromVideoDevice', tryZXingVideoOnce());
+    await report('ZXing Multiescala+Rotación', tryZXingMultiScale(canvas));
+    await report('Tesseract OCR (rescate)', tryTesseract(canvas));
+  }
+  async function report(name, promise){
+    var t0=performance.now(); var r=await promise; var dt=(performance.now()-t0).toFixed(1);
+    log(name+': '+(r?'ÉXITO':'falló')+' ('+dt+' ms)', r?'ok':'fail');
+  }
+
+  // ===== Pipeline =====
+  function getActiveMethods(){
+    var order=[];
+    if (chkBD.checked) order.push('bd');
+    if (chkZXBMF.checked) order.push('zxbmf');
+    if (chkDBR.checked) order.push('dbr');
+    if (chkZXPDF.checked) order.push('zxpdf');
+    if (chkZXVideo.checked) order.push('zxvideo');
+    if (chkZXMulti.checked) order.push('zxmulti');
+    if (chkOCR.checked) order.push('ocr');
+    return order;
+  }
+
+  async function runPipeline(canvas){
+    var methods=getActiveMethods();
+    if (!methods.length){ log('No hay métodos activos.','warn'); return null; }
+    for (var i=0;i<methods.length;i++){
+      var m=methods[i], t0=performance.now();
+      try{
+        var name='', r=null;
+        if (m==='bd'){ name='BarcodeDetector'; r=await tryBarcodeDetector(canvas); }
+        else if (m==='zxbmf'){ name='ZXing BMF'; r=await tryZXingBMF(canvas); }
+        else if (m==='dbr'){ name='Dynamsoft DBR'; r=await tryDynamsoft(canvas); }
+        else if (m==='zxpdf'){ name='ZXing PDF417Reader'; r=await tryZXingPDF417(canvas); }
+        else if (m==='zxvideo'){ name='ZXing decodeOnceFromVideoDevice'; r=await tryZXingVideoOnce(); }
+        else if (m==='zxmulti'){ name='ZXing Multiescala+Rotación'; r=await tryZXingMultiScale(canvas); }
+        else if (m==='ocr'){ name='Tesseract OCR (rescate)'; r=await tryTesseract(canvas); }
+        var dt=(performance.now()-t0).toFixed(1);
+        if (r){ log('✔ '+name+' — '+dt+' ms','ok'); return r; } else { log('✖ '+name+' — '+dt+' ms','fail'); }
+      }catch(e){
+        log('Error en método: '+(e&&e.message?e.message:e),'fail');
+      }
+    }
+    return null;
+  }
+
+  // ===== Implementación de cada método =====
+
+  // (1) BarcodeDetector
+  function tryBarcodeDetector(canvas){
+    if (!chkBD.checked) return Promise.resolve(null);
+    if (!('BarcodeDetector' in window)) return Promise.resolve(null);
+    var det; try{ det=new window.BarcodeDetector({formats:['pdf417']}); }catch(e){ return Promise.resolve(null); }
+    return det.detect(canvas).then(function(codes){
+      if (!codes||!codes.length) return null;
+      for (var i=0;i<codes.length;i++){
+        var c=codes[i]; var isPDF417=(c.format&&(''+c.format).toLowerCase()==='pdf417')||!c.format;
+        if (isPDF417) return c.rawValue||null;
+      }
+      return null;
+    }).catch(function(){ return null; });
+  }
+
+  // (2) ZXing — BrowserMultiFormatReader (desde imagen/canvas)
+  function tryZXingBMF(canvas){
+    if (!chkZXBMF.checked) return Promise.resolve(null);
+    var reader=ensureZXingReader(); if (!reader) return Promise.resolve(null);
+    var dataURL=canvas.toDataURL('image/png');
+    return new Promise(function(resolve){
+      var img=new Image();
+      img.onload=function(){
+        var p=null;
+        if (typeof reader.decodeFromImageElement==='function') p=reader.decodeFromImageElement(img);
+        else if (typeof reader.decodeFromImage==='function') p=reader.decodeFromImage(img);
+        else if (typeof reader.decodeFromCanvas==='function'){ var tmp=document.createElement('canvas'); tmp.width=img.naturalWidth; tmp.height=img.naturalHeight; tmp.getContext('2d').drawImage(img,0,0); p=reader.decodeFromCanvas(tmp); }
+        if (!p){ resolve(null); return; }
+        p.then(function(res){ resolve(res&&res.text?res.text:null); }).catch(function(){ resolve(null); });
+      };
+      img.onerror=function(){ resolve(null); };
+      img.src=dataURL;
+    });
+  }
+
+  // (3) Dynamsoft DBR
+  async function tryDynamsoft(canvas){
+    if (!chkDBR.checked) return null;
+    var reader=await ensureDBR(); if (!reader) return null;
+    try{
+      var blob=await new Promise(function(res){ canvas.toBlob(res,'image/png'); });
+      var bytes=await blob.arrayBuffer();
+      var results=await reader.decode(bytes);
+      if (results&&results.length){ for (var i=0;i<results.length;i++){ var r=results[i]; if (r&&r.barcodeText) return r.barcodeText; } }
+      return null;
+    }catch(e){ return null; }
+  }
+
+  // (4) ZXing — PDF417Reader directo
+  function tryZXingPDF417(canvas){
+    if (!chkZXPDF.checked) return Promise.resolve(null);
+    if (!window.ZXing) return Promise.resolve(null);
+    try{
+      var luminance=new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+      var bitmap=new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminance));
+      if (ZXing.PDF417Reader&&typeof ZXing.PDF417Reader.decode==='function'){
+        var r=ZXing.PDF417Reader.decode(bitmap);
+        return Promise.resolve(r&&r.getText?r.getText():null);
+      } else if (ZXing.MultiFormatReader){
+        var reader=new ZXing.MultiFormatReader();
+        var hints=new Map(); hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.PDF_417]);
+        reader.setHints(hints);
+        var res=reader.decode(bitmap);
+        return Promise.resolve(res&&res.getText?res.getText():null);
+      }
+      return Promise.resolve(null);
+    }catch(e){ return Promise.resolve(null); }
+  }
+
+  // (5) ZXing — decodeOnceFromVideoDevice (stream)
+  function tryZXingVideoOnce(){
+    if (!chkZXVideo.checked) return Promise.resolve(null);
+    if (!video||!video.srcObject){ return Promise.resolve(null); }
+    var reader=ensureZXingReader(); if (!reader) return Promise.resolve(null);
+    // Intento único desde el dispositivo activo (stream ya abierto)
+    return new Promise(function(resolve){
+      reader.decodeOnceFromVideoDevice(undefined, video).then(function(result){
+        reader.reset(); resolve(result&&result.text?result.text:null);
+      }).catch(function(){ reader.reset(); resolve(null); });
+    });
+  }
+
+  // (6) ZXing — Multiescala + Rotación (agresivo)
+  function tryZXingMultiScale(canvas){
+    if (!chkZXMulti.checked) return Promise.resolve(null);
+    if (!window.ZXing) return Promise.resolve(null);
+    var ONE=16; var rotations=[0,90,270];
+    var srcW=canvas.width, srcH=canvas.height;
+    // Bandas de escalas: alta y baja + pequeños offsets para forzar cambios de muestreo
+    var highW=Math.min(srcW-11,2000), lowW=Math.min(Math.floor(srcW/2),1000);
+    var widths=[highW,lowW]; var i, hw=highW+2, lw=lowW+2; for (i=0;i<5;++i,++hw,++lw) widths.push(hw,lw);
+
+    function renderTo(tmp, img, width, rotation){
+      var dim=Math.max(srcW,srcH);
+      tmp.width=dim; tmp.height=dim;
+      var ctx=tmp.getContext('2d');
+      ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,dim,dim);
+      var scale= img.width>width ? (width/img.width) : 1;
+      var cx=img.width/2, cy=img.height/2;
+      ctx.setTransform(scale,0,0,scale,cx,cy);
+      if (rotation!==0){ ctx.rotate(rotation*Math.PI/180); }
+      ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+      ctx.drawImage(img,-cx,-cy);
+    }
+
+    return new Promise(function(resolve){
+      var img=new Image(); img.onload=function(){
+        var tmp=document.createElement('canvas');
+        try{
+          for (var r=0;r<rotations.length;r++){
+            for (var w=0; w<widths.length; w++){
+              renderTo(tmp, img, widths[w], rotations[r]);
+              // Decode directo por bitmap (rápido)
+              try{
+                var lumin=new ZXing.HTMLCanvasElementLuminanceSource(tmp);
+                var bmp=new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lumin));
+                var out=null;
+                if (ZXing.PDF417Reader&&typeof ZXing.PDF417Reader.decode==='function'){
+                  out=ZXing.PDF417Reader.decode(bmp);
+                  if (out&&out.getText){ resolve(out.getText()); return; }
+                } else if (ZXing.MultiFormatReader){
+                  var mfr=new ZXing.MultiFormatReader();
+                  var hints=new Map(); hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.PDF_417]);
+                  mfr.setHints(hints);
+                  out=mfr.decode(bmp);
+                  if (out&&out.getText){ resolve(out.getText()); return; }
+                }
+              }catch(e){}
+            }
+          }
+        }catch(e){}
+        resolve(null);
+      };
+      img.onerror=function(){ resolve(null); };
+      img.src=canvas.toDataURL('image/png');
+    });
+  }
+
+  // (7) Tesseract OCR (rescate)
+  function tryTesseract(canvas){
+    if (!chkOCR.checked) return Promise.resolve(null);
+    if (!window.Tesseract) return Promise.resolve(null);
+    // OCR rápido a 'eng' (se puede ampliar con 'spa' si lo deseas)
+    return window.Tesseract.recognize(canvas, 'eng', { logger: function(_){} })
+      .then(function(res){ var txt=(res&&res.data&&res.data.text)?res.data.text.trim():''; return txt||null; })
+      .catch(function(){ return null; });
+  }
+
+  // ===== Limpieza =====
+  window.addEventListener('beforeunload',function(){ stopCamera(); });
+
+})();
+</script>
+</body>
+</html>
