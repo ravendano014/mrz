@@ -13,3 +13,5 @@
 [PDF417 Scanner](https://ravendano014.github.io/mrz/PDF417Scan.html)
 
 [PDF417 QR Scanner](https://ravendano014.github.io/mrz/PDF417QR.html)
+
+[PDF417 Multi Scanner](https://ravendano014.github.io/mrz/PDF417Multi.html)
