@@ -2,203 +2,487 @@
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lector QR Code con Cámara (UMD ZXingBrowser, sin módulos)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lector PDF417 con Cámara + Imagen (Dynamsoft)</title>
+
+<!-- Dynamsoft JS Barcode 9.6.0 -->
+<script src="https://cdn.jsdelivr.net/npm/dynamsoft-javascript-barcode@9.6.0/dist/dbr.js"></script>
+
 <style>
-  :root{--bg:#0f172a;--card:#0b1220;--muted:#94a3b8;--accent:#22c55e;--text:#e5e7eb;--danger:#ef4444}
+  :root{
+    --bg:#0f172a;--card:#111827;--muted:#94a3b8;--accent:#22c55e;--danger:#ef4444;--text:#e5e7eb
+  }
   *{box-sizing:border-box}
-  body{margin:0;background:linear-gradient(180deg,#071022,#0b1220);color:var(--text);font-family:system-ui,Segoe UI,Roboto,Arial}
-  header{max-width:1100px;margin:0 auto;padding:1.25rem 1rem .5rem}
-  h1{margin:0 0 .25rem;font-size:clamp(1.15rem,2.6vw,1.6rem)}
-  p.lead{margin:.25rem 0 0;color:var(--muted);font-size:.95rem}
-  .panel{max-width:1100px;margin:0 auto 2rem;background:linear-gradient(180deg,rgba(255,255,255,0.03),transparent);border-radius:12px;padding:1rem;box-shadow:0 6px 18px rgba(0,0,0,.45)}
-  .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
-  @media (max-width:900px){.grid{grid-template-columns:1fr}}
-  .card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:1rem}
-  .toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0 0}
-  button,.btn{background:var(--accent);color:#05270f;border:none;padding:.6rem .9rem;border-radius:.65rem;font-weight:600;cursor:pointer}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .btn.secondary{background:#1f2937;color:var(--text);border:1px solid rgba(255,255,255,.08)}
-  .btn.danger{background:var(--danger);color:#fff}
-  label{display:block;margin:.75rem 0 .35rem;color:var(--muted);font-size:.9rem}
-  textarea, input[type="text"]{width:100%;padding:.7rem;border-radius:.6rem;border:1px solid rgba(255,255,255,.1);background:#0b1220;color:var(--text)}
-  .video-wrap{position:relative;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.08)}
-  video{width:100%;height:100%;object-fit:cover}
-  canvas#snap{display:none}
-  /* Recuadro verde de ayuda para centrar el QR (cuadrado) */
-  .aim{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:3px solid var(--accent);border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.25) inset}
-  /* QR: proporción 1:1 y tamaño cómodo */
-  .aim{width:48vmin;height:48vmin;max-width:70%;max-height:70%}
-  .mini{font-size:.85rem;color:var(--muted)}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
-  .pill{display:inline-block;background:rgba(34,197,94,.15);color:#b8f7cd;border:1px solid rgba(34,197,94,.35);padding:.2rem .5rem;border-radius:999px;font-size:.75rem;margin-left:.35rem}
-  .status.ok{color:#86efac}
-  .status.bad{color:#fca5a5}
+  body{
+    margin:0;background:linear-gradient(180deg,#0b1220,#111827);color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;
+    min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:1.25rem
+  }
+  .panel{
+    width:100%;max-width:1000px;background:rgba(255,255,255,0.03);border-radius:14px;padding:1rem 1rem 1.25rem;
+    box-shadow:0 8px 26px rgba(0,0,0,.45)
+  }
+  header h1{margin:.25rem 0 .4rem;font-size:clamp(1.2rem,2.5vw,1.7rem)}
+  p.lead{margin:.25rem 0 1rem;color:var(--muted);line-height:1.45}
+
+  .grid{display:grid;gap:1rem;grid-template-columns:1fr}
+  @media(min-width:980px){.grid{grid-template-columns:1.15fr .85fr}}
+
+  .card{
+    background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:.9rem
+  }
+  .cam{
+    position:relative;background:#000;border-radius:12px;overflow:hidden;
+    border:1px solid rgba(255,255,255,.08)
+  }
+  video{width:100%;height:auto;display:block;background:#000;object-fit:cover}
+  /* Recuadro verde centrado */
+  .overlay-box{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center}
+  .overlay-box .box{
+    width:min(82%,760px);height:calc(min(82%,760px)/4);
+    border:3px solid var(--accent);border-radius:10px;outline:2px solid rgba(34,197,94,.25);outline-offset:6px;
+    box-shadow:0 0 0 999rem rgba(0,0,0,.26) inset
+  }
+
+  .controls{display:flex;flex-wrap:wrap;gap:.5rem;margin:.75rem 0 0}
+  button{
+    background:#1f2937;border:1px solid rgba(255,255,255,.08);color:var(--text);
+    padding:.6rem .9rem;border-radius:10px;cursor:pointer;transition:.2s;font-weight:600
+  }
+  button:hover{transform:translateY(-1px)}
+  button.primary{background:var(--accent);border-color:transparent;color:#062e12}
+  button.danger{background:var(--danger)}
+  button:disabled{opacity:.55;cursor:not-allowed;transform:none}
+  label.switch{display:inline-flex;align-items:center;gap:.45rem;margin-left:.25rem;color:var(--muted);font-weight:600}
+
+  .row{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-top:.65rem}
+  input[type="file"]{accent-color:var(--accent)}
+
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  .small{font-size:.92rem;color:var(--muted)}
+  .ok{color:var(--accent);font-weight:700}
+  .bad{color:var(--danger);font-weight:700}
+
+  .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem}
+  .thumb{background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.5rem}
+  .thumb canvas,.thumb img{width:100%;height:auto;display:block;border-radius:6px}
 </style>
 </head>
 <body>
-  <header>
-    <h1>Lector <span class="pill">QR Code</span> con Cámara — Captura y Decodificación</h1>
-    <p class="lead">Coloca el QR dentro del recuadro verde y pulsa <strong>Capturar &amp; Decodificar</strong>. Puedes <strong>iniciar</strong> o <strong>detener</strong> la cámara cuando quieras.</p>
-  </header>
+  <div class="panel">
+    <header>
+      <h1>Lector PDF417 con Cámara + Imagen (Dynamsoft)</h1>
+      <p class="lead">
+        <strong>PDF417</strong> es un código de barras 2D apilado que puede almacenar gran cantidad de datos (p. ej. credenciales).
+        Esta página permite: <em>iniciar/detener cámara</em>, <em>capturar y extraer</em> por botón, activar
+        <em>escaneo continuo</em> y <em>subir una imagen</em> para decodificar.
+      </p>
+    </header>
 
-  <section class="panel grid">
-    <!-- Columna izquierda: cámara y controles -->
-    <div class="card">
-      <div class="video-wrap" id="videoWrap">
-        <video id="video" playsinline muted></video>
-        <div class="aim" id="aim"></div>
-      </div>
-      <canvas id="snap"></canvas>
+    <div class="grid">
+      <!-- COLUMNA 1: Cámara -->
+      <section class="card">
+        <div class="cam">
+          <video id="video" autoplay playsinline muted></video>
+          <div class="overlay-box" aria-hidden="true">
+            <div id="guideBox" class="box" title="Alinea aquí el PDF417"></div>
+          </div>
+        </div>
 
-      <div class="toolbar">
-        <button id="startBtn">Iniciar cámara</button>
-        <button id="stopBtn" class="btn danger" disabled>Detener</button>
-        <button id="captureBtn" class="btn secondary" disabled>Capturar &amp; Decodificar</button>
-        <label class="mini" id="camStatus">Estado: <span class="status bad">apagada</span></label>
-      </div>
-      <label>Imagen capturada (recorte del recuadro):</label>
-      <div class="video-wrap" style="aspect-ratio:4/3">
-        <img id="preview" alt="Vista previa de la captura" style="width:100%;height:100%;object-fit:contain;background:#020617;border-radius:8px" />
-      </div>
+        <div class="controls">
+          <button id="btnStart" class="primary" onclick="startCamera()">Iniciar cámara</button>
+          <button id="btnStop" class="danger" onclick="stopCamera()" disabled>Detener cámara</button>
+          <button id="btnShot" onclick="captureAndDecode()" disabled>Capturar y extraer</button>
+          <button id="btnFlip" onclick="toggleFacing()" disabled>Cambiar cámara</button>
+
+          <label class="switch">
+            <input id="chkAuto" type="checkbox" onchange="toggleAutoScan()" disabled />
+            Escaneo continuo
+          </label>
+        </div>
+
+        <div class="row">
+          <input id="fileInput" type="file" accept="image/*" />
+          <button onclick="decodeFromFile()">Extraer de imagen</button>
+          <span class="small">Puedes subir JPG/PNG con un PDF417.</span>
+        </div>
+
+        <p class="small">
+          Consejos: 1) Ilumina bien el código. 2) Alinea dentro del recuadro verde. 3) Evita reflejos/borrosidad.  
+        </p>
+      </section>
+
+      <!-- COLUMNA 2: Resultados -->
+      <section class="card">
+        <h3 style="margin:.2rem 0 .6rem">Resultados</h3>
+        <div id="status" class="small">Estado: <span class="bad">Sin cámara</span></div>
+        <pre id="output" class="mono" style="white-space:pre-wrap;word-break:break-word;background:#0a0f1c;padding:.75rem;border-radius:10px;min-height:140px;margin:.5rem 0 1rem">—</pre>
+        <div>
+          <strong>Últimas capturas (recorte del recuadro):</strong>
+          <div id="thumbs" class="thumbs" aria-live="polite"></div>
+        </div>
+      </section>
     </div>
+  </div>
 
-    <!-- Columna derecha: resultados y breve definición -->
-    <div class="card">
-      <label>Resultado del QR (texto decodificado)</label>
-      <textarea id="result" rows="10" class="mono" placeholder="Aquí aparecerá el contenido del QR…" spellcheck="false"></textarea>
+<script>
+/* =========================
+   LICENCIA Y VARIABLES
+   ========================= */
+Dynamsoft.DBR.BarcodeReader.license =
+  "DLS2eyJoYW5kc2hha2VDb2RlIjoiMjAwMDAxLTE2NDk4Mjk3OTI2MzUiLCJvcmdhbml6YXRpb25JRCI6IjIwMDAwMSIsInNlc3Npb25QYXNzd29yZCI6IndTcGR6Vm05WDJrcEQ5YUoifQ==";
 
-      <div style="margin-top:.75rem">
-        <details open>
-          <summary><strong>¿Qué es un QR Code?</strong></summary>
-          <p class="mini">QR es un <em>código 2D</em> con alta capacidad y robustez (corrección de errores). Almacena texto/URLs, VCards, etc. Es ideal para lectura rápida con cámara en dispositivos móviles.</p>
-          <ul class="mini">
-            <li><strong>Rápida lectura</strong> incluso con cierta rotación o daño.</li>
-            <li><strong>Formato flexible:</strong> datos alfanuméricos o binarios.</li>
-            <li><strong>Usos comunes:</strong> enlaces, pagos, acceso rápido a información.</li>
-          </ul>
-        </details>
-      </div>
-    </div>
-  </section>
+var reader = null;           // Instancia del lector
+var currentStream = null;    // MediaStream activo
+var usingBack = true;        // Alternar frontal/trasera
+var video = document.getElementById('video');
+var statusEl = document.getElementById('status');
+var outEl = document.getElementById('output');
+var thumbsEl = document.getElementById('thumbs');
+var btnStart = document.getElementById('btnStart');
+var btnStop = document.getElementById('btnStop');
+var btnShot = document.getElementById('btnShot');
+var btnFlip = document.getElementById('btnFlip');
+var chkAuto = document.getElementById('chkAuto');
+var fileInput = document.getElementById('fileInput');
 
-  <!-- ZXing UMD: base y Browser (crean window.ZXing y window.ZXingBrowser) -->
-  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
-  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+/* Canvas de trabajo (recorte del recuadro) */
+var snapCanvas = document.createElement('canvas');
+var snapCtx = snapCanvas.getContext('2d');
 
-  <script>
-  (function(){
-    const video = document.getElementById('video');
-    const videoWrap = document.getElementById('videoWrap');
-    const aim = document.getElementById('aim');
-    const snap = document.getElementById('snap');
-    const preview = document.getElementById('preview');
-    const resultBox = document.getElementById('result');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const captureBtn = document.getElementById('captureBtn');
-    const camStatus = document.getElementById('camStatus');
+/* Escaneo continuo */
+var autoScanOn = false;      // Estado ON/OFF
+var autoBusy = false;        // Evitar decodificaciones simultáneas
+var autoLast = 0;            // Ritmo (ms entre intentos)
+var autoInterval = 350;      // ~3 Hz aprox.
 
-    let mediaStream = null;
-    let codeReader = null;
+/* =========================
+   UTILIDADES DE UI/ESTADO
+   ========================= */
+function setStatus(msg, ok){
+  statusEl.innerHTML = 'Estado: ' + (ok ? '<span class="ok">'+msg+'</span>' : '<span class="bad">'+msg+'</span>');
+}
+function showText(text){ outEl.textContent = text || '—'; }
 
-    function ensureReader(){
-      if(!(window.ZXing && window.ZXingBrowser)){
-        throw new Error('ZXing UMD no cargado. Revisa conexión/CDN o el orden de los <script>. (Se requiere @zxing/library y luego @zxing/browser)');
-      }
-      if(!codeReader){ codeReader = new ZXingBrowser.BrowserQRCodeReader(); }
-      return codeReader;
-    }
+function addThumbFromCanvas(sourceCanvas){
+  try{
+    var c = document.createElement('canvas');
+    c.width = sourceCanvas.width;
+    c.height= sourceCanvas.height;
+    var cx = c.getContext('2d');
+    cx.drawImage(sourceCanvas, 0, 0);
+    var wrap = document.createElement('div');
+    wrap.className = 'thumb';
+    wrap.appendChild(c);
+    thumbsEl.prepend(wrap);
+    // Limitar a 6 miniaturas
+    var kids = thumbsEl.querySelectorAll('.thumb');
+    if (kids.length > 6){ thumbsEl.removeChild(kids[kids.length-1]); }
+  }catch(e){ console.warn(e); }
+}
 
-    function setStatus(on){
-      camStatus.innerHTML = 'Estado: ' + (on ? '<span class="status ok">encendida</span>' : '<span class="status bad">apagada</span>');
-      startBtn.disabled = on;
-      stopBtn.disabled = !on;
-      captureBtn.disabled = !on;
-    }
+function addThumbFromImage(img){
+  var wrap = document.createElement('div');
+  wrap.className = 'thumb';
+  img.style.borderRadius = '6px';
+  wrap.appendChild(img);
+  thumbsEl.prepend(wrap);
+  var kids = thumbsEl.querySelectorAll('.thumb');
+  if (kids.length > 6){ thumbsEl.removeChild(kids[kids.length-1]); }
+}
 
-    async function startCamera(){
+/* =========================
+   CONFIGURACIÓN DEL LECTOR
+   ========================= */
+async function ensureReader(){
+  if (reader) return reader;
+  setStatus('Inicializando lector…');
+  reader = await Dynamsoft.DBR.BarcodeReader.createInstance();
+
+  // Limitar a PDF417 para mayor velocidad/precisión
+  var rs = await reader.getRuntimeSettings();
+  rs.barcodeFormatIds = Dynamsoft.DBR.EnumBarcodeFormat.BF_PDF417;
+  rs.deblurLevel = 5;
+  rs.expectedBarcodesCount = 1;
+  await reader.updateRuntimeSettings(rs);
+
+  setStatus('Lector listo', true);
+  return reader;
+}
+
+/* =========================
+   CÁMARA
+   ========================= */
+async function startCamera(){
+  try{
+    await ensureReader();
+    var constraints = {
+      video: {
+        facingMode: usingBack ? { exact:"environment" } : "user",
+        width: { ideal:1920 }, height:{ ideal:1080 }
+      }, audio:false
+    };
+    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = currentStream;
+
+    btnStart.disabled = true;
+    btnStop.disabled  = false;
+    btnShot.disabled  = false;
+    btnFlip.disabled  = false;
+    chkAuto.disabled  = false;
+    setStatus('Cámara activa', true);
+  }catch(err){
+    // Fallback si no hay cámara trasera con exact
+    if (err && err.name === "OverconstrainedError"){
       try{
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: {ideal: 1280}, height: {ideal: 720} },
-          audio:false
-        });
-        video.srcObject = mediaStream;
-        await video.play();
-        setStatus(true);
-      }catch(err){
-        alert('No se pudo acceder a la cámara: ' + err.message);
-        setStatus(false);
+        var fallback = { video: { facingMode: usingBack ? "environment" : "user" }, audio:false };
+        currentStream = await navigator.mediaDevices.getUserMedia(fallback);
+        video.srcObject = currentStream;
+        btnStart.disabled = true;
+        btnStop.disabled  = false;
+        btnShot.disabled  = false;
+        btnFlip.disabled  = false;
+        chkAuto.disabled  = false;
+        setStatus('Cámara activa (fallback)', true);
+        return;
+      }catch(e2){ console.error(e2); }
+    }
+    console.error(err);
+    setStatus('Error al iniciar cámara', false);
+    alert("No se pudo iniciar la cámara. Revisa permisos/dispositivo.");
+  }
+}
+
+function stopCamera(){
+  try{
+    stopAutoScan(); // asegurar que se apague el ciclo
+    if (currentStream){
+      currentStream.getTracks().forEach(function(t){ t.stop(); });
+      currentStream = null;
+    }
+    video.srcObject = null;
+    btnStart.disabled = false;
+    btnStop.disabled  = true;
+    btnShot.disabled  = true;
+    // flip y chkAuto quedan habilitados para preparar próxima sesión
+    chkAuto.checked = false; chkAuto.disabled = true;
+    setStatus('Cámara detenida', false);
+  }catch(err){
+    console.error(err);
+    setStatus('Error al detener cámara', false);
+  }
+}
+
+function toggleFacing(){
+  usingBack = !usingBack;
+  if (currentStream){
+    stopCamera();
+    startCamera();
+  }
+}
+
+/* =========================
+   CÁLCULO DEL RECORTE (RECUADRO VERDE)
+   ========================= */
+function getGuideBoxOnVideo(){
+  var box = document.getElementById('guideBox');
+  var boxRect = box.getBoundingClientRect();
+  var vidRect = video.getBoundingClientRect();
+
+  var vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+
+  var scaleX = vw / vidRect.width;
+  var scaleY = vh / vidRect.height;
+
+  var left = (boxRect.left - vidRect.left) * scaleX;
+  var top  = (boxRect.top  - vidRect.top ) * scaleY;
+  var width  = boxRect.width  * scaleX;
+  var height = boxRect.height * scaleY;
+
+  // Limitar a bordes
+  left = Math.max(0, Math.min(left, vw-1));
+  top  = Math.max(0, Math.min(top , vh-1));
+  if (left + width > vw) width = vw - left;
+  if (top  + height> vh) height= vh - top;
+
+  return { x:left, y:top, w:width, h:height };
+}
+
+/* =========================
+   MODO MANUAL: CAPTURAR + DECODIFICAR
+   ========================= */
+async function captureAndDecode(){
+  try{
+    if (!currentStream){ alert('Primero inicia la cámara.'); return; }
+    var r = await ensureReader();
+
+    if (!video.videoWidth || !video.videoHeight){
+      await new Promise(function(res){ setTimeout(res, 120); });
+    }
+    var region = getGuideBoxOnVideo();
+    if (!region){ setStatus('Esperando vídeo…', false); return; }
+
+    snapCanvas.width  = Math.max(1, Math.floor(region.w));
+    snapCanvas.height = Math.max(1, Math.floor(region.h));
+    snapCtx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, snapCanvas.width, snapCanvas.height);
+
+    addThumbFromCanvas(snapCanvas);
+    setStatus('Decodificando…');
+
+    var results = await r.decode(snapCanvas);
+    handleResults(results, /*from*/'captura');
+  }catch(err){
+    console.error(err);
+    showText('Error en decodificación (manual):\n' + (err && err.message ? err.message : String(err)));
+    setStatus('Error de lectura', false);
+  }
+}
+
+/* =========================
+   ESCANEO CONTINUO
+   ========================= */
+function toggleAutoScan(){
+  if (chkAuto.checked){ startAutoScan(); } else { stopAutoScan(); }
+}
+
+function startAutoScan(){
+  if (!currentStream){ alert('Primero inicia la cámara.'); chkAuto.checked=false; return; }
+  autoScanOn = true; autoBusy = false; autoLast = 0;
+  setStatus('Escaneo continuo: ON', true);
+  loopAuto();
+}
+
+function stopAutoScan(){
+  autoScanOn = false;
+  setStatus('Escaneo continuo: OFF', false);
+}
+
+async function loopAuto(timestamp){
+  if (!autoScanOn) return;
+  try{
+    if (!autoBusy){
+      var now = performance.now();
+      if (now - autoLast >= autoInterval){
+        autoLast = now;
+        autoBusy = true;
+
+        // Capturar región del recuadro
+        var region = getGuideBoxOnVideo();
+        if (region && video.videoWidth && video.videoHeight){
+          snapCanvas.width  = Math.max(1, Math.floor(region.w));
+          snapCanvas.height = Math.max(1, Math.floor(region.h));
+          snapCtx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, snapCanvas.width, snapCanvas.height);
+
+          var r = await ensureReader();
+          var results = await r.decode(snapCanvas);
+          if (results && results.length){
+            handleResults(results, /*from*/'auto');
+            // (Opcional) parar auto al obtener un resultado válido:
+            // stopAutoScan();
+          }
+        }
+        autoBusy = false;
       }
     }
+  }catch(err){
+    console.error(err);
+    autoBusy = false;
+  }finally{
+    // Seguir el ciclo
+    if (autoScanOn) requestAnimationFrame(loopAuto);
+  }
+}
 
-    function stopCamera(){
-      if(mediaStream){
-        mediaStream.getTracks().forEach(t => t.stop());
-        mediaStream = null;
-      }
-      video.srcObject = null;
-      setStatus(false);
-    }
+/* =========================
+   DECODIFICAR DESDE IMAGEN SUBIDA
+   ========================= */
+async function decodeFromFile(){
+  try{
+    var file = fileInput.files && fileInput.files[0];
+    if (!file){ alert('Selecciona una imagen primero.'); return; }
+    var r = await ensureReader();
+    setStatus('Cargando imagen…');
 
-    function captureAndDecode(){
-      if(!mediaStream || video.readyState < 2){
-        alert('La cámara no está lista.');
-        return;
-      }
-
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      if(!vw || !vh){
-        alert('El video aún no está listo para capturar.');
-        return;
-      }
-
-      const wrapRect = videoWrap.getBoundingClientRect();
-      const aimRect = aim.getBoundingClientRect();
-      const scaleX = vw / wrapRect.width;
-      const scaleY = vh / wrapRect.height;
-
-      const cropX = Math.max(0, Math.round((aimRect.left - wrapRect.left) * scaleX));
-      const cropY = Math.max(0, Math.round((aimRect.top  - wrapRect.top ) * scaleY));
-      const cropW = Math.min(vw - cropX, Math.round(aimRect.width  * scaleX));
-      const cropH = Math.min(vh - cropY, Math.round(aimRect.height * scaleY));
-
-      snap.width = cropW; snap.height = cropH;
-      const ctx = snap.getContext('2d');
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
-      preview.src = snap.toDataURL('image/png');
-
+    // Cargar imagen en elemento <img> para miniatura
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = async function(){
       try{
-        const reader = ensureReader();
-        reader.decodeFromCanvas(snap)
-          .then(res => {
-            resultBox.value = res.getText();
-          })
-          .catch(err => handleDecodeError(err));
-      }catch(err){
-        handleDecodeError(err);
+        addThumbFromImage(img.cloneNode(true));
+        setStatus('Decodificando imagen…');
+        // Puedes decodificar directamente el Blob o el <img>; usamos Blob:
+        var results = await r.decode(file);
+        handleResults(results, /*from*/'imagen');
+      }catch(e){
+        console.error(e);
+        showText('Error en decodificación (imagen):\n' + (e && e.message ? e.message : String(e)));
+        setStatus('Error de lectura', false);
+      }finally{
+        URL.revokeObjectURL(url);
       }
-    }
+    };
+    img.onerror = function(){
+      setStatus('No se pudo cargar la imagen', false);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }catch(err){
+    console.error(err);
+    showText('Error al procesar imagen:\n' + (err && err.message ? err.message : String(err)));
+    setStatus('Error de lectura', false);
+  }
+}
 
-    function handleDecodeError(err){
-      if(String(err).includes('ZXing UMD no cargado')){
-        alert('No se encontró ZXingBrowser. Verifica que no haya bloqueadores y que estas URLs carguen en tu red: - @zxing/library UMD - @zxing/browser UMD');
-      } else {
-        alert('No se pudo decodificar. Asegúrate de centrar el QR, con buena iluminación y enfoque. Detalle: ' + (err && err.message ? err.message : err));
-      }
-      resultBox.value = '';
-    }
+/* =========================
+   MANEJO DE RESULTADOS
+   ========================= */
+function handleResults(results, origin){
+  if (!(results && results.length)){
+    showText('Sin resultados (' + origin + '). Ajusta enfoque/iluminación y reintenta.');
+    setStatus('Sin resultados', false);
+    return;
+  }
 
-    startBtn.addEventListener('click', startCamera);
-    stopBtn.addEventListener('click', stopCamera);
-    captureBtn.addEventListener('click', captureAndDecode);
+  // Filtrar a PDF417 por seguridad
+  var useful = results.filter(function(it){
+    return (it.barcodeFormatString && it.barcodeFormatString.indexOf('PDF417')>=0) ||
+           (it.barcodeFormat === Dynamsoft.DBR.EnumBarcodeFormat.BF_PDF417);
+  });
+  if (!useful.length){
+    showText('Se detectó un código pero no es PDF417 (' + origin + ').');
+    setStatus('Sin PDF417', false);
+    return;
+  }
 
-    video.addEventListener('playing', () => setStatus(true));
-    video.addEventListener('pause',   () => setStatus(false));
-  })();
-  </script>
+  var text = useful.map(function(it, idx){
+    var conf = (it.detailedResult && typeof it.detailedResult.confidence !== 'undefined')
+                ? it.detailedResult.confidence : (it.confidence || '—');
+    var loc  = it.localizationResult ? JSON.stringify(it.localizationResult.points) : '—';
+    return (
+      'Resultado ' + (idx+1) + ' ['+origin+']\n' +
+      'Formato: ' + (it.barcodeFormatString || 'PDF417') + '\n' +
+      'Confianza: ' + conf + '\n' +
+      'Texto:\n' + it.barcodeText + '\n' +
+      'Posición: ' + loc + '\n'
+    );
+  }).join('\n-----------------------------\n\n');
+
+  showText(text);
+  setStatus('PDF417 decodificado ✅', true);
+}
+
+/* =========================
+   EVENTOS Y UX
+   ========================= */
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden && currentStream){ stopCamera(); }
+});
+video.addEventListener('loadedmetadata', function(){
+  if (video.videoWidth && video.videoHeight){
+    setStatus('Cámara lista ('+video.videoWidth+'×'+video.videoHeight+')', true);
+  }
+});
+</script>
 </body>
 </html>
