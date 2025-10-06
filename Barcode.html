@@ -199,10 +199,6 @@
       position: relative;
       width: 100%;
       max-width: 640px;
-      height: 480px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      overflow: hidden;
     }
 
     img,
@@ -271,49 +267,18 @@
       background: var(--accent);
     }
 
-    .status-indicator {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      margin-right: 8px;
-    }
-
-    .status-active {
-      background-color: #22c55e;
-    }
-
-    .status-inactive {
-      background-color: #f87171;
-    }
-
-    .camera-controls {
-      margin-top: 10px;
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .camera-feed {
-      position: relative;
-    }
-
-    .scanning-overlay {
+    /* Estilos para el recuadro de encuadre */
+    .overlay {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      z-index: 10;
       pointer-events: none;
-      display: none;
+      z-index: 10;
     }
 
-    .scanning-active .scanning-overlay {
-      display: block;
-    }
-
-    .scan-frame {
+    .scan-area {
       position: absolute;
       top: 50%;
       left: 50%;
@@ -322,84 +287,50 @@
       height: 40%;
       border: 3px solid #22c55e;
       border-radius: 12px;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
     }
 
-    .scan-frame::before {
+    .scan-area::before {
       content: '';
       position: absolute;
       top: -3px;
       left: -3px;
       right: -3px;
       bottom: -3px;
-      border: 2px solid rgba(34, 197, 94, 0.5);
+      border: 3px solid rgba(34, 197, 94, 0.5);
       border-radius: 12px;
       animation: pulse 2s infinite;
     }
 
-    .scan-line {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 3px;
-      background: linear-gradient(90deg, transparent, #22c55e, transparent);
-      animation: scan 2s linear infinite;
-    }
-
-    @keyframes scan {
-      0% {
-        top: 0;
-      }
-      100% {
-        top: 100%;
-      }
-    }
-
     @keyframes pulse {
       0% {
-        opacity: 0.7;
+        opacity: 0.5;
       }
       50% {
-        opacity: 0.3;
+        opacity: 1;
       }
       100% {
-        opacity: 0.7;
+        opacity: 0.5;
       }
     }
 
-    .detected-barcodes {
-      margin-top: 20px;
-    }
-
-    .barcode-item {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 10px;
-    }
-
-    .barcode-format {
-      font-weight: bold;
-      color: var(--accent);
-    }
-
-    .barcode-value {
-      word-break: break-all;
-      margin-top: 5px;
-    }
-
-    .camera-info {
-      margin-top: 10px;
-      font-size: 14px;
-      color: var(--muted);
-    }
-
-    .action-buttons {
+    /* Estilos para los controles de cámara */
+    .camera-controls {
       display: flex;
       gap: 10px;
-      margin-top: 15px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .sound-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .sound-control input[type="checkbox"] {
+      margin: 0;
     }
   </style>
 </head>
@@ -410,8 +341,7 @@
   </header>
 
   <div class="container">
-    <div>Supported formats: <pre id="formats"></pre>
-    </div>
+    <div>Supported formats: <pre id="formats"></pre></p>
 
     <h5>Image source</h5>
 
@@ -434,21 +364,17 @@
     </label>
 
     <div class="camera-controls" id="cameraControls" style="display: none;">
-      <button id="switchCamera" class="button secondary">Switch Camera</button>
-      <button id="toggleScan" class="button success">Start Scanning</button>
-      <button id="stopCamera" class="button danger">Stop Camera</button>
-      <span id="cameraStatus"><span class="status-indicator status-inactive"></span>Camera inactive</span>
+      <button id="startCamera" class="btn success">Iniciar Cámara</button>
+      <button id="stopCamera" class="btn danger">Detener Cámara</button>
+      <div class="sound-control">
+        <input id="soundEnabled" type="checkbox" checked>
+        <label for="soundEnabled">Sonido de escaneo</label>
+      </div>
     </div>
 
-    <div class="camera-info" id="cameraInfo" style="display: none;">
-      <p>Point the camera at a barcode. The green frame indicates the scanning area.</p>
-    </div>
-
-    <div class="viewport camera-feed">
-      <div class="scanning-overlay">
-        <div class="scan-frame">
-          <div class="scan-line"></div>
-        </div>
+    <div class="viewport">
+      <div class="overlay" id="overlay" style="display: none;">
+        <div class="scan-area"></div>
       </div>
       <canvas id="canvas"></canvas>
       <img id="img" crossorigin="anonymous">
@@ -460,11 +386,6 @@
     <h5>Result</h5>
 
     <pre id="result"></pre>
-
-    <div class="detected-barcodes" id="detectedBarcodes">
-      <h5>Detected Barcodes</h5>
-      <div id="barcodesList"></div>
-    </div>
   </div>
 
   <script type="module">
@@ -472,160 +393,91 @@
 
     const el = {};
 
-    document.querySelectorAll('[id]').forEach(element => el[element.id] = element);
+    document.
+      querySelectorAll('[id]').
+      forEach(element => el[element.id] = element);
 
-    const canvas = el.canvas,
+    const
+      canvas = el.canvas,
       ctx = canvas.getContext('2d');
 
-    let supportedFormats,
+    let
+      supportedFormats,
       detector,
       requestId = null,
-      isScanning = false,
-      currentStream = null,
-      facingMode = 'environment';
+      isCameraActive = false;
 
-    // Formatos específicos para PDF417
-    const pdf417Formats = ['pdf417'];
+    // Crear sonido de escaneo
+    const scanSound = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
 
     async function createDetector() {
-      try {
-        supportedFormats = await BarcodeDetectorPolyfill.getSupportedFormats();
-        
-        // Asegurarse de que PDF417 esté incluido
-        if (!supportedFormats.includes('pdf417')) {
-          supportedFormats.push('pdf417');
-        }
-        
-        el.formats.innerHTML = supportedFormats.join(', ');
-        
-        // Priorizar PDF417 en la detección
-        const formats = [...pdf417Formats, ...supportedFormats.filter(f => !pdf417Formats.includes(f))];
-        
-        detector = new BarcodeDetectorPolyfill({ 
-          formats: formats, 
-          zbar: { 
-            encoding: el.encoding.value,
-            // Configuración específica para mejorar detección de PDF417
-            pdf417: {
-              minLineCount: 3,
-              maxLineCount: 90
-            }
-          } 
-        });
-        
-        console.log('Detector creado con formatos:', formats);
-      } catch (error) {
-        console.error('Error al crear el detector:', error);
-        el.result.innerText = `Error: ${error.message}`;
-      }
+      supportedFormats = await BarcodeDetectorPolyfill.getSupportedFormats();
+      el.formats.innerHTML = supportedFormats.join(', ');
+      detector = new BarcodeDetectorPolyfill({ formats: supportedFormats, zbar: { encoding: el.encoding.value } });
     }
 
     function detect(source) {
-      return detector.detect(source).then(symbols => {
-        canvas.width = source.naturalWidth || source.videoWidth || source.width;
-        canvas.height = source.naturalHeight || source.videoHeight || source.height;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return detector.
+        detect(source).
+        then(symbols => {
+          canvas.width = source.naturalWidth || source.videoWidth || source.width;
+          canvas.height = source.naturalHeight || source.videoHeight || source.height;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        symbols.forEach(symbol => {
-          const lastCornerPoint = symbol.cornerPoints[symbol.cornerPoints.length - 1];
-          ctx.moveTo(lastCornerPoint.x, lastCornerPoint.y);
-          symbol.cornerPoints.forEach(point => ctx.lineTo(point.x, point.y));
-
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = symbol.format === 'pdf417' ? '#ff9900' : '#00e000';
-          ctx.stroke();
-
-          // Añadir etiqueta para PDF417
-          if (symbol.format === 'pdf417') {
-            ctx.fillStyle = '#ff9900';
-            ctx.font = '16px Arial';
-            ctx.fillText('PDF417', symbol.cornerPoints[0].x, symbol.cornerPoints[0].y - 10);
-          }
-        });
-
-        if (!el.details.checked) {
           symbols.forEach(symbol => {
-            delete symbol.boundingBox;
-            delete symbol.cornerPoints;
-          });
-        }
-        
-        el.result.innerText = JSON.stringify(symbols, null, 2);
-        
-        // Actualizar la lista de códigos detectados
-        updateBarcodesList(symbols);
-        
-        return symbols;
-      }).catch(error => {
-        console.error('Error en detección:', error);
-        el.result.innerText = `Detection error: ${error.message}`;
-        return [];
-      });
-    }
+            const lastCornerPoint = symbol.cornerPoints[symbol.cornerPoints.length - 1];
+            ctx.moveTo(lastCornerPoint.x, lastCornerPoint.y);
+            symbol.cornerPoints.forEach(point => ctx.lineTo(point.x, point.y));
 
-    function updateBarcodesList(symbols) {
-      const barcodesList = el.barcodesList;
-      barcodesList.innerHTML = '';
-      
-      if (symbols.length === 0) {
-        barcodesList.innerHTML = '<p>No barcodes detected</p>';
-        return;
-      }
-      
-      symbols.forEach((symbol, index) => {
-        const barcodeItem = document.createElement('div');
-        barcodeItem.className = 'barcode-item';
-        
-        const formatSpan = document.createElement('span');
-        formatSpan.className = 'barcode-format';
-        formatSpan.textContent = symbol.format.toUpperCase();
-        
-        const valueDiv = document.createElement('div');
-        valueDiv.className = 'barcode-value';
-        valueDiv.textContent = symbol.rawValue;
-        
-        barcodeItem.appendChild(formatSpan);
-        valueDiv.appendChild(barcodeItem);
-        
-        barcodesList.appendChild(barcodeItem);
-      });
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#00e000ff';
+            ctx.stroke();
+          });
+
+          // Reproducir sonido si se detecta un código y está habilitado
+          if (symbols.length > 0 && el.soundEnabled.checked) {
+            try {
+              scanSound.play();
+            } catch (e) {
+              console.log("No se pudo reproducir el sonido:", e);
+            }
+          }
+
+          if (!el.details.checked) {
+            symbols.forEach(symbol => {
+              delete symbol.boundingBox;
+              delete symbol.cornerPoints;
+            });
+          }
+          el.result.innerText = JSON.stringify(symbols, null, 2);
+        });
     }
 
     function detectImg() {
       detectVideo(false);
 
-      if (currentStream) {
-        stopCamera();
+      if (el.video.srcObject) {
+        el.video.srcObject.getTracks().forEach(track => track.stop());
+        el.video.srcObject = null;
       }
 
       // FF needs some time to properly update decode()
-      setTimeout(() => {
-        if (el.img.src) {
-          el.img.decode().then(() => detect(el.img)).catch(error => {
-            console.error('Error decoding image:', error);
-          });
-        }
-      }, 100);
+      setTimeout(() => el.img.decode().then(() => detect(el.img)), 100);
     }
 
     function detectVideo(repeat) {
       if (!repeat) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        cancelAnimationFrame(requestId);
-        requestId = null;
       }
 
       if (typeof repeat === 'undefined') {
         repeat = true;
       }
 
-      if (repeat && isScanning) {
-        detect(el.video).then(symbols => {
-          if (symbols.length > 0) {
-            console.log('Detected barcodes:', symbols);
-          }
-          requestId = requestAnimationFrame(() => detectVideo(true));
-        });
+      if (repeat) {
+        detect(el.video).
+          then(() => requestId = requestAnimationFrame(() => detectVideo(true)));
+
       } else {
         cancelAnimationFrame(requestId);
         requestId = null;
@@ -637,97 +489,49 @@
         el.imgBtn.className = el.videoBtn.className = '';
         el.imgUrl.className = 'active';
         el.cameraControls.style.display = 'none';
-        el.cameraInfo.style.display = 'none';
+        el.overlay.style.display = 'none';
 
         el.img.src = el.imgUrl.value;
         detectImg();
       }
     }
 
-    function toggleScanning() {
-      isScanning = !isScanning;
-      el.viewport.classList.toggle('scanning-active', isScanning);
-      
-      if (isScanning) {
-        el.toggleScan.textContent = 'Stop Scanning';
-        el.toggleScan.classList.remove('success');
-        el.toggleScan.classList.add('secondary');
-        detectVideo();
-      } else {
-        el.toggleScan.textContent = 'Start Scanning';
-        el.toggleScan.classList.remove('secondary');
-        el.toggleScan.classList.add('success');
-        detectVideo(false);
-      }
-    }
+    function startCamera() {
+      if (!isCameraActive) {
+        navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'environment' } }).
+          then(stream => {
+            el.imgUrl.className = el.imgBtn.className = '';
+            el.videoBtn.className = 'button-primary';
+            el.cameraControls.style.display = 'flex';
+            el.overlay.style.display = 'block';
 
-    function switchCamera() {
-      if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
+            el.video.srcObject = stream;
+            isCameraActive = true;
+            detectVideo();
+          }).
+          catch(error => {
+            el.result.innerText = JSON.stringify(error);
+          });
       }
-      
-      facingMode = facingMode === 'environment' ? 'user' : 'environment';
-      
-      navigator.mediaDevices.getUserMedia({ 
-        audio: false, 
-        video: { 
-          facingMode: facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
-      }).then(stream => {
-        currentStream = stream;
-        el.video.srcObject = stream;
-        updateCameraStatus(true);
-        
-        // Reiniciar el escaneo si estaba activo
-        if (isScanning) {
-          detectVideo();
-        }
-      }).catch(error => {
-        console.error('Error switching camera:', error);
-        el.result.innerText = `Camera error: ${error.message}`;
-      });
     }
 
     function stopCamera() {
-      if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-        currentStream = null;
-      }
-      
-      el.imgUrl.className = el.imgBtn.className = el.videoBtn.className = '';
-      el.cameraControls.style.display = 'none';
-      el.cameraInfo.style.display = 'none';
-      
-      detectVideo(false);
-      isScanning = false;
-      el.viewport.classList.remove('scanning-active');
-      updateCameraStatus(false);
-      
-      // Resetear el botón de escaneo
-      el.toggleScan.textContent = 'Start Scanning';
-      el.toggleScan.classList.remove('secondary');
-      el.toggleScan.classList.add('success');
-    }
+      if (isCameraActive) {
+        el.imgUrl.className = el.imgBtn.className = el.videoBtn.className = '';
+        el.cameraControls.style.display = 'none';
+        el.overlay.style.display = 'none';
 
-    function updateCameraStatus(active) {
-      const statusIndicator = el.cameraStatus.querySelector('.status-indicator');
-      const statusText = el.cameraStatus.querySelector('span:last-child');
-      
-      if (active) {
-        statusIndicator.className = 'status-indicator status-active';
-        statusText.textContent = `Camera active (${facingMode === 'environment' ? 'Rear' : 'Front'})`;
-      } else {
-        statusIndicator.className = 'status-indicator status-inactive';
-        statusText.textContent = 'Camera inactive';
+        detectVideo(false);
+        if (el.video.srcObject) {
+          el.video.srcObject.getTracks().forEach(track => track.stop());
+          el.video.srcObject = null;
+        }
+        isCameraActive = false;
       }
     }
 
-    // Inicialización
     createDetector();
 
-    // Event listeners
     el.encoding.addEventListener('change', createDetector);
 
     el.imgUrl.addEventListener('change', onUrlActive);
@@ -737,7 +541,7 @@
       el.imgUrl.className = el.videoBtn.className = '';
       el.imgBtn.className = 'button-primary';
       el.cameraControls.style.display = 'none';
-      el.cameraInfo.style.display = 'none';
+      el.overlay.style.display = 'none';
 
       el.img.src = URL.createObjectURL(el.fileInput.files[0]);
       el.fileInput.value = null;
@@ -748,44 +552,8 @@
       el.fileInput.dispatchEvent(new MouseEvent('click'));
     });
 
-    el.videoBtn.addEventListener('click', event => {
-      if (!currentStream) {
-        navigator.mediaDevices.getUserMedia({ 
-          audio: false, 
-          video: { 
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          } 
-        }).then(stream => {
-          currentStream = stream;
-          el.imgUrl.className = el.imgBtn.className = '';
-          el.videoBtn.className = 'button-primary';
-          el.cameraControls.style.display = 'flex';
-          el.cameraInfo.style.display = 'block';
-
-          el.video.srcObject = stream;
-          updateCameraStatus(true);
-          
-          // Iniciar escaneo automáticamente
-          isScanning = true;
-          el.viewport.classList.add('scanning-active');
-          el.toggleScan.textContent = 'Stop Scanning';
-          el.toggleScan.classList.remove('success');
-          el.toggleScan.classList.add('secondary');
-          
-          detectVideo();
-        }).catch(error => {
-          console.error('Error accessing camera:', error);
-          el.result.innerText = `Camera access error: ${error.message}`;
-        });
-      } else {
-        stopCamera();
-      }
-    });
-
-    el.toggleScan.addEventListener('click', toggleScanning);
-    el.switchCamera.addEventListener('click', switchCamera);
+    el.videoBtn.addEventListener('click', startCamera);
+    el.startCamera.addEventListener('click', startCamera);
     el.stopCamera.addEventListener('click', stopCamera);
   </script>
 </body>
