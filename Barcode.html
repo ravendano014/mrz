@@ -1,561 +1,300 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Barcode Detection API</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <title>Barcode Detector — Cámara + Beep + Guía</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css'>
   <style>
     :root {
-      --bg: #0b1220;
-      --fg: #e5e7eb;
-      --card: #0f172a;
-      --accent: #60a5fa;
-      --muted: #94a3b8;
-      --line: #1f2937
+      --bg:#0b1220; --fg:#e5e7eb; --card:#0f172a; --accent:#60a5fa; --muted:#94a3b8; --line:#1f2937;
+      --ok:#22c55e; --btn:#2563eb; --btn2:#1f2937;
     }
-
-    * {
-      box-sizing: border-box
-    }
-
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--fg);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, sans-serif
-    }
-
-    header {
-      padding: 16px 18px;
-      border-bottom: 1px solid var(--line)
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 18px
-    }
-
-    main {
-      display: grid;
-      gap: 16px;
-      padding: 16px
-    }
-
-    @media (min-width:960px) {
-      main {
-        grid-template-columns: 1.1fr 1fr
-      }
-    }
-
-    .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      overflow: hidden
-    }
-
-    .card h2 {
-      margin: 0;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--line);
-      color: var(--accent);
-      font-size: 14px
-    }
-
-    .card .body {
-      padding: 12px
-    }
-
-    textarea {
-      width: 100%;
-      min-height: 140px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: #0b1220;
-      color: var(--fg);
-      padding: 12px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
-    }
-
-    .row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-top: 8px
-    }
-
-    .btn {
-      background: #2563eb;
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      padding: 10px 14px;
-      font-weight: 600;
-      cursor: pointer
-    }
-
-    .btn.secondary {
-      background: #1f2937
-    }
-
-    .btn.success {
-      background: #059669
-    }
-
-    .btn.danger {
-      background: #dc2626
-    }
-
-    .pill {
-      background: #111827;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: 12px;
-      color: var(--muted)
-    }
-
-    pre {
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 52vh;
-      overflow: auto;
-      background: #0b1220;
-      padding: 12px;
-      border-radius: 12px;
-      border: 1px solid var(--line)
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse
-    }
-
-    th,
-    td {
-      border-bottom: 1px solid var(--line);
-      padding: 8px 6px;
-      font-size: 14px
-    }
-
-    th {
-      color: #93c5fd;
-      text-align: left
-    }
-
-    .hint {
-      color: var(--muted);
-      font-size: 12px;
-      margin: 8px 0
-    }
-
-    .ok {
-      color: #22c55e;
-      font-weight: 600
-    }
-
-    .bad {
-      color: #f87171;
-      font-weight: 600
-    }
-
-    code.k {
-      background: #111827;
-      border: 1px solid var(--line);
-      padding: 2px 6px;
-      border-radius: 8px
-    }
-
-    .json-container {
-      position: relative
-    }
-
-    .copy-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      z-index: 1
-    }
-
-    /* Estilos específicos para la funcionalidad de código de barras */
-    .container {
-      margin-top: 1em;
-    }
-
-    h5,
-    p {
-      margin-top: 0.5em;
-    }
-
-    label {
-      display: inline-block;
-    }
-
-    .viewport {
-      display: inline-block;
-      position: relative;
-      width: 100%;
-      max-width: 640px;
-    }
-
-    img,
-    video,
-    #note {
-      display: none;
-      max-width: 100%;
-    }
-
-    #imgUrl {
-      width: 25em;
-      max-width: 100%;
-      background: var(--card);
-      color: var(--fg);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px 12px;
-    }
-
-    #imgUrl.active {
-      color: #ffffff;
-      background-color: var(--accent);
-    }
-
-    #imgUrl.active~.viewport>#img,
-    #imgUrl.active~#note,
-    #imgBtn.button-primary~.viewport>#img,
-    #videoBtn.button-primary~.viewport>#video {
-      display: block;
-    }
-
-    #canvas {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-    }
-
-    #encoding {
-      margin-right: 1em;
-      background: var(--card);
-      color: var(--fg);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px;
-    }
-
-    .button-primary {
-      background-color: var(--accent);
-      border-color: var(--accent);
-    }
-
-    /* Ajustes para el skeleton framework */
-    .button {
-      background: #2563eb;
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      padding: 10px 14px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .button.button-primary {
-      background: var(--accent);
-    }
-
-    /* Estilos para el recuadro de encuadre */
-    .overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 10;
-    }
-
-    .scan-area {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 70%;
-      height: 40%;
-      border: 3px solid #22c55e;
-      border-radius: 12px;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
-    }
-
-    .scan-area::before {
-      content: '';
-      position: absolute;
-      top: -3px;
-      left: -3px;
-      right: -3px;
-      bottom: -3px;
-      border: 3px solid rgba(34, 197, 94, 0.5);
-      border-radius: 12px;
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0% {
-        opacity: 0.5;
-      }
-      50% {
-        opacity: 1;
-      }
-      100% {
-        opacity: 0.5;
-      }
-    }
-
-    /* Estilos para los controles de cámara */
-    .camera-controls {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-      flex-wrap: wrap;
-    }
-
-    .sound-control {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    .sound-control input[type="checkbox"] {
-      margin: 0;
-    }
+    * { box-sizing:border-box }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif }
+    header { padding:16px 18px; border-bottom:1px solid var(--line) }
+    h1 { margin:0; font-size:18px }
+    main { display:grid; gap:16px; padding:16px }
+    @media (min-width:960px){ main { grid-template-columns: 1.1fr 1fr } }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden }
+    .card h2 { margin:0; padding:10px 14px; border-bottom:1px solid var(--line); color:var(--accent); font-size:14px }
+    .card .body { padding:12px }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px }
+    .btn { background:var(--btn); color:#fff; border:none; border-radius:12px; padding:10px 14px; font-weight:600; cursor:pointer }
+    .btn.secondary { background:var(--btn2) }
+    .btn.success { background:#059669 }
+    .hint { color:var(--muted); font-size:12px; margin:8px 0 }
+    pre { white-space:pre-wrap; word-break:break-word; max-height:52vh; overflow:auto; background:#0b1220; padding:12px; border-radius:12px; border:1px solid var(--line) }
+    #encoding, #imgUrl { background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px }
+    #imgUrl { width:25em; max-width:100% }
+    #imgUrl.active { color:#fff; background:var(--accent) }
+    .viewport { display:inline-block; position:relative; width:100%; max-width:720px; aspect-ratio:4/3; background:#000; border-radius:12px; overflow:hidden; border:1px solid var(--line) }
+    video, img, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover }
+    #img, #note { display:none }
+    /* Marco guía permanente (recuadro verde) */
+    .guide { pointer-events:none; position:absolute; inset:0 }
   </style>
 </head>
+<body>
+  <header><h1>Barcode Detector</h1></header>
 
-<body translate="no">
-  <header>
-    <h1>Barcode Detector</h1>
-  </header>
+  <main>
+    <section class="card">
+      <h2>Entrada</h2>
+      <div class="body">
+        <div class="row">
+          <input id="fileInput" type="file" accept="image/*" style="display:none">
+          <input id="imgUrl" type="url" placeholder="Pega la URL de una imagen y presiona fuera" />
+          <button id="imgBtn" class="btn">Imagen (archivo)</button>
+          <select id="encoding" title="Decodificación">
+            <option value="utf-8" selected>UTF-8</option>
+            <option value="iso-8859-15">ISO-8859-15</option>
+            <option value="windows-1252">Windows-1252</option>
+            <option value="macintosh">Macintosh</option>
+          </select>
+        </div>
 
-  <div class="container">
-    <div>Supported formats: <pre id="formats"></pre></p>
+        <div class="row">
+          <button id="startBtn" class="btn">Iniciar cámara</button>
+          <button id="stopBtn" class="btn secondary">Detener cámara</button>
+          <label><input id="beepChk" type="checkbox"> Sonido al detectar</label>
+          <label><input id="details" type="checkbox"> Mostrar detalles</label>
+        </div>
 
-    <h5>Image source</h5>
+        <p class="hint">Consejo: centra el código dentro del recuadro verde para mejorar la lectura.</p>
 
-    <input id="fileInput" type="file" style="display: none;" accept="image/*">
+        <div class="viewport">
+          <video id="video" muted autoplay playsinline></video>
+          <img id="img" crossorigin="anonymous" alt="">
+          <canvas id="canvas"></canvas>
+          <canvas id="guide" class="guide"></canvas>
+        </div>
 
-    <input id="imgUrl" type="url" placeholder="Paste an image URL then click outside" required>
-    <button id="imgBtn" class="button">Image file</button>
-    <button id="videoBtn" class="button">Camera</button>
-
-    <select id="encoding">
-      <option value="utf-8" selected>UTF-8</option>
-      <option value="iso-8859-15">ISO-8859-15</option>
-      <option value="windows-1252">Windows-1252</option>
-      <option value="macintosh">Macintosh</option>
-    </select>
-
-    <label>
-      <input id="details" type="checkbox">
-      <span class="label-body">Show details</span>
-    </label>
-
-    <div class="camera-controls" id="cameraControls" style="display: none;">
-      <button id="startCamera" class="btn success">Iniciar Cámara</button>
-      <button id="stopCamera" class="btn danger">Detener Cámara</button>
-      <div class="sound-control">
-        <input id="soundEnabled" type="checkbox" checked>
-        <label for="soundEnabled">Sonido de escaneo</label>
+        <p id="note">Si la imagen no aparece, el servidor donde está alojada podría estar bloqueándola por CORS.</p>
+        <div class="hint">Formatos compatibles detectados por el navegador: <span id="formats"></span></div>
       </div>
-    </div>
+    </section>
 
-    <div class="viewport">
-      <div class="overlay" id="overlay" style="display: none;">
-        <div class="scan-area"></div>
+    <section class="card">
+      <h2>Resultado</h2>
+      <div class="body">
+        <pre id="result"></pre>
       </div>
-      <canvas id="canvas"></canvas>
-      <img id="img" crossorigin="anonymous">
-      <video id="video" muted autoplay playsinline></video>
-    </div>
-
-    <p id="note">If the image does not appear then loading may have been blocked by the server's CORS policy.</p>
-
-    <h5>Result</h5>
-
-    <pre id="result"></pre>
-  </div>
+    </section>
+  </main>
 
   <script type="module">
     import { BarcodeDetectorPolyfill } from "https://cdn.jsdelivr.net/npm/@undecaf/barcode-detector-polyfill@latest/dist/main.js";
 
     const el = {};
+    document.querySelectorAll('[id]').forEach(e => el[e.id] = e);
 
-    document.
-      querySelectorAll('[id]').
-      forEach(element => el[element.id] = element);
+    const canvas = el.canvas;
+    const ctx = canvas.getContext('2d');
+    const guide = el.guide;
+    const gctx = guide.getContext('2d');
 
-    const
-      canvas = el.canvas,
-      ctx = canvas.getContext('2d');
+    let supportedFormats = [];
+    let detector = null;
+    let requestId = null;
+    let stream = null;
 
-    let
-      supportedFormats,
-      detector,
-      requestId = null,
-      isCameraActive = false;
+    // --- Sonido de beep (WebAudio) ---
+    let audioCtx = null;
+    let lastBeepAt = 0;
+    function beep() {
+      // Evita beeps demasiado seguidos
+      const now = performance.now();
+      if (now - lastBeepAt < 600) return;
+      lastBeepAt = now;
 
-    // Crear sonido de escaneo
-    const scanSound = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;     // tono característico
+      gain.gain.value = 0.08;        // volumen suave
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      setTimeout(() => osc.stop(), 150);
+    }
 
+    // --- Detector ---
     async function createDetector() {
       supportedFormats = await BarcodeDetectorPolyfill.getSupportedFormats();
-      el.formats.innerHTML = supportedFormats.join(', ');
-      detector = new BarcodeDetectorPolyfill({ formats: supportedFormats, zbar: { encoding: el.encoding.value } });
+      el.formats.textContent = supportedFormats.join(', ');
+      detector = new BarcodeDetectorPolyfill({
+        formats: supportedFormats,
+        zbar: { encoding: el.encoding.value }
+      });
     }
 
-    function detect(source) {
-      return detector.
-        detect(source).
-        then(symbols => {
-          canvas.width = source.naturalWidth || source.videoWidth || source.width;
-          canvas.height = source.naturalHeight || source.videoHeight || source.height;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // --- Dibuja guía permanente (recuadro verde centrado con esquinas) ---
+    function drawGuide() {
+      const W = guide.width = guide.clientWidth;
+      const H = guide.height = guide.clientHeight;
+      gctx.clearRect(0, 0, W, H);
 
-          symbols.forEach(symbol => {
-            const lastCornerPoint = symbol.cornerPoints[symbol.cornerPoints.length - 1];
-            ctx.moveTo(lastCornerPoint.x, lastCornerPoint.y);
-            symbol.cornerPoints.forEach(point => ctx.lineTo(point.x, point.y));
+      // Marco de referencia ~ 70% del ancho, 60% del alto
+      const w = Math.round(W * 0.72);
+      const h = Math.round(H * 0.62);
+      const x = Math.round((W - w) / 2);
+      const y = Math.round((H - h) / 2);
+      const r = 14;  // radios de esquina
+      const L = 22;  // longitud de marcas de esquina
 
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#00e000ff';
-            ctx.stroke();
-          });
+      gctx.lineWidth = 3;
+      gctx.strokeStyle = '#00e000';
+      gctx.beginPath();
+      // Esquinas tipo "L"
+      // Esquina sup-izq
+      gctx.moveTo(x, y + L); gctx.lineTo(x, y); gctx.lineTo(x + L, y);
+      // sup-der
+      gctx.moveTo(x + w - L, y); gctx.lineTo(x + w, y); gctx.lineTo(x + w, y + L);
+      // inf-izq
+      gctx.moveTo(x, y + h - L); gctx.lineTo(x, y + h); gctx.lineTo(x + L, y + h);
+      // inf-der
+      gctx.moveTo(x + w - L, y + h); gctx.lineTo(x + w, y + h); gctx.lineTo(x + w, y + h - L);
+      gctx.stroke();
 
-          // Reproducir sonido si se detecta un código y está habilitado
-          if (symbols.length > 0 && el.soundEnabled.checked) {
-            try {
-              scanSound.play();
-            } catch (e) {
-              console.log("No se pudo reproducir el sonido:", e);
-            }
-          }
-
-          if (!el.details.checked) {
-            symbols.forEach(symbol => {
-              delete symbol.boundingBox;
-              delete symbol.cornerPoints;
-            });
-          }
-          el.result.innerText = JSON.stringify(symbols, null, 2);
-        });
+      // Borde suave punteado
+      gctx.setLineDash([8, 8]);
+      gctx.lineDashOffset = 0;
+      gctx.strokeStyle = 'rgba(0,224,0,0.6)';
+      gctx.lineWidth = 2;
+      gctx.strokeRect(x, y, w, h);
+      gctx.setLineDash([]);
     }
 
-    function detectImg() {
-      detectVideo(false);
+    // --- Detección genérica ---
+    async function detect(source) {
+      const sW = source.naturalWidth || source.videoWidth || source.width || guide.width;
+      const sH = source.naturalHeight || source.videoHeight || source.height || guide.height;
 
-      if (el.video.srcObject) {
-        el.video.srcObject.getTracks().forEach(track => track.stop());
-        el.video.srcObject = null;
+      // Ajusta canvas de dibujo de overlays
+      canvas.width = sW;  canvas.height = sH;
+      ctx.clearRect(0, 0, sW, sH);
+
+      const symbols = await detector.detect(source);
+
+      // Dibuja polígonos sobre códigos
+      for (const symbol of symbols) {
+        const pts = symbol.cornerPoints || [];
+        if (pts.length) {
+          ctx.beginPath();
+          const last = pts[pts.length - 1];
+          ctx.moveTo(last.x, last.y);
+          for (const p of pts) ctx.lineTo(p.x, p.y);
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#00e000';
+          ctx.stroke();
+        }
       }
 
-      // FF needs some time to properly update decode()
-      setTimeout(() => el.img.decode().then(() => detect(el.img)), 100);
+      // Limpia detalles sensibles si no se solicitan
+      const out = symbols.map(s => {
+        const obj = { ...s };
+        if (!el.details.checked) {
+          delete obj.boundingBox;
+          delete obj.cornerPoints;
+        }
+        return obj;
+      });
+
+      el.result.textContent = JSON.stringify(out, null, 2);
+
+      // Beep opcional
+      if (el.beepChk.checked && symbols.length) beep();
     }
 
-    function detectVideo(repeat) {
-      if (!repeat) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-
-      if (typeof repeat === 'undefined') {
-        repeat = true;
-      }
-
-      if (repeat) {
-        detect(el.video).
-          then(() => requestId = requestAnimationFrame(() => detectVideo(true)));
-
+    // --- Bucle de vídeo ---
+    function detectVideoLoop(on) {
+      if (on) {
+        detect(el.video).then(() => requestId = requestAnimationFrame(() => detectVideoLoop(true)));
       } else {
-        cancelAnimationFrame(requestId);
+        if (requestId) cancelAnimationFrame(requestId);
         requestId = null;
       }
     }
 
-    function onUrlActive() {
-      if (el.imgUrl.validity.valid) {
-        el.imgBtn.className = el.videoBtn.className = '';
-        el.imgUrl.className = 'active';
-        el.cameraControls.style.display = 'none';
-        el.overlay.style.display = 'none';
+    // --- Fuente: IMAGEN (URL o archivo) ---
+    function detectImg() {
+      // Detén cualquier flujo previo
+      stopCamera();
 
-        el.img.src = el.imgUrl.value;
-        detectImg();
-      }
+      // Espera pequeño para FF antes de decode()
+      setTimeout(() => el.img.decode().then(() => detect(el.img)), 100);
+      el.img.style.display = 'block';
+      el.video.style.display = 'none';
     }
 
-    function startCamera() {
-      if (!isCameraActive) {
-        navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'environment' } }).
-          then(stream => {
-            el.imgUrl.className = el.imgBtn.className = '';
-            el.videoBtn.className = 'button-primary';
-            el.cameraControls.style.display = 'flex';
-            el.overlay.style.display = 'block';
-
-            el.video.srcObject = stream;
-            isCameraActive = true;
-            detectVideo();
-          }).
-          catch(error => {
-            el.result.innerText = JSON.stringify(error);
-          });
+    // --- Cámara: iniciar / detener ---
+    async function startCamera() {
+      if (requestId) return; // ya corriendo
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'environment' } });
+        el.video.srcObject = stream;
+        el.video.style.display = 'block';
+        el.img.style.display = 'none';
+        detectVideoLoop(true);
+      } catch (err) {
+        el.result.textContent = JSON.stringify(err);
       }
     }
 
     function stopCamera() {
-      if (isCameraActive) {
-        el.imgUrl.className = el.imgBtn.className = el.videoBtn.className = '';
-        el.cameraControls.style.display = 'none';
-        el.overlay.style.display = 'none';
-
-        detectVideo(false);
-        if (el.video.srcObject) {
-          el.video.srcObject.getTracks().forEach(track => track.stop());
-          el.video.srcObject = null;
-        }
-        isCameraActive = false;
+      detectVideoLoop(false);
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
       }
     }
 
-    createDetector();
+    // --- Listeners y arranque ---
+    await createDetector();
+    drawGuide();
+
+    // Redibuja guía al redimensionar
+    const ro = new ResizeObserver(drawGuide);
+    ro.observe(document.querySelector('.viewport'));
 
     el.encoding.addEventListener('change', createDetector);
 
-    el.imgUrl.addEventListener('change', onUrlActive);
-    el.imgUrl.addEventListener('focus', onUrlActive);
+    el.imgUrl.addEventListener('change', () => {
+      if (!el.imgUrl.value || !el.imgUrl.validity.valid) return;
+      el.imgUrl.classList.add('active');
+      el.img.src = el.imgUrl.value;
+      detectImg();
+    });
+    el.imgUrl.addEventListener('focus', () => {
+      if (el.imgUrl.value && el.imgUrl.validity.valid) {
+        el.imgUrl.classList.add('active');
+      }
+    });
 
-    el.fileInput.addEventListener('change', event => {
-      el.imgUrl.className = el.videoBtn.className = '';
-      el.imgBtn.className = 'button-primary';
-      el.cameraControls.style.display = 'none';
-      el.overlay.style.display = 'none';
-
-      el.img.src = URL.createObjectURL(el.fileInput.files[0]);
-      el.fileInput.value = null;
+    el.fileInput.addEventListener('change', () => {
+      const file = el.fileInput.files?.[0];
+      if (!file) return;
+      el.imgUrl.classList.remove('active');
+      el.img.src = URL.createObjectURL(file);
+      el.fileInput.value = '';
       detectImg();
     });
 
-    el.imgBtn.addEventListener('click', event => {
-      el.fileInput.dispatchEvent(new MouseEvent('click'));
-    });
+    el.imgBtn.addEventListener('click', () => el.fileInput.click());
 
-    el.videoBtn.addEventListener('click', startCamera);
-    el.startCamera.addEventListener('click', startCamera);
-    el.stopCamera.addEventListener('click', stopCamera);
+    // Controles de cámara explícitos
+    el.startBtn.addEventListener('click', startCamera);
+    el.stopBtn.addEventListener('click', stopCamera);
+
+    // Habilita contexto de audio al primer gesto del usuario (requisito de navegadores)
+    ['click','change'].forEach(evt => {
+      document.addEventListener(evt, () => {
+        if (!audioCtx && el.beepChk.checked) {
+          try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+        }
+      }, { once:true, capture:true });
+    });
   </script>
 </body>
-
 </html>
