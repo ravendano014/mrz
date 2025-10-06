@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" >
+
+<head>
+  <meta charset="UTF-8">
+  <title>PWA PDF417 Scanner</title>  
+</head>
+
+<body translate="no">
+  <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PWA PDF417 Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body>
+    <div id="qr-reader" style="width:500px"></div>
+    <div id="qr-reader-results">Ecaneando codigo</div>
+  <script>
+
+    var resultContainer = document.getElementById('qr-reader-results');
+    var lastResult, countResults = 0;
+
+    function onScanSuccess(decodedText, decodedResult) {
+        if (decodedText !== lastResult) {
+            ++countResults;
+            lastResult = decodedText;
+            resultContainer.append(`Scan result ${decodedText}`)
+        }
+    }
+
+    var html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: 250 });
+    html5QrcodeScanner.render((decodedText) => {
+      if (decodedText !== lastResult) {
+            ++countResults;
+            lastResult = decodedText;
+            resultContainer.append(`Scan result ${decodedText}`)
+        }
+    });
+
+  </script>
+</body>
+</html>
+  
+  
+  
+</body>
+
+</html>
