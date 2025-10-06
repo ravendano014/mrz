@@ -18,4 +18,6 @@
 
 [PDF417 Scanner](https://ravendano014.github.io/mrz/PDF417Scanner.html)
 
+[PDF417 PWA Scanner](https://ravendano014.github.io/mrz/PDF417PWA.html)
+
 [Barcode Scanner](https://ravendano014.github.io/mrz/Barcode.html)
