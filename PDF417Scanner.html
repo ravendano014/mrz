@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF417 Scanner & Image Reader</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+    body { margin: 0; padding: 24px; background: #0b1220; color: #e7ecf5; }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    h2 { font-size: 1.2rem; margin: 0 0 12px; color: #cfe0ff; }
+    h3 { font-size: 1.1rem; margin: 0 0 10px; color: #cfe0ff; }
+    p { margin: 6px 0 14px; color:#b9c2d0 }
+    .app { max-width: 980px; margin: 0 auto; }
+    .card { background: #121a2b; border: 1px solid #1e2a44; border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 900px){ .grid { grid-template-columns: 420px 1fr; } }
+    label.inline { display: inline-flex; align-items: center; gap: 8px; background:#0f1726; border:1px dashed #2b3b60; padding: 10px 12px; border-radius: 12px; cursor: pointer; }
+    input[type=file]{ display:none }
+    button { appearance: none; border: 0; background: #2a6df5; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+    button.secondary { background: #2b3b60 }
+    button.success { background: #0a6; }
+    img { max-width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120 }
+    .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .92rem; }
+    textarea { width: 100%; min-height: 120px; resize: vertical; border-radius: 12px; padding: 10px; border:1px solid #1e2a44; background:#0f1726; color:#e7ecf5 }
+    pre { background:#0f1726; border:1px solid #1e2a44; padding:12px; border-radius:12px; overflow:auto }
+    .badge { font-size: .75rem; background:#0f6; color:#021; padding:3px 8px; border-radius:999px; }
+    progress { width: 100%; height: 10px; accent-color:#2a6df5 }
+    .hint { font-size: .85rem; color:#9fb0cb }
+    .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px; }
+    .kv b{color:#cfe0ff}
+    
+    /* Nuevos estilos para la tabla de resultados */
+    .mrz-guide { 
+      background: #0f1726; 
+      border: 1px solid #1e2a44; 
+      border-radius: 8px; 
+      padding: 8px 12px; 
+      margin: 8px 0 16px; 
+      font-size: 0.85rem;
+    }
+    .result-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .result-table th, .result-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #1e2a44;
+    }
+    .result-table th {
+      background: #0f1726;
+      color: #cfe0ff;
+      font-weight: 600;
+    }
+    .result-table tr:last-child td {
+      border-bottom: none;
+    }
+    .check-ok {
+      color: #0f6;
+    }
+    .check-fail {
+      color: #f06;
+    }
+    .result-summary {
+      background: #0f1726;
+      border: 1px solid #1e2a44;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    .json-container {
+      margin-top: 16px;
+    }
+    .json-container h4 {
+      margin: 0 0 8px;
+    }
+    .json-pre {
+      background: #0f1726;
+      border: 1px solid #1e2a44;
+      border-radius: 12px;
+      padding: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+    }
+    .hidden {
+      display: none;
+    }
+    #video {
+      width: 100%;
+      height: 300px;
+      border-radius: 12px;
+      border: 1px solid #1e2a44;
+      background: #0b1120;
+    }
+    #imagePreview {
+      max-width: 100%;
+      max-height: 300px;
+      display: none;
+      margin-top: 10px;
+    }
+    .section {
+      margin-bottom: 24px;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    select {
+      background: #0f1726;
+      border: 1px solid #1e2a44;
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: #e7ecf5;
+      width: 100%;
+      max-width: 400px;
+    }
+    #sourceSelectPanel {
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>PDF417 Scanner & Image Reader</h1>
+    <p class="hint">Extrae información de códigos PDF417 desde tu cámara o desde una imagen</p>
+    
+    <div class="grid">
+      <div>
+        <div class="card section">
+          <h2>1. Escanear desde Cámara</h2>
+          <div class="button-group">
+            <button id="startButton">Iniciar Cámara</button>
+            <button id="resetButton" class="secondary">Detener Cámara</button>
+          </div>
+          
+          <div id="sourceSelectPanel" class="hidden">
+            <label for="sourceSelect">Seleccionar cámara:</label>
+            <select id="sourceSelect"></select>
+          </div>
+          
+          <div>
+            <video id="video" muted playsinline></video>
+          </div>
+        </div>
+        
+        <div class="card section">
+          <h2>2. Cargar Imagen</h2>
+          <div class="button-group">
+            <input type="file" id="fileInput" accept="image/*" class="hidden">
+            <button id="selectImageButton" class="secondary">Seleccionar Imagen</button>
+            <button id="processImageButton" class="success" disabled>Procesar Imagen</button>
+          </div>
+          
+          <div>
+            <img id="imagePreview" alt="Vista previa de la imagen">
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <div class="card section">
+          <h2>Resultados</h2>
+          <div class="result-summary">
+            <div class="kv">
+              <b>Estado:</b> <span id="status">Esperando escaneo...</span>
+            </div>
+          </div>
+          
+          <div class="json-container">
+            <h4>Datos Extraídos:</h4>
+            <pre class="json-pre" id="result"></pre>
+          </div>
+          
+          <div class="json-container">
+            <h4>Texto Crudo:</h4>
+            <pre class="json-pre" id="result2"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src='https://unpkg.com/@zxing/library@latest'></script>
+  <script>
+    const parseUSDL = str => {
+      const CodeToKey = {
+        DCA: "jurisdictionVehicleClass",
+        DCB: "jurisdictionRestrictionCodes",
+        DCD: "jurisdictionEndorsementCodes",
+        DBA: "dateOfExpiry",
+        DCS: "lastName",
+        DAC: "firstName",
+        DAD: "middleName",
+        DBD: "dateOfIssue",
+        DBB: "dateOfBirth",
+        DBC: "sex",
+        DAY: "eyeColor",
+        DAU: "height",
+        DAG: "addressStreet",
+        DAI: "addressCity",
+        DAJ: "addressState",
+        DAK: "addressPostalCode",
+        DAQ: "documentNumber",
+        DCF: "documentDiscriminator",
+        DCG: "issuer",
+        DDE: "lastNameTruncated",
+        DDF: "firstNameTruncated",
+        DDG: "middleNameTruncated",
+        // optional
+        DAZ: "hairColor",
+        DAH: "addressStreet2",
+        DCI: "placeOfBirth",
+        DCJ: "auditInformation",
+        DCK: "inventoryControlNumber",
+        DBN: "otherLastName",
+        DBG: "otherFirstName",
+        DBS: "otherSuffixName",
+        DCU: "nameSuffix", // e.g. jr, sr
+        DCE: "weightRange",
+        DCL: "race",
+        DCM: "standardVehicleClassification",
+        DCN: "standardEndorsementCode",
+        DCO: "standardRestrictionCode",
+        DCP: "jurisdictionVehicleClassificationDescription",
+        DCQ: "jurisdictionEndorsementCodeDescription",
+        DCR: "jurisdictionRestrictionCodeDescription",
+        DDA: "complianceType",
+        DDB: "dateCardRevised",
+        DDC: "dateOfExpiryHazmatEndorsement",
+        DDD: "limitedDurationDocumentIndicator",
+        DAW: "weightLb",
+        DAX: "weightKg",
+        DDH: "dateAge18",
+        DDI: "dateAge19",
+        DDJ: "dateAge21",
+        DDK: "organDonor",
+        DDL: "veteran"
+      };
+
+      const lineSeparator = "\n";
+      const defaultOptions = { suppressErrors: false };
+
+      const parse = function parseCode128(str, options = defaultOptions) {
+        const props = {};
+        const rawLines = str.trim().split(lineSeparator);
+        const lines = rawLines.map(rawLine => sanitizeData(rawLine));
+        let started;
+        lines.slice(0, -1).forEach(line => {
+          if (!started) {
+            if (line.indexOf("ANSI ") === 0) {
+              started = true;
+            }
+            return;
+          }
+
+          let code = getCode(line);
+          let value = getValue(line);
+          let key = getKey(code);
+          if (!key) {
+            if (options.suppressErrors) {
+              return;
+            } else {
+              throw new Error("unknown code: " + code);
+            }
+          }
+
+          if (isSexField(code)) value = getSex(code, value);
+
+          props[key] = isDateField(key) ? getDateFormat(value) : value;
+        });
+
+        return props;
+      };
+
+      const sanitizeData = (rawLine) =>
+        rawLine.
+        match(/[\011\012\015\040-\177]*/g).
+        join("").
+        trim();
+
+      const getCode = line => line.slice(0, 3);
+      const getValue = line => line.slice(3);
+      const getKey = code => CodeToKey[code];
+
+      const isSexField = code => code === "DBC";
+
+      const getSex = (code, value) => value === "1" ? "M" : "F";
+
+      const isDateField = key => key.indexOf("date") === 0;
+
+      const getDateFormat = value => {
+        const [mm, dd, yyyy] = [
+          value.slice(0, 2),
+          value.slice(2, 4),
+          value.slice(4)
+        ];
+
+        return `${yyyy}-${mm}-${dd}`;
+      };
+
+      return parse(str, { suppressErrors: true });
+    };
+
+    // Variables globales
+    let selectedDeviceId;
+    let codeReader;
+    let selectedImageFile = null;
+    let isScanning = false;
+
+    // Inicialización
+    (async () => {
+      try {
+        codeReader = new ZXing.BrowserMultiFormatReader();
+        const videoInputDevices = await codeReader.getVideoInputDevices();
+        const sourceSelect = document.getElementById("sourceSelect");
+        selectedDeviceId = videoInputDevices[0].deviceId;
+
+        // Mostrar lista de cámaras si hay más de una
+        if (videoInputDevices.length > 1) {
+          videoInputDevices.forEach(element => {
+            const sourceOption = document.createElement("option");
+            sourceOption.text = element.label;
+            sourceOption.value = element.deviceId;
+            sourceSelect.appendChild(sourceOption);
+          });
+
+          sourceSelect.onchange = () => {
+            selectedDeviceId = sourceSelect.value;
+          };
+
+          const sourceSelectPanel = document.getElementById("sourceSelectPanel");
+          sourceSelectPanel.classList.remove("hidden");
+        }
+
+        // Configurar eventos
+        setupEventListeners();
+      } catch (err) {
+        updateStatus("Error: " + err.message, "error");
+        console.error(err.stack);
+      }
+    })();
+
+    function setupEventListeners() {
+      // Eventos para la cámara
+      document.getElementById("startButton").addEventListener("click", startCamera);
+      document.getElementById("resetButton").addEventListener("click", resetCamera);
+
+      // Eventos para la imagen
+      document.getElementById("selectImageButton").addEventListener("click", () => {
+        document.getElementById("fileInput").click();
+      });
+      
+      document.getElementById("fileInput").addEventListener("change", handleImageSelection);
+      document.getElementById("processImageButton").addEventListener("click", processImage);
+    }
+
+    function updateStatus(message, type = "info") {
+      const statusElement = document.getElementById("status");
+      statusElement.textContent = message;
+      
+      // Resetear clases
+      statusElement.className = "";
+      
+      // Aplicar clase según el tipo
+      if (type === "success") {
+        statusElement.classList.add("check-ok");
+      } else if (type === "error") {
+        statusElement.classList.add("check-fail");
+      }
+    }
+
+    function startCamera() {
+      if (isScanning) {
+        updateStatus("La cámara ya está en funcionamiento", "info");
+        return;
+      }
+      
+      isScanning = true;
+      updateStatus("Escaneando con la cámara...", "info");
+      
+      codeReader.decodeFromVideoDevice(
+        selectedDeviceId,
+        "video",
+        (result, err) => {
+          if (result) {
+            console.log(result);
+            if (result.format === 10) { // PDF417 format
+              const parsedData = parseUSDL(result.text);
+              document.getElementById("result").textContent = JSON.stringify(parsedData, null, 2);
+              updateStatus("Código PDF417 detectado y procesado", "success");
+              
+              // Mostrar contenedores de resultados
+              document.querySelectorAll('.json-container').forEach(el => {
+                el.style.display = 'block';
+              });
+            } else {
+              updateStatus("Formato detectado: " + result.format, "info");
+            }
+            document.getElementById("result2").textContent = result.text;
+          }
+
+          if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.error(err.stack);
+            updateStatus("Error: " + err.message, "error");
+          }
+        });
+
+      console.log(`Started continuous decode from camera with id ${selectedDeviceId}`);
+    }
+
+    function resetCamera() {
+      if (codeReader) {
+        codeReader.reset();
+      }
+      isScanning = false;
+      document.getElementById("result").textContent = "";
+      document.getElementById("result2").textContent = "";
+      updateStatus("Cámara detenida", "info");
+      console.log("Camera reset.");
+    }
+
+    function handleImageSelection(event) {
+      const file = event.target.files[0];
+      if (file) {
+        selectedImageFile = file;
+        
+        // Mostrar vista previa
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const imagePreview = document.getElementById("imagePreview");
+          imagePreview.src = e.target.result;
+          imagePreview.style.display = 'block';
+          
+          // Habilitar botón de procesar
+          document.getElementById("processImageButton").disabled = false;
+          updateStatus("Imagen cargada. Lista para procesar.", "info");
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function processImage() {
+      if (!selectedImageFile) {
+        updateStatus("Por favor, selecciona una imagen primero.", "error");
+        return;
+      }
+
+      const image = document.getElementById("imagePreview");
+      updateStatus("Procesando imagen...", "info");
+      
+      // Usar ZXing para decodificar la imagen
+      codeReader.decodeFromImageElement(image)
+        .then(result => {
+          console.log("Decoding result:", result);
+          
+          if (result.format === 10) { // PDF417 format
+            const parsedData = parseUSDL(result.text);
+            document.getElementById("result").textContent = JSON.stringify(parsedData, null, 2);
+            updateStatus("Código PDF417 detectado y procesado", "success");
+            
+            // Mostrar contenedores de resultados
+            document.querySelectorAll('.json-container').forEach(el => {
+              el.style.display = 'block';
+            });
+          } else {
+            updateStatus("Formato detectado: " + result.format + " (se esperaba PDF417)", "info");
+          }
+          
+          document.getElementById("result2").textContent = result.text;
+        })
+        .catch(err => {
+          console.error("Error decoding image:", err);
+          updateStatus("Error al procesar la imagen: " + err.message, "error");
+          document.getElementById("result2").textContent = "";
+        });
+    }
+  </script>
+</body>
+</html>

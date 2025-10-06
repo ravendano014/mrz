@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en" >
+
+<head>
+  <meta charset="UTF-8">
+  <title>Barcode Detection API</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css'>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --fg: #e5e7eb;
+      --card: #0f172a;
+      --accent: #60a5fa;
+      --muted: #94a3b8;
+      --line: #1f2937
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, sans-serif
+    }
+
+    header {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line)
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px
+    }
+
+    main {
+      display: grid;
+      gap: 16px;
+      padding: 16px
+    }
+
+    @media (min-width:960px) {
+      main {
+        grid-template-columns: 1.1fr 1fr
+      }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden
+    }
+
+    .card h2 {
+      margin: 0;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--accent);
+      font-size: 14px
+    }
+
+    .card .body {
+      padding: 12px
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #0b1220;
+      color: var(--fg);
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 8px
+    }
+
+    .btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer
+    }
+
+    .btn.secondary {
+      background: #1f2937
+    }
+
+    .btn.success {
+      background: #059669
+    }
+
+    .pill {
+      background: #111827;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--muted)
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 52vh;
+      overflow: auto;
+      background: #0b1220;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line)
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px 6px;
+      font-size: 14px
+    }
+
+    th {
+      color: #93c5fd;
+      text-align: left
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 8px 0
+    }
+
+    .ok {
+      color: #22c55e;
+      font-weight: 600
+    }
+
+    .bad {
+      color: #f87171;
+      font-weight: 600
+    }
+
+    code.k {
+      background: #111827;
+      border: 1px solid var(--line);
+      padding: 2px 6px;
+      border-radius: 8px
+    }
+
+    .json-container {
+      position: relative
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 1
+    }
+
+    /* Estilos específicos para la funcionalidad de código de barras */
+    .container {
+      margin-top: 1em;
+    }
+
+    h5,
+    p {
+      margin-top: 0.5em;
+    }
+
+    label {
+      display: inline-block;
+    }
+
+    .viewport {
+      display: inline-block;
+      position: relative;
+    }
+
+    img,
+    video,
+    #note {
+      display: none;
+      max-width: 100%;
+    }
+
+    #imgUrl {
+      width: 25em;
+      max-width: 100%;
+      background: var(--card);
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+
+    #imgUrl.active {
+      color: #ffffff;
+      background-color: var(--accent);
+    }
+
+    #imgUrl.active~.viewport>#img,
+    #imgUrl.active~#note,
+    #imgBtn.button-primary~.viewport>#img,
+    #videoBtn.button-primary~.viewport>#video {
+      display: block;
+    }
+
+    #canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #encoding {
+      margin-right: 1em;
+      background: var(--card);
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    .button-primary {
+      background-color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* Ajustes para el skeleton framework */
+    .button {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .button.button-primary {
+      background: var(--accent);
+    }
+  </style>
+</head>
+
+<body translate="no">
+    <header>
+        <h1>Barcode Detector</h1>
+    </header>
+
+  <div class="container">
+  
+  <div>Supported formats: <pre id="formats"></pre></p>
+
+  <h5>Image source</h5>
+
+  <input id="fileInput" type="file" style="display: none;" accept="image/*">
+
+  <input id="imgUrl" type="url" placeholder="Paste an image URL then click outside" required>
+  <button id="imgBtn">Image file</button>
+  <button id="videoBtn">Camera</button>
+
+  <select id="encoding">
+    <option value="utf-8" selected>UTF-8</option>
+    <option value="iso-8859-15">ISO-8859-15</option>
+    <option value="windows-1252">Windows-1252</option>
+    <option value="macintosh">Macintosh</option>
+  </select>
+
+  <label>
+    <input id="details" type="checkbox">
+    <span class="label-body">Show details</span>
+  </label>
+
+  <div class="viewport">
+    <canvas id="canvas"></canvas>
+    <img id="img" crossorigin="anonymous">
+    <video id="video" muted autoplay playsinline></video>
+  </div>
+
+  <p id="note">If the image does not appear then loading may have been blocked by the server's CORS policy.</p>
+
+  <h5>Result</h5>
+
+  <pre id="result"></pre>
+</div>
+  
+    <script type="module">
+import { BarcodeDetectorPolyfill } from "https://cdn.jsdelivr.net/npm/@undecaf/barcode-detector-polyfill@latest/dist/main.js";
+
+const el = {};
+
+document.
+querySelectorAll('[id]').
+forEach(element => el[element.id] = element);
+
+const
+canvas = el.canvas,
+ctx = canvas.getContext('2d');
+
+let
+supportedFormats,
+detector,
+requestId = null;
+
+
+async function createDetector() {
+  supportedFormats = await BarcodeDetectorPolyfill.getSupportedFormats();
+  el.formats.innerHTML = supportedFormats.join(', ');
+  detector = new BarcodeDetectorPolyfill({ formats: supportedFormats, zbar: { encoding: el.encoding.value } });
+}
+
+
+function detect(source) {
+  return detector.
+  detect(source).
+  then(symbols => {
+    canvas.width = source.naturalWidth || source.videoWidth || source.width;
+    canvas.height = source.naturalHeight || source.videoHeight || source.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    symbols.forEach(symbol => {
+      const lastCornerPoint = symbol.cornerPoints[symbol.cornerPoints.length - 1];
+      ctx.moveTo(lastCornerPoint.x, lastCornerPoint.y);
+      symbol.cornerPoints.forEach(point => ctx.lineTo(point.x, point.y));
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#00e000ff';
+      ctx.stroke();
+    });
+
+    if (!el.details.checked) {
+      symbols.forEach(symbol => {
+        delete symbol.boundingBox;
+        delete symbol.cornerPoints;
+      });
+    }
+    el.result.innerText = JSON.stringify(symbols, null, 2);
+  });
+}
+
+
+function detectImg() {
+  detectVideo(false);
+
+  if (el.video.srcObject) {
+    el.video.srcObject.getTracks().forEach(track => track.stop());
+    el.video.srcObject = null;
+  }
+
+  // FF needs some time to properly update decode()
+  setTimeout(() => el.img.decode().then(() => detect(el.img)), 100);
+}
+
+
+function detectVideo(repeat) {
+  if (!repeat) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  if (typeof repeat === 'undefined') {
+    repeat = true;
+  }
+
+  if (repeat) {
+    detect(el.video).
+    then(() => requestId = requestAnimationFrame(() => detectVideo(true)));
+
+  } else {
+    cancelAnimationFrame(requestId);
+    requestId = null;
+  }
+}
+
+
+function onUrlActive() {
+  if (el.imgUrl.validity.valid) {
+    el.imgBtn.className = el.videoBtn.className = '';
+    el.imgUrl.className = 'active';
+
+    el.img.src = el.imgUrl.value;
+    detectImg();
+  }
+}
+
+
+createDetector();
+
+el.encoding.addEventListener('change', createDetector);
+
+el.imgUrl.addEventListener('change', onUrlActive);
+el.imgUrl.addEventListener('focus', onUrlActive);
+
+
+el.fileInput.addEventListener('change', event => {
+  el.imgUrl.className = el.videoBtn.className = '';
+  el.imgBtn.className = 'button-primary';
+
+  el.img.src = URL.createObjectURL(el.fileInput.files[0]);
+  el.fileInput.value = null;
+  detectImg();
+});
+
+
+el.imgBtn.addEventListener('click', event => {
+  el.fileInput.dispatchEvent(new MouseEvent('click'));
+});
+
+
+el.videoBtn.addEventListener('click', event => {
+  if (!requestId) {
+    navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'environment' } }).
+    then(stream => {
+      el.imgUrl.className = el.imgBtn.className = '';
+      el.videoBtn.className = 'button-primary';
+
+      el.video.srcObject = stream;
+      detectVideo();
+    }).
+    catch(error => {
+      el.result.innerText = JSON.stringify(error);
+    });
+
+  } else {
+    el.imgUrl.className = el.imgBtn.className = el.videoBtn.className = '';
+
+    detectVideo(false);
+  }
+});
+
+  </script>
+
+  
+</body>
+
+</html>
