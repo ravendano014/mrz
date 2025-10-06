@@ -1,33 +1,285 @@
 <!DOCTYPE html>
-<html lang="en" >
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
   <title>PWA PDF417 Scanner</title>  
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    :root { --bg:#0f1115; --fg:#e8eaed; --muted:#9aa0a6; --acc:#1a73e8; --ok:#00c853; --err:#ff5252; }
+    html,body {height:100%}
+    body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,Segoe UI,Roboto,Arial}
+    h1{font-size:18px;margin:12px 0}
+    .wrap{max-width:1100px;margin:0 auto;padding:16px}
+    .grid{display:grid;grid-template-columns:380px 1fr;gap:16px}
+    .panel{background:#12151b;border:1px solid #1f2430;border-radius:12px;padding:12px}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    button,select,input[type="file"],label{background:#161a22;border:1px solid #283042;color:var(--fg);padding:8px 10px;border-radius:10px}
+    button:hover{border-color:var(--acc)}
+    button.primary{background:var(--acc);border-color:var(--acc);color:white}
+    button.danger{background:#2b1a1a;border-color:#442020}
+    input[type="checkbox"]{transform:scale(1.2);vertical-align:middle;margin-right:6px}
+    .status{margin-top:10px;padding:8px 10px;border-radius:10px;background:#11151c;border:1px dashed #2b3445;color:var(--muted)}
+    .status.ok{border-color:var(--ok);color:#caffd1}
+    .status.error{border-color:var(--err);color:#ffd0d0}
+    .video-wrap{position:relative;border-radius:12px;overflow:hidden;border:1px solid #263046}
+    video{width:100%;display:block;background:#000}
+    /* Recuadro verde guía */
+    .frame{
+      position:absolute;inset:10% 15%;
+      border:3px solid rgba(0,255,0,.75); border-radius:8px;
+      box-shadow:0 0 0 9999px rgba(0,0,0,.2) inset;
+      pointer-events:none
+    }
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    pre{margin:0;background:#0f131a;border:1px solid #1f2736;border-radius:10px;padding:10px;max-height:260px;overflow:auto}
+    .small{font-size:12px;color:var(--muted)}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#182133;border:1px solid #283452;color:#a2b6ff;margin-left:6px}
+    .footer{margin-top:8px;color:var(--muted)}
+    
+    /* Estilos específicos para la aplicación de scanner */
+    #qr-reader { width: 100%; max-width: 500px; }
+    #qr-reader-results { 
+      margin: 10px 0; 
+      padding: 10px; 
+      background: #12151b; 
+      border: 1px solid #1f2430; 
+      border-radius: 8px;
+    }
+    #parse-btn { 
+      display: none; 
+      margin: 10px 0; 
+      padding: 10px 20px; 
+      background: var(--acc); 
+      color: white; 
+      border: none; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      font-weight: bold;
+    }
+    #parse-btn:hover {
+      background: #0d62d1;
+    }
+    #parsed-data { 
+      margin-top: 20px; 
+      padding: 15px; 
+      border: 1px solid #1f2430; 
+      background: #12151b; 
+      border-radius: 8px;
+    }
+    #parsed-data table {
+      width: 100%; 
+      border-collapse: collapse;
+    }
+    #parsed-data tr {
+      border-bottom: 1px solid #1f2430;
+    }
+    #parsed-data td {
+      padding: 10px 8px;
+    }
+    #parsed-data td:first-child {
+      font-weight: bold; 
+      width: 40%; 
+      color: var(--muted);
+    }
+  </style>
 </head>
 
 <body translate="no">
-  <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>PWA PDF417 Scanner</title>
-  <script src="https://unpkg.com/html5-qrcode"></script>
-</head>
-<body>
-    <div id="qr-reader" style="width:500px"></div>
-    <div id="qr-reader-results">Ecaneando codigo</div>
-  <script>
+  <div class="wrap">
+    <h1>PWA PDF417 Scanner</h1>
+    
+    <div class="grid">
+      <div class="panel">
+        <div id="qr-reader"></div>
+        <div id="qr-reader-results" class="status">Escaneando código...</div>
+        <button id="parse-btn" class="primary">Parsear PDF417</button>
+      </div>
+      
+      <div class="panel">
+        <div id="parsed-data">
+          <p class="small">Los datos parseados aparecerán aquí después de escanear y hacer clic en "Parsear PDF417"</p>
+        </div>
+      </div>
+    </div>
+  </div>
 
+  <script>
     var resultContainer = document.getElementById('qr-reader-results');
+    var parseBtn = document.getElementById('parse-btn');
+    var parsedDataContainer = document.getElementById('parsed-data');
     var lastResult, countResults = 0;
 
     function onScanSuccess(decodedText, decodedResult) {
         if (decodedText !== lastResult) {
             ++countResults;
             lastResult = decodedText;
-            resultContainer.append(`Scan result ${decodedText}`)
+            resultContainer.innerHTML = `<span class="status ok">Scan result: ${decodedText}</span>`;
+            
+            // Mostrar el botón de parsear cuando se detecta un código
+            parseBtn.style.display = 'block';
         }
+    }
+
+    // Función para parsear PDF417
+    const parseUSDL = str => {
+      const CodeToKey = {
+        DCA: "jurisdictionVehicleClass",
+        DCB: "jurisdictionRestrictionCodes",
+        DCD: "jurisdictionEndorsementCodes",
+        DBA: "dateOfExpiry",
+        DCS: "lastName",
+        DAC: "firstName",
+        DAD: "middleName",
+        DBD: "dateOfIssue",
+        DBB: "dateOfBirth",
+        DBC: "sex",
+        DAY: "eyeColor",
+        DAU: "height",
+        DAG: "addressStreet",
+        DAI: "addressCity",
+        DAJ: "addressState",
+        DAK: "addressPostalCode",
+        DAQ: "documentNumber",
+        DCF: "documentDiscriminator",
+        DCG: "issuer",
+        DDE: "lastNameTruncated",
+        DDF: "firstNameTruncated",
+        DDG: "middleNameTruncated",
+        // optional
+        DAZ: "hairColor",
+        DAH: "addressStreet2",
+        DCI: "placeOfBirth",
+        DCJ: "auditInformation",
+        DCK: "inventoryControlNumber",
+        DBN: "otherLastName",
+        DBG: "otherFirstName",
+        DBS: "otherSuffixName",
+        DCU: "nameSuffix", // e.g. jr, sr
+        DCE: "weightRange",
+        DCL: "race",
+        DCM: "standardVehicleClassification",
+        DCN: "standardEndorsementCode",
+        DCO: "standardRestrictionCode",
+        DCP: "jurisdictionVehicleClassificationDescription",
+        DCQ: "jurisdictionEndorsementCodeDescription",
+        DCR: "jurisdictionRestrictionCodeDescription",
+        DDA: "complianceType",
+        DDB: "dateCardRevised",
+        DDC: "dateOfExpiryHazmatEndorsement",
+        DDD: "limitedDurationDocumentIndicator",
+        DAW: "weightLb",
+        DAX: "weightKg",
+        DDH: "dateAge18",
+        DDI: "dateAge19",
+        DDJ: "dateAge21",
+        DDK: "organDonor",
+        DDL: "veteran"
+      };
+
+      const lineSeparator = "\n";
+      const defaultOptions = { suppressErrors: false };
+
+      const parse = function parseCode128(str, options = defaultOptions) {
+        const props = {};
+        const rawLines = str.trim().split(lineSeparator);
+        const lines = rawLines.map(rawLine => sanitizeData(rawLine));
+        let started;
+        lines.slice(0, -1).forEach(line => {
+          if (!started) {
+            if (line.indexOf("ANSI ") === 0) {
+              started = true;
+            }
+            return;
+          }
+
+          let code = getCode(line);
+          let value = getValue(line);
+          let key = getKey(code);
+          if (!key) {
+            if (options.suppressErrors) {
+              return;
+            } else {
+              throw new Error("unknown code: " + code);
+            }
+          }
+
+          if (isSexField(code)) value = getSex(code, value);
+
+          props[key] = isDateField(key) ? getDateFormat(value) : value;
+        });
+
+        return props;
+      };
+
+      const sanitizeData = (rawLine) =>
+        rawLine.
+        match(/[\011\012\015\040-\177]*/g).
+        join("").
+        trim();
+
+      const getCode = line => line.slice(0, 3);
+      const getValue = line => line.slice(3);
+      const getKey = code => CodeToKey[code];
+
+      const isSexField = code => code === "DBC";
+
+      const getSex = (code, value) => value === "1" ? "M" : "F";
+
+      const isDateField = key => key.indexOf("date") === 0;
+
+      const getDateFormat = value => {
+        const [mm, dd, yyyy] = [
+          value.slice(0, 2),
+          value.slice(2, 4),
+          value.slice(4)
+        ];
+
+        return `${yyyy}-${mm}-${dd}`;
+      };
+
+      return parse(str, { suppressErrors: true });
+    };
+
+    // Evento del botón Parsear
+    parseBtn.addEventListener('click', function() {
+      if (lastResult) {
+        try {
+          const parsedData = parseUSDL(lastResult);
+          displayParsedData(parsedData);
+        } catch (error) {
+          parsedDataContainer.innerHTML = `<div class="status error">Error al parsear: ${error.message}</div>`;
+        }
+      } else {
+        parsedDataContainer.innerHTML = '<div class="status error">No hay código escaneado para parsear</div>';
+      }
+    });
+
+    // Función para mostrar los datos parseados
+    function displayParsedData(data) {
+      let html = '<h3>Datos Parseados:</h3><table>';
+      
+      for (const [key, value] of Object.entries(data)) {
+        if (value) {
+          html += `
+            <tr>
+              <td>${formatKey(key)}</td>
+              <td>${value}</td>
+            </tr>
+          `;
+        }
+      }
+      
+      html += '</table>';
+      parsedDataContainer.innerHTML = html;
+    }
+
+    // Función para formatear las claves para mejor visualización
+    function formatKey(key) {
+      return key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, str => str.toUpperCase())
+        .trim();
     }
 
     var html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: 250 });
@@ -35,16 +287,12 @@
       if (decodedText !== lastResult) {
             ++countResults;
             lastResult = decodedText;
-            resultContainer.append(`Scan result ${decodedText}`)
+            resultContainer.innerHTML = `<span class="status ok">Scan result: ${decodedText}</span>`;
+            parseBtn.style.display = 'block';
         }
     });
 
   </script>
-</body>
-</html>
-  
-  
-  
 </body>
 
 </html>
