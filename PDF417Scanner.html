@@ -95,6 +95,7 @@
       border-radius: 12px;
       border: 1px solid #1e2a44;
       background: #0b1120;
+      position: relative;
     }
     #imagePreview {
       max-width: 100%;
@@ -123,6 +124,54 @@
     #sourceSelectPanel {
       margin-bottom: 16px;
     }
+    
+    /* Nuevos estilos para el recuadro de enfoque */
+    .scanner-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .scanner-frame {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 70%;
+      height: 50%;
+      border: 3px solid #0f6;
+      border-radius: 12px;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .scanner-frame::before {
+      content: "Coloque el código PDF417 dentro de este marco";
+      position: absolute;
+      top: -30px;
+      color: #0f6;
+      font-size: 14px;
+      text-align: center;
+      width: 100%;
+    }
+    
+    /* Estilo para la opción de beep */
+    .beep-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    
+    .beep-option input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #2a6df5;
+    }
   </style>
 </head>
 <body>
@@ -139,13 +188,21 @@
             <button id="resetButton" class="secondary">Detener Cámara</button>
           </div>
           
+          <div class="beep-option">
+            <input type="checkbox" id="beepCheckbox" checked>
+            <label for="beepCheckbox">Reproducir sonido al detectar código</label>
+          </div>
+          
           <div id="sourceSelectPanel" class="hidden">
             <label for="sourceSelect">Seleccionar cámara:</label>
             <select id="sourceSelect"></select>
           </div>
           
-          <div>
+          <div style="position: relative;">
             <video id="video" muted playsinline></video>
+            <div class="scanner-overlay">
+              <div class="scanner-frame"></div>
+            </div>
           </div>
         </div>
         
@@ -172,8 +229,23 @@
             </div>
           </div>
           
-          <div class="json-container">
+          <div id="extractedDataTable" class="hidden">
             <h4>Datos Extraídos:</h4>
+            <table class="result-table">
+              <thead>
+                <tr>
+                  <th>Campo</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody id="dataTableBody">
+                <!-- Los datos se llenarán dinámicamente -->
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="json-container">
+            <h4>Datos en Formato JSON:</h4>
             <pre class="json-pre" id="result"></pre>
           </div>
           
@@ -188,6 +260,35 @@
 
   <script src='https://unpkg.com/@zxing/library@latest'></script>
   <script>
+    // Función para reproducir el sonido de beep
+    function playBeep() {
+      const beepCheckbox = document.getElementById('beepCheckbox');
+      if (!beepCheckbox.checked) return;
+      
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+      } catch (e) {
+        console.error("Error al reproducir sonido:", e);
+        // Fallback: usar elemento de audio si Web Audio API no está disponible
+        const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
+        audio.play().catch(err => console.log("No se pudo reproducir el sonido:", err));
+      }
+    }
+
     const parseUSDL = str => {
       const CodeToKey = {
         DCA: "jurisdictionVehicleClass",
@@ -307,6 +408,33 @@
       return parse(str, { suppressErrors: true });
     };
 
+    // Función para mostrar datos en la tabla
+    function displayDataInTable(data) {
+      const tableBody = document.getElementById('dataTableBody');
+      const tableContainer = document.getElementById('extractedDataTable');
+      
+      // Limpiar tabla
+      tableBody.innerHTML = '';
+      
+      // Llenar tabla con datos
+      for (const [key, value] of Object.entries(data)) {
+        const row = document.createElement('tr');
+        
+        const keyCell = document.createElement('td');
+        keyCell.textContent = key;
+        
+        const valueCell = document.createElement('td');
+        valueCell.textContent = value || 'N/A';
+        
+        row.appendChild(keyCell);
+        row.appendChild(valueCell);
+        tableBody.appendChild(row);
+      }
+      
+      // Mostrar tabla
+      tableContainer.classList.remove('hidden');
+    }
+
     // Variables globales
     let selectedDeviceId;
     let codeReader;
@@ -393,7 +521,11 @@
             if (result.format === 10) { // PDF417 format
               const parsedData = parseUSDL(result.text);
               document.getElementById("result").textContent = JSON.stringify(parsedData, null, 2);
+              displayDataInTable(parsedData);
               updateStatus("Código PDF417 detectado y procesado", "success");
+              
+              // Reproducir sonido de confirmación
+              playBeep();
               
               // Mostrar contenedores de resultados
               document.querySelectorAll('.json-container').forEach(el => {
@@ -421,6 +553,7 @@
       isScanning = false;
       document.getElementById("result").textContent = "";
       document.getElementById("result2").textContent = "";
+      document.getElementById("extractedDataTable").classList.add("hidden");
       updateStatus("Cámara detenida", "info");
       console.log("Camera reset.");
     }
@@ -462,7 +595,11 @@
           if (result.format === 10) { // PDF417 format
             const parsedData = parseUSDL(result.text);
             document.getElementById("result").textContent = JSON.stringify(parsedData, null, 2);
+            displayDataInTable(parsedData);
             updateStatus("Código PDF417 detectado y procesado", "success");
+            
+            // Reproducir sonido de confirmación
+            playBeep();
             
             // Mostrar contenedores de resultados
             document.querySelectorAll('.json-container').forEach(el => {
@@ -478,6 +615,7 @@
           console.error("Error decoding image:", err);
           updateStatus("Error al procesar la imagen: " + err.message, "error");
           document.getElementById("result2").textContent = "";
+          document.getElementById("extractedDataTable").classList.add("hidden");
         });
     }
   </script>
