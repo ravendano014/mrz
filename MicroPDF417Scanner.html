@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MicroPDF417 — Lector (DUI El Salvador)</title>
+  <style>
+    /* (Usa estilos similares a tu versión original; aquí van los esenciales) */
+    :root{font-family:system-ui,Segoe UI,Roboto,Arial}
+    body{margin:16px;background:#0b1220;color:#e7ecf5}
+    .app{max-width:980px;margin:0 auto}
+    .card{background:#0f1726;border:1px solid #1e2a44;border-radius:12px;padding:14px;margin-bottom:12px}
+    button{background:#2a6df5;border:0;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
+    button.secondary{background:#2b3b60}
+    #video{width:100%;height:320px;background:#000;border-radius:8px;border:1px solid #1e2a44}
+    .scanner-frame{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:70%;height:45%;border:3px solid #0f6;border-radius:12px;pointer-events:none}
+    .kv{display:grid;grid-template-columns:160px 1fr;gap:6px 12px}
+    .hidden{display:none}
+    .json-pre{background:#0f1726;border:1px solid #1e2a44;border-radius:8px;padding:10px;max-height:260px;overflow:auto}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>MicroPDF417 — Lector (DUI El Salvador)</h1>
+    <div class="card">
+      <h3>1) Cámara</h3>
+      <div style="position:relative">
+        <video id="video" autoplay muted playsinline></video>
+        <div class="scanner-frame" aria-hidden="true"></div>
+      </div>
+      <div style="margin-top:8px">
+        <button id="startBtn">Iniciar Cámara</button>
+        <button id="stopBtn" class="secondary">Detener</button>
+        <label style="margin-left:12px"><input type="checkbox" id="beep" checked> Beep</label>
+      </div>
+      <div id="sourceSelectPanel" class="hidden" style="margin-top:8px">
+        <label for="sourceSelect">Cámara:</label>
+        <select id="sourceSelect"></select>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>2) Cargar imagen</h3>
+      <input type="file" id="fileInput" accept="image/*" />
+      <div style="margin-top:8px">
+        <img id="imgPreview" alt="vista previa" style="max-width:100%;display:none;border-radius:8px;border:1px solid #1e2a44"/>
+      </div>
+      <div style="margin-top:8px">
+        <button id="processImageBtn" disabled>Procesar imagen</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Resultados</h3>
+      <div class="kv">
+        <b>Estado:</b><div id="status">Esperando...</div>
+      </div>
+      <div id="tableContainer" class="hidden" style="margin-top:12px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #1e2a44">Campo</th><th style="text-align:left;padding:6px;border-bottom:1px solid #1e2a44">Valor</th></tr></thead>
+          <tbody id="dataBody"></tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:12px">
+        <h4>JSON</h4>
+        <pre id="jsonResult" class="json-pre"></pre>
+      </div>
+
+      <div style="margin-top:12px">
+        <h4>Texto crudo decodificado</h4>
+        <pre id="rawText" class="json-pre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Librería Dynamsoft (recomendado) -->
+  <script src="https://cdn.jsdelivr.net/npm/dynamsoft-javascript-barcode@9.6.0/dist/dbr.js"></script>
+  <!-- Fallback ZXing (tu versión original) -->
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+
+  <script>
+  // -----------------------------
+  // Config / utilidades
+  // -----------------------------
+  const dynamsoftLicense = "YOUR_DYNAMSOFT_LICENSE"; // <- reemplaza por tu licencia Dynamsoft
+  const statusEl = document.getElementById('status');
+  const dataBody = document.getElementById('dataBody');
+  const tableContainer = document.getElementById('tableContainer');
+  const jsonResult = document.getElementById('jsonResult');
+  const rawTextEl = document.getElementById('rawText');
+
+  function setStatus(msg, type) {
+    statusEl.textContent = msg;
+    statusEl.className = type || '';
+  }
+
+  function clearResults() {
+    dataBody.innerHTML = '';
+    jsonResult.textContent = '';
+    rawTextEl.textContent = '';
+    tableContainer.classList.add('hidden');
+  }
+
+  function displayParsedObject(obj) {
+    dataBody.innerHTML = '';
+    for (const k of Object.keys(obj)) {
+      const tr = document.createElement('tr');
+      const td1 = document.createElement('td'); td1.textContent = k;
+      const td2 = document.createElement('td'); td2.textContent = obj[k] ?? '';
+      tr.appendChild(td1); tr.appendChild(td2);
+      dataBody.appendChild(tr);
+    }
+    tableContainer.classList.remove('hidden');
+    jsonResult.textContent = JSON.stringify(obj, null, 2);
+  }
+
+  // Busca patrón DUI: 8 dígitos - 1 dígito o 9 dígitos seguidos
+  function findDUIinText(text) {
+    if (!text) return null;
+    const patterns = [
+      /\b(\d{8}-\d)\b/g, // 12345678-9
+      /\b(\d{9})\b/g     // 123456789
+    ];
+    for (const p of patterns) {
+      const m = p.exec(text);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  // Parse básico estilo AAMVA (si viniera dentro del payload) -> reutiliza tu parseUSDL si quieres.
+  function parseAAMVAish(raw) {
+    // Intentamos extraer pares DAA.., DAC.. etc. Si no lo hay, devolvemos objeto simple con rawText y DUI si aparece.
+    const obj = {};
+    try {
+      const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      for (const line of lines) {
+        // campo de 3 letras + valor
+        const code = line.slice(0,3);
+        const val = line.slice(3).trim();
+        if (/^[A-Z]{3}$/.test(code) && val) {
+          obj[code] = val;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    // siempre agrega raw
+    obj.raw = raw;
+    const dui = findDUIinText(raw);
+    if (dui) obj.DUI = dui;
+    return obj;
+  }
+
+  // beep
+  function playBeep() {
+    if (!document.getElementById('beep').checked) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 900;
+      o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.2, ctx.currentTime);
+      o.start();
+      setTimeout(()=>{ o.stop(); ctx.close(); }, 220);
+    } catch(e){ console.warn("beep failed", e) }
+  }
+
+  // -----------------------------
+  // Lógica: Dynamsoft (recomendada)
+  // -----------------------------
+  let dbrInstance = null;
+  async function initDynamsoft() {
+    try {
+      if (!window.Dynamsoft) throw new Error("Dynamsoft no cargado");
+      await Dynamsoft.BarcodeReader.engineResourcePath && Promise.resolve(); // noop si ya cargado
+      // Inicializar licencia
+      await Dynamsoft.BarcodeReader.license(dynamsoftLicense);
+      dbrInstance = await Dynamsoft.BarcodeReader.createInstance();
+      // Ajustes runtime: habilitar PDF417 y MICRO_PDF417 (si la API lo soporta)
+      try {
+        const settings = await dbrInstance.getRuntimeSettings();
+        // activar PDF417 y micro si existen
+        settings.barcodeFormatIds = Dynamsoft.BarcodeReader.EnumBarcodeFormat.BF_PDF417 |
+                                    (Dynamsoft.BarcodeReader.EnumBarcodeFormat.BF_MICRO_PDF417 || 0);
+        await dbrInstance.updateRuntimeSettings(settings);
+      } catch (e) {
+        // no crítico: continuar con configuracion por defecto
+        console.info("No updateRuntimeSettings or MICROPDF constant:", e);
+      }
+      console.log("Dynamsoft inicializado");
+      return true;
+    } catch (err) {
+      console.warn("No fue posible inicializar Dynamsoft:", err);
+      return false;
+    }
+  }
+
+  async function decodeWithDynamsoftFromImageElement(imgEl) {
+    if (!dbrInstance) return null;
+    try {
+      // Dynamsoft API: decodeBase64String / decode may variar según versión; usamos decode for image element
+      const results = await dbrInstance.decode(imgEl);
+      if (!results || results.length === 0) return null;
+      // concatenar textos si hay varios
+      const texts = results.map(r => r.barcodeText || r.text || "").join("\n");
+      return { texts, results };
+    } catch (e) {
+      console.error("Dynamsoft decode error:", e);
+      return null;
+    }
+  }
+
+  async function decodeWithDynamsoftFromVideoFrame(videoEl) {
+    if (!dbrInstance) return null;
+    try {
+      const results = await dbrInstance.decodeVideo(videoEl);
+      // decodeVideo puede bloquear; algunas versiones proporcionan eventos. Si no funciona, regresamos null.
+      if (!results || results.length === 0) return null;
+      const texts = results.map(r => r.barcodeText || r.text || "").join("\n");
+      return { texts, results };
+    } catch (e) {
+      console.warn("Dynamsoft video decode error (may be unsupported):", e);
+      return null;
+    }
+  }
+
+  // -----------------------------
+  // Fallback ZXing (tu código original)
+  // -----------------------------
+  const zxingReader = new ZXing.BrowserMultiFormatReader();
+
+  // -----------------------------
+  // Cámara / imagen: manejo
+  // -----------------------------
+  let currentStream = null;
+  const videoEl = document.getElementById('video');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const sourceSelect = document.getElementById('sourceSelect');
+  const sourcePanel = document.getElementById('sourceSelectPanel');
+
+  async function listCameras() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      if (cams.length > 1) {
+        sourceSelect.innerHTML = '';
+        cams.forEach(c => {
+          const opt = document.createElement('option'); opt.value = c.deviceId; opt.textContent = c.label || `Camera ${sourceSelect.length+1}`;
+          sourceSelect.appendChild(opt);
+        });
+        sourcePanel.classList.remove('hidden');
+      }
+    } catch(e){ console.warn("listCameras failed", e) }
+  }
+
+  async function startCamera(deviceId) {
+    clearResults();
+    setStatus("Iniciando cámara...");
+    try {
+      await listCameras();
+      const constraints = { video: { deviceId: deviceId ? { exact: deviceId } : undefined, facingMode: "environment", width: {ideal:1280}, height:{ideal:720} }, audio:false };
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      videoEl.srcObject = currentStream;
+      videoEl.play();
+      setStatus("Cámara en funcionamiento. Buscando códigos...");
+      // Intentar usar Dynamsoft si está inicializado
+      if (!dbrInstance) {
+        const ok = await initDynamsoft();
+        if (!ok) setStatus("Dynamsoft no disponible: usando ZXing como fallback", "info");
+      }
+
+      // Escaneo continuo: preferimos usar ZXing.decodeFromVideoDevice por su callback
+      try {
+        zxingReader.decodeFromVideoDevice(sourceSelect.value || undefined, 'video', (result, err) => {
+          if (result) {
+            handleDecodedResult(result.text || result.getText ? result.getText() : result.text, result);
+          }
+          if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.warn(err);
+          }
+        });
+      } catch (e) {
+        console.warn("ZXing decodeFromVideoDevice failed, will try manual frames:", e);
+        // Manual frames: no implementado - rely on Dynamsoft decodeVideo if supported
+        if (dbrInstance) {
+          // intentar decode con dinamsoft cada X ms
+          const interval = setInterval(async ()=>{
+            if (!currentStream) { clearInterval(interval); return; }
+            try {
+              const dres = await decodeWithDynamsoftFromVideoFrame(videoEl);
+              if (dres && dres.texts) {
+                handleDecodedResult(dres.texts, dres);
+                clearInterval(interval);
+              }
+            } catch(e){ /* ignore */ }
+          }, 700);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setStatus("Error iniciando cámara: " + (err.message || err), "error");
+    }
+  }
+
+  async function stopCamera() {
+    setStatus("Deteniendo cámara...");
+    try {
+      zxingReader.reset(); // detiene ZXing
+    } catch(e){}
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+    videoEl.pause(); videoEl.srcObject = null;
+    setStatus("Cámara detenida");
+  }
+
+  function handleDecodedResult(text, rawResult) {
+    if (!text) { setStatus("Resultado vacío"); return; }
+    playBeep();
+    rawTextEl.textContent = text;
+    setStatus("Código detectado — procesando...");
+    // 1) buscar DUI directo
+    const dui = findDUIinText(text);
+    // 2) intentar parse AAMVA-like
+    const parsed = parseAAMVAish(text);
+    if (dui) parsed.DUI = dui;
+    displayParsedObject(parsed);
+    setStatus("Procesado. Resultado mostrado.", "success");
+  }
+
+  // -----------------------------
+  // Procesamiento de imagen cargada
+  // -----------------------------
+  const fileInput = document.getElementById('fileInput');
+  const imgPreview = document.getElementById('imgPreview');
+  const processImageBtn = document.getElementById('processImageBtn');
+
+  fileInput.addEventListener('change', (ev) => {
+    clearResults();
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    const fr = new FileReader();
+    fr.onload = function(e) {
+      imgPreview.src = e.target.result;
+      imgPreview.style.display = 'block';
+      processImageBtn.disabled = false;
+      setStatus("Imagen cargada. Presiona 'Procesar imagen'.");
+    };
+    fr.readAsDataURL(file);
+  });
+
+  processImageBtn.addEventListener('click', async () => {
+    clearResults();
+    setStatus("Procesando imagen...");
+    // Primero intentar Dynamsoft
+    let handled = false;
+    try {
+      if (!dbrInstance) {
+        const ok = await initDynamsoft();
+        if (!ok) console.info("Dynamsoft no inicializado, usar ZXing fallback");
+      }
+      if (dbrInstance) {
+        const dres = await decodeWithDynamsoftFromImageElement(imgPreview);
+        if (dres && dres.texts) {
+          handleDecodedResult(dres.texts, dres.results);
+          handled = true;
+        }
+      }
+    } catch (e) { console.warn("Dynamsoft decode image failed", e); }
+
+    // fallback ZXing
+    if (!handled) {
+      try {
+        const zxres = await zxingReader.decodeFromImageElement(imgPreview);
+        if (zxres) {
+          handleDecodedResult(zxres.text || zxres.getText(), zxres);
+          handled = true;
+        }
+      } catch (e) {
+        console.warn("ZXing decodeFromImageElement failed", e);
+      }
+    }
+
+    if (!handled) {
+      setStatus("No se detectó código PDF417/MicroPDF417 en la imagen.", "error");
+    }
+  });
+
+  // -----------------------------
+  // UI wiring
+  // -----------------------------
+  document.getElementById('startBtn').addEventListener('click', ()=> startCamera(sourceSelect.value));
+  document.getElementById('stopBtn').addEventListener('click', stopCamera);
+  sourceSelect.addEventListener('change', ()=> startCamera(sourceSelect.value));
+
+  // on load: listar cams
+  (async ()=> {
+    await listCameras();
+    setStatus("Listo. Puede iniciar la cámara o cargar una imagen.");
+  })();
+  </script>
+</body>
+</html>
