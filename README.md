@@ -12,6 +12,8 @@
 
 [PDF417 Reader](https://ravendano014.github.io/mrz/PDF417Reader.html)
 
+[PDF417 Coder](https://ravendano014.github.io/mrz/PDF417Coder.html)
+
 [PDF417 QR Scanner](https://ravendano014.github.io/mrz/PDF417QR.html)
 
 [PDF417 Multi Scanner](https://ravendano014.github.io/mrz/PDF417Multi.html)
