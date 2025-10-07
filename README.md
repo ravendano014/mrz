@@ -19,3 +19,5 @@
 [PDF417 PWA Scanner](https://ravendano014.github.io/mrz/PDF417PWA.html)
 
 <span style="color:green;">Barcode</spn> [Barcode Scanner](https://ravendano014.github.io/mrz/Barcode.html)
+
+<span style="color:green;">Micro PDF417</span>  [Micro PDF417 & Image Scanner](https://ravendano014.github.io/mrz/MicroPDF417Scanner.html)
