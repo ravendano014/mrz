@@ -1,6 +1,6 @@
   [MRZ Online Cam Reader](https://ravendano014.github.io/mrz/)
 
-  [MRZ Online Image Reader](https://ravendano014.github.io/mrz/MRZFeed.html)
+<span style="color:green;">MRZ</span>  [MRZ Online Image Reader](https://ravendano014.github.io/mrz/MRZFeed.html)
 
 [MRZ Coder](https://ravendano014.github.io/mrz/MRZGen.html)
 
@@ -10,7 +10,7 @@
 
 [PDF417 Reader](https://ravendano014.github.io/mrz/PDF417Reader.html)
 
-  [PDF417 & Image Scanner](https://ravendano014.github.io/mrz/PDF417Scanner.html)
+<span style="color:green;">PDF417</span>  [PDF417 & Image Scanner](https://ravendano014.github.io/mrz/PDF417Scanner.html)
 
 [PDF417 QR Scanner](https://ravendano014.github.io/mrz/PDF417QR.html)
 
@@ -20,4 +20,4 @@
 
 [PDF417 PWA Scanner](https://ravendano014.github.io/mrz/PDF417PWA.html)
 
-[Barcode Scanner](https://ravendano014.github.io/mrz/Barcode.html)
+<span style="color:green;">Barcode</spn> [Barcode Scanner](https://ravendano014.github.io/mrz/Barcode.html)
