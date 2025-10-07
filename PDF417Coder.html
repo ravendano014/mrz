@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generador PDF417 — BWIP-JS 4.7.0</title>
+
+  <!-- BWIP-JS desde CDNJS 4.7.0 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bwip-js/4.7.0/bwip-js-min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#111827; --muted:#6b7280; --txt:#e5e7eb; --acc:#22d3ee;
+      --border:#1f2937;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Segoe UI',sans-serif;
+      background:linear-gradient(180deg,#0b1220,#0a0f1a 60%,#070b13);
+      color:var(--txt);
+    }
+    header{
+      padding:14px 18px; border-bottom:1px solid var(--border);
+      display:flex; gap:10px; align-items:center; justify-content:space-between;
+      background:#0b1220; position:sticky; top:0; z-index:10;
+    }
+    header h1{margin:0; font-size:18px; letter-spacing:.2px}
+    header small{color:var(--muted)}
+    .container{
+      padding:20px; max-width:1200px; margin-inline:auto;
+      display:grid; grid-template-columns:1.2fr .8fr; gap:18px;
+    }
+    .card{
+      background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px;
+      box-shadow:0 10px 24px rgba(0,0,0,.35);
+    }
+    .card h2{margin:0 0 10px; font-size:16px}
+    .subgrid{ display:grid; gap:10px; grid-template-columns:repeat(12,1fr); }
+    label{font-size:12px; color:var(--muted); display:block; margin-bottom:4px}
+    input,select,textarea{
+      width:100%; padding:10px 12px; border-radius:10px; background:#0b1220; color:var(--txt);
+      border:1px solid var(--border); outline:none;
+    }
+    textarea{min-height:120px; resize:vertical}
+    .row{grid-column:span 12}
+    .col6{grid-column:span 6} .col4{grid-column:span 4} .col3{grid-column:span 3}
+    .col2{grid-column:span 2}
+    .hint{font-size:12px; color:var(--muted)}
+    .btn{
+      appearance:none; border:none; padding:10px 14px; border-radius:10px; cursor:pointer;
+      background:linear-gradient(90deg,#06b6d4,#22d3ee); color:#001018; font-weight:600;
+    }
+    .btn:disabled{opacity:.5; cursor:not-allowed}
+    .btn.secondary{background:#111827; color:var(--txt); border:1px solid var(--border)}
+    .toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+    canvas, svg{max-width:100%; display:block; margin:auto; background:#fff; border-radius:8px}
+    .preview{ display:grid; gap:12px; grid-template-columns:1fr; align-content:start; justify-items:stretch; }
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+         background:#0b1220; padding:2px 6px; border-radius:6px; border:1px solid var(--border); color:#9ca3af;}
+    footer{max-width:1200px; margin:14px auto 40px; color:#94a3b8; font-size:12px; padding:0 20px}
+    .note{background:#07211f;border:1px solid #0d3d38;color:#8ef2e6;padding:10px;border-radius:10px}
+    @media (max-width:1024px){ .container{grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Generador PDF417</h1>
+      <small>Demo educativa · No usar datos reales</small>
+    </div>
+    <div class="toolbar">
+      <button class="btn" id="btn-generate">Generar</button>
+      <button class="btn secondary" id="btn-clear">Limpiar</button>
+      <button class="btn secondary" id="btn-download">Descargar PNG</button>
+      <button class="btn secondary" id="btn-download-svg">Descargar SVG</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Panel Izquierdo: Datos -->
+    <section class="card">
+      <h2>Datos principales</h2>
+      <div class="subgrid">
+        <div class="col4">
+          <label>Nombre</label>
+          <input id="firstName" placeholder="FORD" />
+        </div>
+        <div class="col2">
+          <label>Segundo nombre</label>
+          <input id="middleName" placeholder="C" />
+        </div>
+        <div class="col6">
+          <label>Apellido</label>
+          <input id="lastName" placeholder="COLANGELO" />
+        </div>
+
+        <div class="col4">
+          <label>Número de licencia</label>
+          <input id="license" placeholder="F2475561" />
+        </div>
+        <div class="col2">
+          <label>Sexo</label>
+          <select id="sex">
+            <option value="M">M</option><option value="F">F</option><option value="X">X</option>
+          </select>
+        </div>
+        <div class="col2">
+          <label>Clase</label>
+          <input id="dlclass" placeholder="C" />
+        </div>
+        <div class="col4">
+          <label>Emisor / Estado</label>
+          <input id="issuer" placeholder="CA" />
+        </div>
+
+        <div class="col4">
+          <label>Fecha Nac. (MMDDYYYY)</label>
+          <input id="dob" placeholder="05211990" />
+        </div>
+        <div class="col4">
+          <label>Expira (MMDDYYYY)</label>
+          <input id="exp" placeholder="05212025" />
+        </div>
+        <div class="col4">
+          <label>Emisión (MMDDYYYY)</label>
+          <input id="doi" placeholder="07022020" />
+        </div>
+
+        <div class="row"><hr style="border:0;border-top:1px solid var(--border)"></div>
+
+        <div class="row">
+          <h2 style="margin:6px 0 8px">Dirección</h2>
+        </div>
+        <div class="row">
+          <label>Calle</label>
+          <input id="street" placeholder="364 SUMMIT AVE" />
+        </div>
+        <div class="col4">
+          <label>Ciudad</label>
+          <input id="city" placeholder="BOSTON" />
+        </div>
+        <div class="col4">
+          <label>Estado</label>
+          <input id="state" placeholder="CA" />
+        </div>
+        <div class="col4">
+          <label>Código Postal</label>
+          <input id="zip" placeholder="947040000" />
+        </div>
+
+        <div class="row"><hr style="border:0;border-top:1px solid var(--border)"></div>
+
+        <div class="row">
+          <h2 style="margin:6px 0 8px">Opcional</h2>
+        </div>
+        <div class="col3">
+          <label>Ojos</label>
+          <input id="eyes" placeholder="BRO" />
+        </div>
+        <div class="col3">
+          <label>Pelo</label>
+          <input id="hair" placeholder="BRO" />
+        </div>
+        <div class="col3">
+          <label>Altura (in)</label>
+          <input id="height" placeholder="71" />
+        </div>
+        <div class="col3">
+          <label>Peso (lb)</label>
+          <input id="weight" placeholder="135" />
+        </div>
+
+        <div class="row">
+          <div class="note">
+            <strong>Modo texto libre</strong>: si prefieres codificar un texto propio en PDF417,
+            pega el contenido aquí abajo. Si lo dejas vacío, se generará la cadena tipo AAMVA
+            construida con el formulario (solo prueba).
+          </div>
+        </div>
+        <div class="row">
+          <label>Texto libre a codificar (opcional)</label>
+          <textarea id="freeText" placeholder="Escribe aquí para ignorar el ensamblado AAMVA..."></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- Panel Derecho: Opciones y Vista -->
+    <section class="card">
+      <h2>Salida & Configuración</h2>
+      <div class="preview">
+        <div>
+          <label>Cadena generada</label>
+          <textarea id="output" readonly></textarea>
+          <div class="hint">Se muestra lo que se codificará. Puedes copiarlo.</div>
+        </div>
+
+        <div class="subgrid" style="align-items:end">
+          <div class="col4">
+            <label>Nivel de corrección</label>
+            <select id="ecLevel">
+              <option value="0">Level 0</option>
+              <option value="1">Level 1</option>
+              <option value="2">Level 2</option>
+              <option value="3">Level 3</option>
+              <option value="4">Level 4</option>
+              <option value="5" selected>Level 5</option>
+              <option value="6">Level 6</option>
+              <option value="7">Level 7</option>
+              <option value="8">Level 8</option>
+            </select>
+          </div>
+          <div class="col4">
+            <label>Columnas</label>
+            <input id="columns" type="number" min="1" max="30" value="13" />
+          </div>
+          <div class="col4">
+            <label>Filas</label>
+            <input id="rows" type="number" min="3" max="90" value="22" />
+          </div>
+          <div class="col4">
+            <label>Escala</label>
+            <input id="scale" type="number" min="1" max="6" value="2" />
+          </div>
+          <div class="col4">
+            <label>Altura (px)</label>
+            <input id="heightPx" type="number" min="30" max="400" value="120" />
+          </div>
+        </div>
+
+        <div>
+          <canvas id="barcode" width="1200" height="180" aria-label="Vista previa del PDF417"></canvas>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <p>Basado en <span class="kbd">bwip-js</span> para el render de la simbología <span class="kbd">pdf417</span>.
+    La cadena tipo AAMVA aquí generada es un ejemplo y puede no cumplir con todas las variaciones de cada jurisdicción.</p>
+  </footer>
+
+<script>
+/* -------------------------- Utilidades -------------------------- */
+function toUpperTrim(v){ return (v||'').toString().trim().toUpperCase(); }
+function downloadBlob(filename, blob){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+/* --------- Ensamblador AAMVA MUY SIMPLE (solo demostración) --------- */
+function buildAAMVA(){
+  const f = (id)=>document.getElementById(id).value;
+  const DCS = toUpperTrim(f('lastName'));
+  const DAC = toUpperTrim(f('firstName'));
+  const DAD = toUpperTrim(f('middleName'));
+  const DAQ = toUpperTrim(f('license'));
+  const DBC = toUpperTrim(f('sex'));
+  const DAG = toUpperTrim(f('street'));
+  const DAI = toUpperTrim(f('city'));
+  const DAJ = toUpperTrim(f('state'));
+  const DAK = toUpperTrim(f('zip'));
+  const DBB = toUpperTrim(f('dob'));
+  const DBA = toUpperTrim(f('exp'));
+  const DBD = toUpperTrim(f('doi'));
+  const DCG = toUpperTrim(f('issuer'));
+  const DCT = toUpperTrim(f('dlclass'));
+  const DAY = toUpperTrim(f('eyes'));
+  const DAZ = toUpperTrim(f('hair'));
+  const DAU = toUpperTrim(f('height'));
+  const DAW = toUpperTrim(f('weight'));
+
+  // Cabecera mínima ficticia (no real)
+  const header = '@ANSI 636010040002DLDA';
+
+  const body = [
+    `DCS${DCS}`, `DAC${DAC}`, `DAD${DAD}`,
+    `DAQ${DAQ}`, `DBC${DBC}`, `DAG${DAG}`,
+    `DAI${DAI}`, `DAJ${DAJ}`, `DAK${DAK}`,
+    `DBB${DBB}`, `DBA${DBA}`, `DBD${DBD}`,
+    `DCG${DCG}`, `DCA${DCT}`, `DAY${DAY}`,
+    `DAZ${DAZ}`, `DAU${DAU}`, `DAW${DAW}`
+  ].join('\\n');
+
+  return `${header}\\n${body}\\n`;
+}
+
+/* -------------------------- Render PDF417 -------------------------- */
+function render(){
+  const canvas = document.getElementById('barcode');
+  const free = document.getElementById('freeText').value.trim();
+  const text = free.length ? free : buildAAMVA();
+  document.getElementById('output').value = text;
+
+  const eclevel = parseInt(document.getElementById('ecLevel').value,10);
+  const columns = parseInt(document.getElementById('columns').value,10);
+  const rows     = parseInt(document.getElementById('rows').value,10);
+  const scale    = parseInt(document.getElementById('scale').value,10);
+  const heightPx = parseInt(document.getElementById('heightPx').value,10);
+
+  canvas.width  = Math.max(600, columns*80);
+  canvas.height = heightPx;
+
+  try{
+    // En BWIP-JS 4.7.0 el objeto global es "bwipjs"
+    bwipjs.toCanvas(canvas, {
+      bcid:        'pdf417',
+      text:        text,
+      scale:       scale,
+      height:      Math.max(8, Math.floor(heightPx/scale)),
+      columns:     columns,
+      rows:        rows,
+      eclevel:     eclevel,
+      includetext: false
+    });
+  }catch(err){
+    console.error(err);
+    alert('Error al generar el PDF417: ' + err.message);
+  }
+}
+
+/* -------------------------- Descargas -------------------------- */
+function downloadPNG(){
+  const canvas = document.getElementById('barcode');
+  canvas.toBlob((blob)=>downloadBlob('pdf417.png', blob), 'image/png');
+}
+function downloadSVG(){
+  try{
+    const free = document.getElementById('freeText').value.trim();
+    const text = free.length ? free : buildAAMVA();
+    const eclevel = parseInt(document.getElementById('ecLevel').value,10);
+    const columns = parseInt(document.getElementById('columns').value,10);
+    const rows     = parseInt(document.getElementById('rows').value,10);
+    const scale    = parseInt(document.getElementById('scale').value,10);
+
+    const svg = bwipjs.toSVG({
+      bcid:'pdf417', text, scale, columns, rows, eclevel, includetext:false
+    });
+    const blob = new Blob([svg], {type:'image/svg+xml'});
+    downloadBlob('pdf417.svg', blob);
+  }catch(err){
+    alert('No se pudo exportar SVG: '+err.message);
+  }
+}
+
+/* -------------------------- Eventos -------------------------- */
+document.getElementById('btn-generate').addEventListener('click', render);
+document.getElementById('btn-clear').addEventListener('click', ()=>{
+  document.getElementById('freeText').value='';
+  render();
+});
+document.getElementById('btn-download').addEventListener('click', downloadPNG);
+document.getElementById('btn-download-svg').addEventListener('click', downloadSVG);
+
+// Render inicial
+window.addEventListener('DOMContentLoaded', render);
+</script>
+</body>
+</html>
