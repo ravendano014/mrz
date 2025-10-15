@@ -18,6 +18,8 @@
 
 [PDF417 Multi Scanner](https://ravendano014.github.io/mrz/PDF417Multi.html)
 
+[PDF417 ML](https://ravendano014.github.io/mrz/PDF417ML.html)
+
 [PDF417 PWA Scanner](https://ravendano014.github.io/mrz/PDF417PWA.html)
 
 <span style="color:green;">Barcode</spn> [Barcode Scanner](https://ravendano014.github.io/mrz/Barcode.html)
