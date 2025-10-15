@@ -71,6 +71,21 @@
         </div>
 
         <p id="status" class="hint" style="margin-top:12px"></p>
+
+        <hr style="border:none; border-top:1px solid #1e2a44; margin:16px 0">
+        <h2 style="margin:0 0 8px">Escanear desde imagen</h2>
+        <p class="hint">Sube una foto del código (nítida y sin reflejos) o arrástrala a la tarjeta.</p>
+        <div id="dropZone" style="background:#0f1726; border:1px dashed #2b3b60; border-radius:12px; padding:12px; text-align:center; margin-bottom:10px">
+          Suelta aquí la imagen con PDF417
+        </div>
+        <div class="row">
+          <input id="fileInput" type="file" accept="image/*" />
+          <label class="inline" for="fileInput">Elegir imagen…</label>
+          <button id="sampleBtn" class="secondary">Probar con ejemplo</button>
+        </div>
+        <div id="imgPreviewWrap" class="hidden" style="margin-top:10px">
+          <img id="imgPreview" alt="Vista previa" />
+        </div>
       </section>
 
       <!-- Right: Results + info -->
@@ -99,6 +114,11 @@
     const resultsPre = document.getElementById('results');
     const stateText = document.getElementById('stateText');
     const formatText = document.getElementById('formatText');
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const imgPreview = document.getElementById('imgPreview');
+    const imgPreviewWrap = document.getElementById('imgPreviewWrap');
+    const sampleBtn = document.getElementById('sampleBtn');
 
     let stream = null;
     let barcodeDetector = null;
@@ -108,7 +128,7 @@
       stateText.textContent = 'Tu navegador no soporta BarcodeDetector. Prueba en Chrome/Edge/Android.';
     } else {
       barcodeDetector = new BarcodeDetector({ formats: ['pdf417'] });
-      stateText.textContent = 'Listo. Presiona “Iniciar cámara”.';
+      stateText.textContent = 'Listo. Presiona “Iniciar cámara” o sube una imagen.';
     }
 
     // Start camera
@@ -140,25 +160,12 @@
       }
     });
 
-    // Detection loop
+    // Detection loop (camera)
     async function detectBarcodes() {
       if (!barcodeDetector || !stream) return;
       try {
         const barcodes = await barcodeDetector.detect(video);
-        if (barcodes.length > 0) {
-          const b = barcodes[0];
-          formatText.textContent = b.format || '—';
-          if (b.format === 'pdf417') {
-            resultsPre.textContent = b.rawValue || '(sin valor)';
-            stateText.textContent = '¡Código PDF417 detectado!';
-            // Opcional: detener después de detectar
-            // stopButton.click();
-          } else {
-            stateText.textContent = 'Se detectó un código, pero no es PDF417 (' + b.format + ')';
-          }
-        } else {
-          stateText.textContent = 'Escaneando…';
-        }
+        renderDetections(barcodes, 'cámara');
         if (stream) requestAnimationFrame(detectBarcodes);
       } catch (err) {
         stateText.textContent = 'Error al detectar: ' + err.message;
@@ -166,8 +173,71 @@
       }
     }
 
+    // ---------- Imagen: carga, drag & drop, ejemplo ----------
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files[0]) handleImageFiles(fileInput.files);
+    });
+
+    ;['dragenter','dragover'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.style.borderColor = '#2a6df5'; }));
+    ;['dragleave','drop'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.style.borderColor = '#2b3b60'; }));
+    dropZone.addEventListener('drop', e => {
+      const files = e.dataTransfer.files;
+      if (files && files[0]) handleImageFiles(files);
+    });
+
+    sampleBtn.addEventListener('click', async () => {
+      // Pequeño patrón en base64 (no un PDF417 real, sólo para flujo); sustituye por tu propio ejemplo si lo deseas.
+      const img = new Image();
+      img.onload = () => processImage(img);
+      img.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJYAAABkCAYAAAB0Qx0aAAAACXBIWXMAAAsSAAALEgHS3X78AAAAF0lEQVR4nO3BMQEAAADCoPdPbQ8HFAAAAAAAAAAA4JgB9gAAU5d5YgAAAABJRU5ErkJggg==';
+    });
+
+    function handleImageFiles(fileList) {
+      const file = fileList[0];
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        imgPreviewWrap.classList.remove('hidden');
+        imgPreview.src = img.src;
+        processImage(img);
+      };
+      img.src = url;
+    }
+
+    async function processImage(imgEl) {
+      if (!barcodeDetector) {
+        stateText.textContent = 'BarcodeDetector no disponible en este navegador.';
+        return;
+      }
+      try {
+        stateText.textContent = 'Analizando imagen…';
+        const bitmap = await createImageBitmap(imgEl);
+        const barcodes = await barcodeDetector.detect(bitmap);
+        renderDetections(barcodes, 'imagen');
+      } catch (err) {
+        stateText.textContent = 'No se pudo analizar la imagen: ' + err.message;
+      }
+    }
+
+    // ---------- Render de resultados ----------
+    function renderDetections(barcodes, fuente) {
+      if (!barcodes || barcodes.length === 0) {
+        stateText.textContent = (fuente === 'imagen') ? 'No se detectaron códigos en la imagen.' : 'Escaneando…';
+        return;
+      }
+      const b = barcodes[0];
+      formatText.textContent = b.format || '—';
+      if (b.format === 'pdf417') {
+        resultsPre.textContent = b.rawValue || '(sin valor)';
+        stateText.textContent = `¡Código PDF417 detectado desde ${fuente}!`;
+      } else {
+        stateText.textContent = `Se detectó un código, pero no es PDF417 (${b.format}).`;
+      }
+    }
+
     video.addEventListener('loadeddata', () => {
-      // Hook para cuando el video esté listo
+      // Hook cuando el video esté listo
     });
   </script>
 </body>
