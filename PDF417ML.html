@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lector de Códigos PDF417</title>
+  <!-- (Optional) Models kept in case you later add ML features beyond BarcodeDetector -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+    body { margin: 0; padding: 24px; background: #0b1220; color: #e7ecf5; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; }
+    h2 { font-size: 1.2rem; margin: 0 0 12px; color: #cfe0ff; }
+    p { margin: 6px 0 14px; color:#b9c2d0 }
+    .app { max-width: 1100px; margin: 0 auto; }
+    .card { background: #121a2b; border: 1px solid #1e2a44; border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 1000px){ .grid { grid-template-columns: 440px 1fr; } }
+    .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center }
+    button { appearance: none; border: 0; background: #2a6df5; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+    button.secondary { background: #2b3b60 }
+    button.success { background: #0a6; }
+    textarea { width: 100%; min-height: 130px; resize: vertical; border-radius: 12px; padding: 10px; border:1px solid #1e2a44; background:#0f1726; color:#e7ecf5 }
+    pre { background:#0f1726; border:1px solid #1e2a44; padding:12px; border-radius:12px; overflow:auto }
+    .hidden { display: none; }
+    .hint { font-size: .85rem; color:#9fb0cb }
+    .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px; }
+    .kv b{color:#cfe0ff}
+    .tabs { display:flex; gap:8px; margin: 8px 0 12px; flex-wrap: wrap; }
+    .tab-btn { background:#2b3b60; border:1px solid #2b3b60; padding:8px 12px; border-radius:999px; cursor:pointer; }
+    .tab-btn.active { background:#2a6df5; }
+    /* Video + overlay */
+    #video { width: 100%; height: 320px; border-radius: 12px; border: 1px solid #1e2a44; background: #0b1120; position: relative; }
+    .scanner-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+    .scanner-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 50%; border: 3px solid #0f6; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center }
+    .scanner-frame::before { content: "Coloque el código PDF417 dentro de este marco"; position: absolute; top: -30px; color: #0f6; font-size: 14px; text-align: center; width: 100%; }
+    img { max-width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120 }
+    .result-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .result-table th, .result-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #1e2a44; }
+    .result-table th { background:#0f1726; color:#cfe0ff; font-weight:600 }
+    .result-summary { background: #0f1726; border: 1px solid #1e2a44; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+    .check-ok { color:#0f6 }
+    .check-fail { color:#f06 }
+    .json-pre { background:#0f1726; border:1px solid #1e2a44; border-radius: 12px; padding: 12px; max-height: 280px; overflow-y: auto; font-size: 0.85rem; }
+    .beep-option { display:flex; align-items:center; gap:8px; }
+    input[type=file]{ display:none }
+    label.inline { display:inline-flex; align-items:center; gap:8px; background:#0f1726; border:1px dashed #2b3b60; padding:10px 12px; border-radius:12px; cursor:pointer }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="grid">
+      <!-- Left: Scanner panel -->
+      <section class="card">
+        <header style="margin-bottom:10px">
+          <h1>Lector de Códigos PDF417</h1>
+          <p class="hint">Usa la cámara del dispositivo y apunte al código dentro del marco verde.</p>
+        </header>
+
+        <div style="position:relative; margin-bottom:12px">
+          <video id="video" autoplay playsinline></video>
+          <div class="scanner-overlay">
+            <div class="scanner-frame"></div>
+          </div>
+        </div>
+
+        <div class="row" style="justify-content:flex-start">
+          <button id="startButton">Iniciar cámara</button>
+          <button id="stopButton" class="secondary" disabled>Detener cámara</button>
+        </div>
+
+        <p id="status" class="hint" style="margin-top:12px"></p>
+      </section>
+
+      <!-- Right: Results + info -->
+      <section class="card">
+        <h2>Resultados del escaneo</h2>
+        <div class="result-summary" id="summaryBox">
+          <div class="kv">
+            <b>Estado</b> <span id="stateText">Esperando…</span>
+            <b>Formato</b> <span id="formatText">—</span>
+          </div>
+        </div>
+
+        <pre id="results" class="json-pre">Esperando escaneo…</pre>
+
+        <h2 style="margin-top:18px">Acerca del PDF417</h2>
+        <p>El PDF417 es un código de barras bidimensional (2D) que puede almacenar gran cantidad de información (texto, números y datos binarios). Es habitual en documentos de identidad, licencias de conducir, tarjetas de embarque y logística.</p>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // DOM
+    const video = document.getElementById('video');
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    const resultsPre = document.getElementById('results');
+    const stateText = document.getElementById('stateText');
+    const formatText = document.getElementById('formatText');
+
+    let stream = null;
+    let barcodeDetector = null;
+
+    // Feature detection
+    if (!('BarcodeDetector' in window)) {
+      stateText.textContent = 'Tu navegador no soporta BarcodeDetector. Prueba en Chrome/Edge/Android.';
+    } else {
+      barcodeDetector = new BarcodeDetector({ formats: ['pdf417'] });
+      stateText.textContent = 'Listo. Presiona “Iniciar cámara”.';
+    }
+
+    // Start camera
+    startButton.addEventListener('click', async () => {
+      try {
+        stateText.textContent = 'Solicitando acceso a la cámara…';
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = stream;
+        startButton.disabled = true;
+        stopButton.disabled = false;
+        stateText.textContent = 'Cámara activa. Apunta al código PDF417.';
+        detectBarcodes();
+      } catch (err) {
+        stateText.textContent = 'Error accediendo a la cámara: ' + err.message;
+      }
+    });
+
+    // Stop camera
+    stopButton.addEventListener('click', () => {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+        stream = null;
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        stateText.textContent = 'Cámara detenida.';
+      }
+    });
+
+    // Detection loop
+    async function detectBarcodes() {
+      if (!barcodeDetector || !stream) return;
+      try {
+        const barcodes = await barcodeDetector.detect(video);
+        if (barcodes.length > 0) {
+          const b = barcodes[0];
+          formatText.textContent = b.format || '—';
+          if (b.format === 'pdf417') {
+            resultsPre.textContent = b.rawValue || '(sin valor)';
+            stateText.textContent = '¡Código PDF417 detectado!';
+            // Opcional: detener después de detectar
+            // stopButton.click();
+          } else {
+            stateText.textContent = 'Se detectó un código, pero no es PDF417 (' + b.format + ')';
+          }
+        } else {
+          stateText.textContent = 'Escaneando…';
+        }
+        if (stream) requestAnimationFrame(detectBarcodes);
+      } catch (err) {
+        stateText.textContent = 'Error al detectar: ' + err.message;
+        if (stream) setTimeout(detectBarcodes, 900);
+      }
+    }
+
+    video.addEventListener('loadeddata', () => {
+      // Hook para cuando el video esté listo
+    });
+  </script>
+</body>
+</html>
