@@ -6,6 +6,8 @@
 
 [MRZ Decoder](https://ravendano014.github.io/mrz/MRZReaderPaerser.html)
 
+[MRZ Persitent](https://ravendano014.github.io/mrz/mrz.html)
+
 <span style="color:green;">PDF417</span>  [PDF417 & Image Scanner](https://ravendano014.github.io/mrz/PDF417Scanner.html)
 
 [PDF417 Decoder](https://ravendano014.github.io/mrz/PDF417Decoder.html)
