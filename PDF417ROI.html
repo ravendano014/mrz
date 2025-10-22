@@ -33,8 +33,29 @@
     #video { width: 100%; height: 100%; object-fit: cover; }
     #videoCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; cursor: crosshair; }
     .scanner-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
-    .scanner-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 50%; border: 3px solid #0f6; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center }
-    .scanner-frame::before { content: "Coloque el código PDF417 dentro de este marco"; position: absolute; top: -30px; color: #0f6; font-size: 14px; text-align: center; width: 100%; }
+    .scanner-frame { 
+      position: absolute; 
+      top: 35%; /* Cambiado de 50% a 35% para subirlo */
+      left: 50%; 
+      transform: translate(-50%, -50%); 
+      width: 90%; /* Cambiado de 85% a 90% para hacerlo más ancho */
+      height: 30%; /* Cambiado de 35% a 30% para hacerlo menos alto */
+      border: 3px solid #0f6; 
+      border-radius: 12px; 
+      box-shadow: 0 0 0 9999px rgba(0,0,0,.5); 
+      display:flex; 
+      align-items:center; 
+      justify-content:center;
+    }
+    .scanner-frame::before { 
+      content: "Coloque el código PDF417 dentro de este marco"; 
+      position: absolute; 
+      top: -30px; 
+      color: #0f6; 
+      font-size: 14px; 
+      text-align: center; 
+      width: 100%; 
+    }
 
     img { max-width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120 }
     .result-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
@@ -618,7 +639,7 @@
       tempImage.onload = () => {
         codeReader.decodeFromImageElement(tempImage)
           .then(result => {
-            const fmt = result.format; setFormat(fmt===10? 'PDF417' : String(fmt));
+            const fmt = result.format; setFormat(fmt===10? 'PDF417' : String(result.format));
             const parsed = smartParse(result.text);
             renderResult(parsed, result.text);
             setStatus('Código detectado en ROI', 'success');
@@ -973,3 +994,4 @@
   </script>
 </body>
 </html>
+
