@@ -187,9 +187,9 @@
       const parts = String(text||'').split('||');
       if(parts.length<3) return null;
       const fieldNames = [
-        "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Tipo de Documento","Firma Digital",
-        "Lugar de Nacimiento","Municipio","Departamento","Nacionalidad","Sexo","Fecha de Nacimiento",
-        "Fecha de Emisión","Número de Emisión","Categoría","Fecha de Vencimiento","Segunda Firma Digital","Código de Verificación"
+        "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Número de Emisión","Firma Digital",
+        "Lugar de Nacimiento","Municipio","Profesión u Oficio", "Sexo","Fecha de Nacimiento",
+        "Fecha de Emisión","Código de Zona","Categoría","Estdo Familiar","Nacionalidad","Segunda Firma Digital","Código de Verificación"
       ];
       const out = {};
       for(let i=0;i<fieldNames.length;i++) out[fieldNames[i]] = (i<parts.length? parts[i] : 'No disponible');
@@ -311,3 +311,4 @@
   </script>
 </body>
 </html>
+
