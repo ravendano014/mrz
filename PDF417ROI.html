@@ -2,8 +2,8 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF417 — Cámara / Imagen / Texto</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PDF417 — Cámara / Imagen / Texto (con ROI táctil)</title>
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
     body { margin: 0; padding: 24px; background: #0b1220; color: #e7ecf5; }
@@ -51,9 +51,9 @@
     .roi-controls .grp { background:#0f1726; border:1px solid #1e2a44; border-radius:10px; padding:8px; }
     .roi-controls .grp h4 { margin:0 0 6px; font-size: .95rem; color:#cfe0ff }
     .roi-controls .grp .row { gap:6px }
-    #imageCanvas { width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120; cursor: crosshair; }
+    #imageCanvas { width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120; cursor: crosshair; touch-action: none; -webkit-user-select: none; user-select: none; }
     #roiPreview { border:1px dashed #2b3b60; border-radius:10px; background:#0f1726 }
-    
+
     /* Instrucciones ROI */
     .roi-instructions { background: #0f1726; border: 1px solid #1e2a44; border-radius: 10px; padding: 12px; margin-top: 10px; }
     .roi-instructions p { margin: 0 0 8px; font-size: 0.9rem; }
@@ -122,11 +122,11 @@
                 <canvas id="roiPreview" width="180" height="120"></canvas>
               </div>
             </div>
-            
+
             <!-- Instrucciones ROI -->
             <div id="roiInstructions" class="roi-instructions hidden">
               <p><strong>Instrucciones:</strong></p>
-              <p>1. Haga clic y arrastre sobre la imagen para definir la región de interés (ROI)</p>
+              <p>1. Toque y arrastre con un dedo sobre la imagen para definir la Región de Interés (ROI).</p>
               <p>2. Use "Capturar ROI y Procesar" para analizar solo esa área</p>
               <p>3. Use "Reiniciar ROI" para volver a la selección inicial</p>
             </div>
@@ -218,7 +218,7 @@
     // --- Parsers (USDL/AAMVA y DUI con "||") ---
     const parseUSDL = function(str){
       const CodeToKey = { DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes", DBA:"dateOfExpiry", DCS:"lastName", DAC:"firstName", DAD:"middleName", DBD:"dateOfIssue", DBB:"dateOfBirth", DBC:"sex", DAY:"eyeColor", DAU:"height", DAG:"addressStreet", DAI:"addressCity", DAJ:"addressState", DAK:"addressPostalCode", DAQ:"documentNumber", DCF:"documentDiscriminator", DCG:"issuer", DDE:"lastNameTruncated", DDF:"firstNameTruncated", DDG:"middleNameTruncated", DAZ:"hairColor", DAH:"addressStreet2", DCI:"placeOfBirth", DCJ:"auditInformation", DCK:"inventoryControlNumber", DBN:"otherLastName", DBG:"otherFirstName", DBS:"otherSuffixName", DCU:"nameSuffix", DCE:"weightRange", DCL:"race", DCM:"standardVehicleClassification", DCN:"standardEndorsementCode", DCO:"standardRestrictionCode", DCP:"jurisdictionVehicleClassificationDescription", DCQ:"jurisdictionEndorsementCodeDescription", DCR:"jurisdictionRestrictionCodeDescription", DDA:"complianceType", DDB:"dateCardRevised", DDC:"dateOfExpiryHazmatEndorsement", DDD:"limitedDurationDocumentIndicator", DAW:"weightLb", DAX:"weightKg", DDH:"dateAge18", DDI:"dateAge19", DDJ:"dateAge21", DDK:"organDonor", DDL:"veteran" };
-      const lines = str.trim().split(/\r?\n/).map(l=>l.replace(/[^\t\n\r\x20-\x7E]/g,'').trim());
+      const lines = str.trim().split(/\r?\n/).map(l => l.replace(/[^\t\n\r\x20-\x7E]/g, '').trim());
       const props = {}; let started=false;
       for(let i=0;i<lines.length;i++){
         const line = lines[i];
@@ -309,7 +309,7 @@
       $('#exportJsonBtn').addEventListener('click', exportJSON);
       $('#loadExampleBtn').addEventListener('click', ()=>{ $('#inputText').value = EXAMPLE_DUI; setStatus('Ejemplo cargado'); });
 
-      // ROI
+      // ROI (botones)
       $('#captureRoiBtn').addEventListener('click', captureAndProcessROI);
       $('#resetRoiBtn').addEventListener('click', resetROI);
     }
@@ -345,8 +345,8 @@
     let roi = { x:0.15, y:0.25, w:0.70, h:0.50 }; // inicio razonable para PDF417 horizontal
     let natural = { w:0, h:0 }; // tamaño real de la imagen cargada
     let drawSize = { w:0, h:0 }; // tamaño del canvas de dibujo
-    
-    // Variables para el arrastre del ROI con mouse
+
+    // Variables para el arrastre del ROI con mouse/touch
     let isDragging = false;
     let dragStart = { x: 0, y: 0 };
     let dragCurrent = { x: 0, y: 0 };
@@ -386,9 +386,10 @@
           $('#processImageButton').disabled=false;
 
           setStatus('Imagen cargada (puede ajustar el ROI y capturar)');
-          
-          // Configurar eventos de mouse para ROI
+
+          // Configurar eventos de mouse y táctiles para ROI
           setupMouseEvents();
+          setupTouchEvents();
         };
         img.src = ev.target.result;
         // guarda dataURL para futuros recortes a resolución nativa
@@ -396,73 +397,129 @@
       };
       reader.readAsDataURL(f);
     }
-    
+
     function setupMouseEvents() {
       // Limpiar eventos previos
       imgCanvas.removeEventListener('mousedown', handleMouseDown);
       imgCanvas.removeEventListener('mousemove', handleMouseMove);
       imgCanvas.removeEventListener('mouseup', handleMouseUp);
       imgCanvas.removeEventListener('mouseleave', handleMouseUp);
-      
+
       // Agregar nuevos eventos
       imgCanvas.addEventListener('mousedown', handleMouseDown);
       imgCanvas.addEventListener('mousemove', handleMouseMove);
       imgCanvas.addEventListener('mouseup', handleMouseUp);
       imgCanvas.addEventListener('mouseleave', handleMouseUp);
     }
-    
+
+    // === NUEVO: eventos táctiles para ROI ===
+    function setupTouchEvents() {
+      imgCanvas.removeEventListener('touchstart', handleTouchStart);
+      imgCanvas.removeEventListener('touchmove', handleTouchMove);
+      imgCanvas.removeEventListener('touchend', handleTouchEnd);
+      imgCanvas.addEventListener('touchstart', handleTouchStart, {passive:false});
+      imgCanvas.addEventListener('touchmove', handleTouchMove, {passive:false});
+      imgCanvas.addEventListener('touchend', handleTouchEnd, {passive:false});
+    }
+
+    function getTouchPos(touch) {
+      const rect = imgCanvas.getBoundingClientRect();
+      const x = (touch.clientX - rect.left) / drawSize.w;
+      const y = (touch.clientY - rect.top) / drawSize.h;
+      return { x, y };
+    }
+
+    function handleTouchStart(e) {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const { x, y } = getTouchPos(e.touches[0]);
+      isDragging = true;
+      dragStart = { x, y };
+      dragCurrent = { x, y };
+      roi.x = x;
+      roi.y = y;
+      roi.w = 0.1;
+      roi.h = 0.1;
+      drawROIOverlay();
+    }
+
+    function handleTouchMove(e) {
+      if (!isDragging || e.touches.length !== 1) return;
+      e.preventDefault();
+      const { x, y } = getTouchPos(e.touches[0]);
+      dragCurrent = { x, y };
+      roi.x = Math.min(dragStart.x, dragCurrent.x);
+      roi.y = Math.min(dragStart.y, dragCurrent.y);
+      roi.w = Math.abs(dragCurrent.x - dragStart.x);
+      roi.h = Math.abs(dragCurrent.y - dragStart.y);
+      roi.w = Math.max(roi.w, 0.05);
+      roi.h = Math.max(roi.h, 0.05);
+      drawROIOverlay();
+    }
+
+    function handleTouchEnd(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+      isDragging = false;
+      roi.x = Math.max(0, Math.min(roi.x, 1 - roi.w));
+      roi.y = Math.max(0, Math.min(roi.y, 1 - roi.h));
+      drawROIOverlay();
+      setStatus('ROI definido (táctil). Use "Capturar ROI y Procesar"');
+    }
+    // === FIN NUEVO ===
+
     function handleMouseDown(e) {
       const rect = imgCanvas.getBoundingClientRect();
       const x = (e.clientX - rect.left) / drawSize.w;
       const y = (e.clientY - rect.top) / drawSize.h;
-      
+
       isDragging = true;
       dragStart.x = x;
       dragStart.y = y;
       dragCurrent.x = x;
       dragCurrent.y = y;
-      
+
       // Iniciar con un ROI pequeño en el punto de clic
       roi.x = x;
       roi.y = y;
       roi.w = 0.1; // 10% del ancho
       roi.h = 0.1; // 10% del alto
-      
+
       drawROIOverlay();
     }
-    
+
     function handleMouseMove(e) {
       if (!isDragging) return;
-      
+
       const rect = imgCanvas.getBoundingClientRect();
       const x = (e.clientX - rect.left) / drawSize.w;
       const y = (e.clientY - rect.top) / drawSize.h;
-      
+
       dragCurrent.x = x;
       dragCurrent.y = y;
-      
+
       // Calcular nuevo ROI basado en arrastre
       roi.x = Math.min(dragStart.x, dragCurrent.x);
       roi.y = Math.min(dragStart.y, dragCurrent.y);
       roi.w = Math.abs(dragCurrent.x - dragStart.x);
       roi.h = Math.abs(dragCurrent.y - dragStart.y);
-      
+
       // Asegurar que el ROI no sea demasiado pequeño
       roi.w = Math.max(roi.w, 0.05);
       roi.h = Math.max(roi.h, 0.05);
-      
+
       drawROIOverlay();
     }
-    
+
     function handleMouseUp() {
       if (!isDragging) return;
-      
+
       isDragging = false;
-      
+
       // Asegurar que el ROI esté dentro de los límites
       roi.x = Math.max(0, Math.min(roi.x, 1 - roi.w));
       roi.y = Math.max(0, Math.min(roi.y, 1 - roi.h));
-      
+
       drawROIOverlay();
       setStatus('ROI definido. Use "Capturar ROI y Procesar" para analizar.');
     }
