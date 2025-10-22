@@ -29,7 +29,9 @@
     .tab-btn.active { background:#2a6df5; }
 
     /* Video + overlay */
-    #video { width: 100%; height: 320px; border-radius: 12px; border: 1px solid #1e2a44; background: #0b1120; position: relative; }
+    #videoContainer { position: relative; width: 100%; height: 320px; border-radius: 12px; border: 1px solid #1e2a44; background: #0b1120; overflow: hidden; }
+    #video { width: 100%; height: 100%; object-fit: cover; }
+    #videoCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; cursor: crosshair; }
     .scanner-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
     .scanner-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 50%; border: 3px solid #0f6; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center }
     .scanner-frame::before { content: "Coloque el código PDF417 dentro de este marco"; position: absolute; top: -30px; color: #0f6; font-size: 14px; text-align: center; width: 100%; }
@@ -53,6 +55,7 @@
     .roi-controls .grp .row { gap:6px }
     #imageCanvas { width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120; cursor: crosshair; touch-action: none; -webkit-user-select: none; user-select: none; }
     #roiPreview { border:1px dashed #2b3b60; border-radius:10px; background:#0f1726 }
+    #videoRoiPreview { border:1px dashed #2b3b60; border-radius:10px; background:#0f1726 }
 
     /* Instrucciones ROI */
     .roi-instructions { background: #0f1726; border: 1px solid #1e2a44; border-radius: 10px; padding: 12px; margin-top: 10px; }
@@ -81,6 +84,7 @@
             <div class="row" style="margin-bottom:8px">
               <button id="startButton">Iniciar Cámara</button>
               <button id="resetButton" class="secondary">Detener Cámara</button>
+              <button id="enableRoiButton" class="secondary">Activar ROI</button>
               <div class="beep-option">
                 <input type="checkbox" id="beepCheckbox" checked />
                 <label for="beepCheckbox">Beep al detectar</label>
@@ -90,9 +94,37 @@
               <label for="sourceSelect">Seleccionar cámara:</label>
               <select id="sourceSelect"></select>
             </div>
-            <div style="position: relative;">
+            
+            <!-- Contenedor para video y canvas de ROI -->
+            <div id="videoContainer">
               <video id="video" muted playsinline></video>
+              <canvas id="videoCanvas" class="hidden"></canvas>
               <div class="scanner-overlay"><div class="scanner-frame"></div></div>
+            </div>
+            
+            <!-- Controles ROI para cámara -->
+            <div id="videoRoiPanel" class="roi-controls hidden">
+              <div class="grp">
+                <h4>Acciones ROI</h4>
+                <div class="row">
+                  <button id="captureVideoRoiBtn" class="success">Capturar ROI y Procesar</button>
+                  <button id="resetVideoRoiBtn" class="secondary">Reiniciar ROI</button>
+                  <button id="disableRoiButton" class="secondary">Desactivar ROI</button>
+                </div>
+              </div>
+              <div class="grp">
+                <h4>Vista previa ROI</h4>
+                <canvas id="videoRoiPreview" width="180" height="120"></canvas>
+              </div>
+            </div>
+
+            <!-- Instrucciones ROI para cámara -->
+            <div id="videoRoiInstructions" class="roi-instructions hidden">
+              <p><strong>Instrucciones ROI para cámara:</strong></p>
+              <p>1. Toque y arrastre con un dedo sobre el video para definir la Región de Interés (ROI).</p>
+              <p>2. Use "Capturar ROI y Procesar" para analizar solo esa área</p>
+              <p>3. Use "Reiniciar ROI" para volver a la selección inicial</p>
+              <p>4. Use "Desactivar ROI" para volver al escaneo completo</p>
             </div>
           </section>
 
@@ -296,6 +328,10 @@
       // Cámara
       $('#startButton').addEventListener('click', startCamera);
       $('#resetButton').addEventListener('click', resetCamera);
+      $('#enableRoiButton').addEventListener('click', enableVideoROI);
+      $('#disableRoiButton').addEventListener('click', disableVideoROI);
+      $('#captureVideoRoiBtn').addEventListener('click', captureAndProcessVideoROI);
+      $('#resetVideoRoiBtn').addEventListener('click', resetVideoROI);
 
       // Imagen
       $('#fileInput').addEventListener('change', handleImageSelection);
@@ -314,9 +350,214 @@
       $('#resetRoiBtn').addEventListener('click', resetROI);
     }
 
+    // Variables para ROI de video
+    let videoRoi = { x:0.15, y:0.25, w:0.70, h:0.50 };
+    let videoRoiDragging = false;
+    let videoRoiDragStart = { x: 0, y: 0 };
+    let videoRoiDragCurrent = { x: 0, y: 0 };
+    let videoRoiEnabled = false;
+    const videoCanvas = document.getElementById('videoCanvas');
+    const videoCtx = videoCanvas.getContext('2d');
+
+    function enableVideoROI() {
+      videoRoiEnabled = true;
+      videoCanvas.classList.remove('hidden');
+      $('#videoRoiPanel').classList.remove('hidden');
+      $('#videoRoiInstructions').classList.remove('hidden');
+      setStatus('ROI activado. Dibuje un área sobre el video.');
+      
+      // Configurar eventos para el canvas de video
+      setupVideoROIEvents();
+    }
+
+    function disableVideoROI() {
+      videoRoiEnabled = false;
+      videoCanvas.classList.add('hidden');
+      $('#videoRoiPanel').classList.add('hidden');
+      $('#videoRoiInstructions').classList.add('hidden');
+      setStatus('ROI desactivado. Escaneando toda la imagen.');
+    }
+
+    function setupVideoROIEvents() {
+      // Limpiar eventos previos
+      videoCanvas.removeEventListener('mousedown', handleVideoMouseDown);
+      videoCanvas.removeEventListener('mousemove', handleVideoMouseMove);
+      videoCanvas.removeEventListener('mouseup', handleVideoMouseUp);
+      videoCanvas.removeEventListener('mouseleave', handleVideoMouseUp);
+      videoCanvas.removeEventListener('touchstart', handleVideoTouchStart);
+      videoCanvas.removeEventListener('touchmove', handleVideoTouchMove);
+      videoCanvas.removeEventListener('touchend', handleVideoTouchEnd);
+
+      // Agregar nuevos eventos
+      videoCanvas.addEventListener('mousedown', handleVideoMouseDown);
+      videoCanvas.addEventListener('mousemove', handleVideoMouseMove);
+      videoCanvas.addEventListener('mouseup', handleVideoMouseUp);
+      videoCanvas.addEventListener('mouseleave', handleVideoMouseUp);
+      videoCanvas.addEventListener('touchstart', handleVideoTouchStart, {passive:false});
+      videoCanvas.addEventListener('touchmove', handleVideoTouchMove, {passive:false});
+      videoCanvas.addEventListener('touchend', handleVideoTouchEnd, {passive:false});
+    }
+
+    function getVideoROIPos(clientX, clientY) {
+      const rect = videoCanvas.getBoundingClientRect();
+      const x = (clientX - rect.left) / videoCanvas.width;
+      const y = (clientY - rect.top) / videoCanvas.height;
+      return { x, y };
+    }
+
+    function handleVideoMouseDown(e) {
+      if (!videoRoiEnabled) return;
+      const { x, y } = getVideoROIPos(e.clientX, e.clientY);
+      videoRoiDragging = true;
+      videoRoiDragStart = { x, y };
+      videoRoiDragCurrent = { x, y };
+      videoRoi.x = x;
+      videoRoi.y = y;
+      videoRoi.w = 0.1;
+      videoRoi.h = 0.1;
+      drawVideoROIOverlay();
+    }
+
+    function handleVideoMouseMove(e) {
+      if (!videoRoiEnabled || !videoRoiDragging) return;
+      const { x, y } = getVideoROIPos(e.clientX, e.clientY);
+      videoRoiDragCurrent = { x, y };
+      videoRoi.x = Math.min(videoRoiDragStart.x, videoRoiDragCurrent.x);
+      videoRoi.y = Math.min(videoRoiDragStart.y, videoRoiDragCurrent.y);
+      videoRoi.w = Math.abs(videoRoiDragCurrent.x - videoRoiDragStart.x);
+      videoRoi.h = Math.abs(videoRoiDragCurrent.y - videoRoiDragStart.y);
+      videoRoi.w = Math.max(videoRoi.w, 0.05);
+      videoRoi.h = Math.max(videoRoi.h, 0.05);
+      drawVideoROIOverlay();
+    }
+
+    function handleVideoMouseUp() {
+      if (!videoRoiEnabled || !videoRoiDragging) return;
+      videoRoiDragging = false;
+      videoRoi.x = Math.max(0, Math.min(videoRoi.x, 1 - videoRoi.w));
+      videoRoi.y = Math.max(0, Math.min(videoRoi.y, 1 - videoRoi.h));
+      drawVideoROIOverlay();
+      setStatus('ROI definido. Use "Capturar ROI y Procesar" para analizar.');
+    }
+
+    function handleVideoTouchStart(e) {
+      if (!videoRoiEnabled || e.touches.length !== 1) return;
+      e.preventDefault();
+      const { x, y } = getVideoROIPos(e.touches[0].clientX, e.touches[0].clientY);
+      videoRoiDragging = true;
+      videoRoiDragStart = { x, y };
+      videoRoiDragCurrent = { x, y };
+      videoRoi.x = x;
+      videoRoi.y = y;
+      videoRoi.w = 0.1;
+      videoRoi.h = 0.1;
+      drawVideoROIOverlay();
+    }
+
+    function handleVideoTouchMove(e) {
+      if (!videoRoiEnabled || !videoRoiDragging || e.touches.length !== 1) return;
+      e.preventDefault();
+      const { x, y } = getVideoROIPos(e.touches[0].clientX, e.touches[0].clientY);
+      videoRoiDragCurrent = { x, y };
+      videoRoi.x = Math.min(videoRoiDragStart.x, videoRoiDragCurrent.x);
+      videoRoi.y = Math.min(videoRoiDragStart.y, videoRoiDragCurrent.y);
+      videoRoi.w = Math.abs(videoRoiDragCurrent.x - videoRoiDragStart.x);
+      videoRoi.h = Math.abs(videoRoiDragCurrent.y - videoRoiDragStart.y);
+      videoRoi.w = Math.max(videoRoi.w, 0.05);
+      videoRoi.h = Math.max(videoRoi.h, 0.05);
+      drawVideoROIOverlay();
+    }
+
+    function handleVideoTouchEnd(e) {
+      if (!videoRoiEnabled || !videoRoiDragging) return;
+      e.preventDefault();
+      videoRoiDragging = false;
+      videoRoi.x = Math.max(0, Math.min(videoRoi.x, 1 - videoRoi.w));
+      videoRoi.y = Math.max(0, Math.min(videoRoi.y, 1 - videoRoi.h));
+      drawVideoROIOverlay();
+      setStatus('ROI definido (táctil). Use "Capturar ROI y Procesar"');
+    }
+
+    function drawVideoROIOverlay() {
+      // Limpiar canvas
+      videoCtx.clearRect(0, 0, videoCanvas.width, videoCanvas.height);
+      
+      // Dibujar rectángulo ROI
+      const rx = Math.round(videoRoi.x * videoCanvas.width);
+      const ry = Math.round(videoRoi.y * videoCanvas.height);
+      const rw = Math.round(videoRoi.w * videoCanvas.width);
+      const rh = Math.round(videoRoi.h * videoCanvas.height);
+
+      // Sombra exterior
+      videoCtx.save();
+      videoCtx.fillStyle = 'rgba(0,0,0,0.5)';
+      videoCtx.beginPath();
+      videoCtx.rect(0, 0, videoCanvas.width, videoCanvas.height);
+      videoCtx.rect(rx, ry, rw, rh);
+      videoCtx.fill('evenodd');
+      videoCtx.restore();
+
+      // Borde ROI
+      videoCtx.save();
+      videoCtx.strokeStyle = videoRoiDragging ? '#ff6' : '#0f6';
+      videoCtx.lineWidth = 3;
+      videoCtx.setLineDash([8,6]);
+      videoCtx.strokeRect(rx, ry, rw, rh);
+      videoCtx.restore();
+
+      // Texto guía
+      videoCtx.save();
+      videoCtx.font = '12px system-ui';
+      videoCtx.fillStyle = videoRoiDragging ? '#ff6' : '#0f6';
+      videoCtx.fillText(videoRoiDragging ? 'Suelte para confirmar ROI' : 'ROI definido. Use "Capturar ROI y Procesar"', rx, Math.max(12, ry-6));
+      videoCtx.restore();
+
+      // Actualizar vista previa
+      drawVideoRoiPreview();
+    }
+
+    function drawVideoRoiPreview() {
+      const prev = $('#videoRoiPreview');
+      const ctx = prev.getContext('2d');
+      
+      // Obtener el frame actual del video
+      const video = $('#video');
+      if (video.videoWidth === 0) return;
+      
+      // Limpiar canvas de vista previa
+      ctx.clearRect(0, 0, prev.width, prev.height);
+      
+      // Calcular coordenadas del ROI en el video
+      const sx = Math.round(videoRoi.x * video.videoWidth);
+      const sy = Math.round(videoRoi.y * video.videoHeight);
+      const sw = Math.round(videoRoi.w * video.videoWidth);
+      const sh = Math.round(videoRoi.h * video.videoHeight);
+      
+      // Ajuste para encajar manteniendo proporción
+      const scale = Math.min(prev.width / sw, prev.height / sh);
+      const dw = Math.round(sw * scale);
+      const dh = Math.round(sh * scale);
+      const dx = Math.round((prev.width - dw) / 2);
+      const dy = Math.round((prev.height - dh) / 2);
+      
+      // Dibujar ROI en vista previa
+      ctx.drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh);
+    }
+
+    function resetVideoROI() {
+      videoRoi = { x:0.15, y:0.25, w:0.70, h:0.50 };
+      drawVideoROIOverlay();
+      setStatus('ROI reiniciado');
+    }
+
     function startCamera(){
       if(isScanning){ setStatus('La cámara ya está en funcionamiento'); return; }
       isScanning = true; setStatus('Escaneando…'); setFormat('—');
+      
+      // Configurar dimensiones del canvas de video
+      videoCanvas.width = $('#videoContainer').clientWidth;
+      videoCanvas.height = $('#videoContainer').clientHeight;
+      
       codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err)=>{
         if(result){
           const fmt = result.format; setFormat(fmt===10? 'PDF417' : String(fmt));
@@ -328,25 +569,79 @@
         if(err && !(err instanceof ZXing.NotFoundException)){
           setStatus('Error: '+err.message, 'error');
         }
+        
+        // Actualizar vista previa del ROI si está activado
+        if (videoRoiEnabled) {
+          drawVideoRoiPreview();
+        }
       });
+      setStatus('Cámara iniciada');
     }
 
     function resetCamera(){
-      try{ codeReader && codeReader.reset(); }catch(e){}
-      isScanning=false; setStatus('Cámara detenida'); setFormat('—');
+      if(codeReader) codeReader.reset();
+      isScanning = false;
+      setStatus('Cámara detenida');
     }
 
-    // --- Imagen + ROI ---
+    function captureAndProcessVideoROI() {
+      if (!videoRoiEnabled) {
+        setStatus('Active primero el ROI para la cámara', 'error');
+        return;
+      }
+      
+      const video = $('#video');
+      if (video.videoWidth === 0) {
+        setStatus('No hay video activo', 'error');
+        return;
+      }
+      
+      // Crear canvas temporal para el ROI
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      // Calcular coordenadas del ROI en el video
+      const sx = Math.round(videoRoi.x * video.videoWidth);
+      const sy = Math.round(videoRoi.y * video.videoHeight);
+      const sw = Math.round(videoRoi.w * video.videoWidth);
+      const sh = Math.round(videoRoi.h * video.videoHeight);
+      
+      // Configurar canvas temporal
+      tempCanvas.width = sw;
+      tempCanvas.height = sh;
+      
+      // Dibujar ROI en canvas temporal
+      tempCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+      
+      // Convertir canvas a ImageElement para usar decodeFromImageElement
+      const tempImage = new Image();
+      tempImage.onload = () => {
+        codeReader.decodeFromImageElement(tempImage)
+          .then(result => {
+            const fmt = result.format; setFormat(fmt===10? 'PDF417' : String(fmt));
+            const parsed = smartParse(result.text);
+            renderResult(parsed, result.text);
+            setStatus('Código detectado en ROI', 'success');
+            beepIfEnabled();
+          })
+          .catch(err => {
+            if (err instanceof ZXing.NotFoundException) {
+              setStatus('No se detectó código PDF417 en el ROI', 'error');
+            } else {
+              setStatus('Error: '+err.message, 'error');
+            }
+          });
+      };
+      tempImage.src = tempCanvas.toDataURL('image/png');
+    }
+
+    // --- Imagen con ROI (código existente) ---
     let selectedImageFile=null;
     const imgCanvas = document.getElementById('imageCanvas');
     const imgCtx = imgCanvas.getContext('2d');
-
-    // ROI en proporciones (0..1) para robustez ante escalado
-    let roi = { x:0.15, y:0.25, w:0.70, h:0.50 }; // inicio razonable para PDF417 horizontal
-    let natural = { w:0, h:0 }; // tamaño real de la imagen cargada
-    let drawSize = { w:0, h:0 }; // tamaño del canvas de dibujo
-
-    // Variables para el arrastre del ROI con mouse/touch
+    let roi = { x:0.15, y:0.25, w:0.70, h:0.50 };
+    let natural = { w:0, h:0 };
+    let drawSize = { w:0, h:0 };
     let isDragging = false;
     let dragStart = { x: 0, y: 0 };
     let dragCurrent = { x: 0, y: 0 };
@@ -412,7 +707,6 @@
       imgCanvas.addEventListener('mouseleave', handleMouseUp);
     }
 
-    // === NUEVO: eventos táctiles para ROI ===
     function setupTouchEvents() {
       imgCanvas.removeEventListener('touchstart', handleTouchStart);
       imgCanvas.removeEventListener('touchmove', handleTouchMove);
@@ -466,7 +760,6 @@
       drawROIOverlay();
       setStatus('ROI definido (táctil). Use "Capturar ROI y Procesar"');
     }
-    // === FIN NUEVO ===
 
     function handleMouseDown(e) {
       const rect = imgCanvas.getBoundingClientRect();
