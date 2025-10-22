@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF417 — Cámara / Imagen / Texto</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+    body { margin: 0; padding: 24px; background: #0b1220; color: #e7ecf5; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; }
+    h2 { font-size: 1.2rem; margin: 0 0 12px; color: #cfe0ff; }
+    p { margin: 6px 0 14px; color:#b9c2d0 }
+    .app { max-width: 1100px; margin: 0 auto; }
+    .card { background: #121a2b; border: 1px solid #1e2a44; border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 1000px){ .grid { grid-template-columns: 440px 1fr; } }
+    .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center }
+    button { appearance: none; border: 0; background: #2a6df5; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+    button.secondary { background: #2b3b60 }
+    button.success { background: #0a6; }
+    textarea { width: 100%; min-height: 130px; resize: vertical; border-radius: 12px; padding: 10px; border:1px solid #1e2a44; background:#0f1726; color:#e7ecf5 }
+    pre { background:#0f1726; border:1px solid #1e2a44; padding:12px; border-radius:12px; overflow:auto }
+    .hidden { display: none; }
+    .hint { font-size: .85rem; color:#9fb0cb }
+    .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px; }
+    .kv b{color:#cfe0ff}
+    .tabs { display:flex; gap:8px; margin: 8px 0 12px; flex-wrap: wrap; }
+    .tab-btn { background:#2b3b60; border:1px solid #2b3b60; padding:8px 12px; border-radius:999px; cursor:pointer; }
+    .tab-btn.active { background:#2a6df5; }
+
+    /* Video + overlay */
+    #video { width: 100%; height: 320px; border-radius: 12px; border: 1px solid #1e2a44; background: #0b1120; position: relative; }
+    .scanner-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+    .scanner-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 50%; border: 3px solid #0f6; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center }
+    .scanner-frame::before { content: "Coloque el código PDF417 dentro de este marco"; position: absolute; top: -30px; color: #0f6; font-size: 14px; text-align: center; width: 100%; }
+
+    img { max-width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120 }
+    .result-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .result-table th, .result-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #1e2a44; }
+    .result-table th { background:#0f1726; color:#cfe0ff; font-weight:600 }
+    .result-summary { background: #0f1726; border: 1px solid #1e2a44; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+    .check-ok { color:#0f6 }
+    .check-fail { color:#f06 }
+    .json-pre { background:#0f1726; border:1px solid #1e2a44; border-radius: 12px; padding: 12px; max-height: 280px; overflow-y: auto; font-size: 0.85rem; }
+    .beep-option { display:flex; align-items:center; gap:8px; }
+    input[type=file]{ display:none }
+    label.inline { display:inline-flex; align-items:center; gap:8px; background:#0f1726; border:1px dashed #2b3b60; padding:10px 12px; border-radius:12px; cursor:pointer }
+
+    /* ROI */
+    .roi-controls { display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; margin-top:10px; }
+    .roi-controls .grp { background:#0f1726; border:1px solid #1e2a44; border-radius:10px; padding:8px; }
+    .roi-controls .grp h4 { margin:0 0 6px; font-size: .95rem; color:#cfe0ff }
+    .roi-controls .grp .row { gap:6px }
+    #imageCanvas { width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120; cursor: crosshair; }
+    #roiPreview { border:1px dashed #2b3b60; border-radius:10px; background:#0f1726 }
+    
+    /* Instrucciones ROI */
+    .roi-instructions { background: #0f1726; border: 1px solid #1e2a44; border-radius: 10px; padding: 12px; margin-top: 10px; }
+    .roi-instructions p { margin: 0 0 8px; font-size: 0.9rem; }
+    .roi-instructions p:last-child { margin-bottom: 0; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>PDF417 — Escanear (Cámara/Imagen) y Decodificar Texto</h1>
+    <p class="hint">App unificada: combina escaneo con ZXing y decodificación por cadena (DUI con "||" y AAMVA/USDL).</p>
+
+    <div class="grid">
+      <!-- Columna izquierda: entradas -->
+      <div>
+        <div class="card">
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="tab-camera">Cámara</button>
+            <button class="tab-btn" data-tab="tab-image">Imagen</button>
+            <button class="tab-btn" data-tab="tab-text">Texto</button>
+          </div>
+
+          <!-- Cámara -->
+          <section id="tab-camera">
+            <h2>1) Escanear desde cámara</h2>
+            <div class="row" style="margin-bottom:8px">
+              <button id="startButton">Iniciar Cámara</button>
+              <button id="resetButton" class="secondary">Detener Cámara</button>
+              <div class="beep-option">
+                <input type="checkbox" id="beepCheckbox" checked />
+                <label for="beepCheckbox">Beep al detectar</label>
+              </div>
+            </div>
+            <div id="sourceSelectPanel" class="row hidden">
+              <label for="sourceSelect">Seleccionar cámara:</label>
+              <select id="sourceSelect"></select>
+            </div>
+            <div style="position: relative;">
+              <video id="video" muted playsinline></video>
+              <div class="scanner-overlay"><div class="scanner-frame"></div></div>
+            </div>
+          </section>
+
+          <!-- Imagen con ROI -->
+          <section id="tab-image" class="hidden">
+            <h2>2) Cargar imagen</h2>
+            <div class="row" style="margin-bottom:8px">
+              <input type="file" id="fileInput" accept="image/*" />
+              <label class="inline" for="fileInput">Seleccionar imagen</label>
+              <button id="processImageButton" class="success" disabled>Procesar imagen (completa)</button>
+            </div>
+
+            <!-- Canvas con overlay de ROI -->
+            <canvas id="imageCanvas" class="hidden"></canvas>
+
+            <!-- Controles ROI -->
+            <div id="roiPanel" class="roi-controls hidden">
+              <div class="grp">
+                <h4>Acciones ROI</h4>
+                <div class="row">
+                  <button id="captureRoiBtn" class="success">Capturar ROI y Procesar</button>
+                  <button id="resetRoiBtn" class="secondary">Reiniciar ROI</button>
+                </div>
+              </div>
+              <div class="grp">
+                <h4>Vista previa ROI</h4>
+                <canvas id="roiPreview" width="180" height="120"></canvas>
+              </div>
+            </div>
+            
+            <!-- Instrucciones ROI -->
+            <div id="roiInstructions" class="roi-instructions hidden">
+              <p><strong>Instrucciones:</strong></p>
+              <p>1. Haga clic y arrastre sobre la imagen para definir la región de interés (ROI)</p>
+              <p>2. Use "Capturar ROI y Procesar" para analizar solo esa área</p>
+              <p>3. Use "Reiniciar ROI" para volver a la selección inicial</p>
+            </div>
+          </section>
+
+          <!-- Texto -->
+          <section id="tab-text" class="hidden">
+            <h2>3) Decodificar desde texto</h2>
+            <p class="hint">Pegue el contenido crudo leído del PDF417. Si contiene "||" se aplicará el decodificador DUI; si parece AAMVA/USDL (códigos DCS, DAC, etc.), se aplicará el parser AAMVA.</p>
+            <textarea id="inputText" placeholder="Pegue aquí la cadena del PDF417..."></textarea>
+            <div class="row" style="margin-top:8px">
+              <button id="decodeTextBtn">Decodificar</button>
+              <button id="clearTextBtn" class="secondary">Limpiar</button>
+              <button id="exportJsonBtn" class="secondary">Exportar JSON</button>
+              <button id="loadExampleBtn" class="secondary">Ejemplo DUI</button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Columna derecha: resultados -->
+      <div>
+        <div class="card">
+          <h2>Resultados</h2>
+          <div class="result-summary">
+            <div class="kv">
+              <b>Estado:</b> <span id="status">Esperando…</span>
+              <b>Formato detectado:</b> <span id="fmt">—</span>
+            </div>
+          </div>
+
+          <div id="tableWrap" class="hidden">
+            <h3>Datos extraídos</h3>
+            <table class="result-table">
+              <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+              <tbody id="dataTableBody"></tbody>
+            </table>
+          </div>
+
+          <div style="margin-top:12px">
+            <h3>JSON</h3>
+            <pre id="jsonOut" class="json-pre"></pre>
+          </div>
+
+          <div style="margin-top:12px">
+            <h3>Texto crudo</h3>
+            <pre id="rawOut" class="json-pre"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ZXing para PDF417 (cámara/imagen) -->
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <script>
+    // --- Utilidades UI ---
+    function $(sel){ return document.querySelector(sel); }
+    function $all(sel){ return Array.from(document.querySelectorAll(sel)); }
+    function setStatus(msg, type){
+      const el = $('#status'); el.textContent = msg; el.className = '';
+      if(type==='success') el.classList.add('check-ok');
+      if(type==='error') el.classList.add('check-fail');
+    }
+    function setFormat(fmt){ $('#fmt').textContent = fmt || '—'; }
+    function showTable(show){ $('#tableWrap').classList.toggle('hidden', !show); }
+    function fillTable(obj){
+      const tb = $('#dataTableBody'); tb.innerHTML = '';
+      Object.entries(obj || {}).forEach(([k,v])=>{
+        const tr = document.createElement('tr');
+        const td1 = document.createElement('td'); td1.textContent = k;
+        const td2 = document.createElement('td'); td2.textContent = (v==null||v==='')? 'N/A' : String(v);
+        tr.append(td1, td2); tb.appendChild(tr);
+      });
+    }
+    function beepIfEnabled(){
+      const c = $('#beepCheckbox'); if(!c || !c.checked) return;
+      try{
+        const ac = new (window.AudioContext||window.webkitAudioContext)();
+        const osc = ac.createOscillator(); const g = ac.createGain();
+        osc.connect(g); g.connect(ac.destination);
+        osc.frequency.value = 800; osc.type='sine';
+        g.gain.setValueAtTime(0.3, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, ac.currentTime+0.5);
+        osc.start(); osc.stop(ac.currentTime+0.5);
+      }catch(e){}
+    }
+
+    // --- Parsers (USDL/AAMVA y DUI con "||") ---
+    const parseUSDL = function(str){
+      const CodeToKey = { DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes", DBA:"dateOfExpiry", DCS:"lastName", DAC:"firstName", DAD:"middleName", DBD:"dateOfIssue", DBB:"dateOfBirth", DBC:"sex", DAY:"eyeColor", DAU:"height", DAG:"addressStreet", DAI:"addressCity", DAJ:"addressState", DAK:"addressPostalCode", DAQ:"documentNumber", DCF:"documentDiscriminator", DCG:"issuer", DDE:"lastNameTruncated", DDF:"firstNameTruncated", DDG:"middleNameTruncated", DAZ:"hairColor", DAH:"addressStreet2", DCI:"placeOfBirth", DCJ:"auditInformation", DCK:"inventoryControlNumber", DBN:"otherLastName", DBG:"otherFirstName", DBS:"otherSuffixName", DCU:"nameSuffix", DCE:"weightRange", DCL:"race", DCM:"standardVehicleClassification", DCN:"standardEndorsementCode", DCO:"standardRestrictionCode", DCP:"jurisdictionVehicleClassificationDescription", DCQ:"jurisdictionEndorsementCodeDescription", DCR:"jurisdictionRestrictionCodeDescription", DDA:"complianceType", DDB:"dateCardRevised", DDC:"dateOfExpiryHazmatEndorsement", DDD:"limitedDurationDocumentIndicator", DAW:"weightLb", DAX:"weightKg", DDH:"dateAge18", DDI:"dateAge19", DDJ:"dateAge21", DDK:"organDonor", DDL:"veteran" };
+      const lines = str.trim().split(/\r?\n/).map(l=>l.replace(/[^\t\n\r\x20-\x7E]/g,'').trim());
+      const props = {}; let started=false;
+      for(let i=0;i<lines.length;i++){
+        const line = lines[i];
+        if(!started){ if(line.indexOf('ANSI ')===0) { started=true; } continue; }
+        const code = line.slice(0,3); const valueRaw = line.slice(3);
+        const key = CodeToKey[code]; if(!key) continue;
+        let value = valueRaw;
+        if(code==='DBC') value = (value==='1')? 'M' : 'F';
+        if(/^date/.test(key) && /^(\d{8})$/.test(value)) {
+          const mm=value.slice(0,2), dd=value.slice(2,4), yy=value.slice(4);
+          value = `${yy}-${mm}-${dd}`;
+        }
+        props[key] = value;
+      }
+      return Object.keys(props).length? props : null;
+    };
+
+    function parseDUI(text){
+      const parts = String(text||'').split('||');
+      if(parts.length<3) return null;
+      const fieldNames = [
+        "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Tipo de Documento","Firma Digital",
+        "Lugar de Nacimiento","Municipio","Departamento","Nacionalidad","Sexo","Fecha de Nacimiento",
+        "Fecha de Emisión","Número de Emisión","Categoría","Fecha de Vencimiento","Segunda Firma Digital","Código de Verificación"
+      ];
+      const out = {};
+      for(let i=0;i<fieldNames.length;i++) out[fieldNames[i]] = (i<parts.length? parts[i] : 'No disponible');
+      return out;
+    }
+
+    function smartParse(raw){
+      const txt = String(raw||'');
+      if(txt.includes('||')) return { kind:'DUI', data: parseDUI(txt) };
+      const usd = parseUSDL(txt); if(usd) return { kind:'AAMVA', data: usd };
+      return { kind:'raw', data: { raw: txt } };
+    }
+
+    function renderResult(parsed, raw){
+      setFormat(parsed.kind);
+      fillTable(parsed.data||{}); showTable(!!parsed && !!parsed.data);
+      $('#jsonOut').textContent = JSON.stringify(parsed.data||{}, null, 2);
+      $('#rawOut').textContent = String(raw||'');
+    }
+
+    // --- Tabs ---
+    const tabBtns = $all('.tab-btn');
+    tabBtns.forEach(btn=>btn.addEventListener('click', ()=>{
+      tabBtns.forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+      ['tab-camera','tab-image','tab-text'].forEach(id=> document.getElementById(id).classList.add('hidden'));
+      document.getElementById(btn.dataset.tab).classList.remove('hidden');
+    }));
+
+    // --- Cámara (ZXing) ---
+    let codeReader, selectedDeviceId, isScanning=false;
+    (async ()=>{
+      try{
+        codeReader = new ZXing.BrowserMultiFormatReader();
+        const devices = await codeReader.getVideoInputDevices();
+        const sourceSelect = document.getElementById('sourceSelect');
+        if(devices && devices.length){ selectedDeviceId = devices[0].deviceId; }
+        if(devices.length>1){
+          devices.forEach(d=>{
+            const opt=document.createElement('option');
+            opt.value=d.deviceId; opt.text=d.label||d.deviceId;
+            sourceSelect.appendChild(opt);
+          });
+          sourceSelect.addEventListener('change', ()=>{ selectedDeviceId = sourceSelect.value; });
+          document.getElementById('sourceSelectPanel').classList.remove('hidden');
+        }
+        setupEvents();
+      }catch(err){ setStatus('Error: '+err.message,'error'); }
+    })();
+
+    function setupEvents(){
+      // Cámara
+      $('#startButton').addEventListener('click', startCamera);
+      $('#resetButton').addEventListener('click', resetCamera);
+
+      // Imagen
+      $('#fileInput').addEventListener('change', handleImageSelection);
+      $('#processImageButton').addEventListener('click', processImage);
+
+      // Texto
+      $('#decodeTextBtn').addEventListener('click', decodeFromTextarea);
+      $('#clearTextBtn').addEventListener('click', ()=>{
+        $('#inputText').value=''; setStatus('Texto limpiado'); setFormat('—'); showTable(false); $('#jsonOut').textContent=''; $('#rawOut').textContent='';
+      });
+      $('#exportJsonBtn').addEventListener('click', exportJSON);
+      $('#loadExampleBtn').addEventListener('click', ()=>{ $('#inputText').value = EXAMPLE_DUI; setStatus('Ejemplo cargado'); });
+
+      // ROI
+      $('#captureRoiBtn').addEventListener('click', captureAndProcessROI);
+      $('#resetRoiBtn').addEventListener('click', resetROI);
+    }
+
+    function startCamera(){
+      if(isScanning){ setStatus('La cámara ya está en funcionamiento'); return; }
+      isScanning = true; setStatus('Escaneando…'); setFormat('—');
+      codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err)=>{
+        if(result){
+          const fmt = result.format; setFormat(fmt===10? 'PDF417' : String(fmt));
+          const parsed = smartParse(result.text);
+          renderResult(parsed, result.text);
+          setStatus('Código detectado', 'success');
+          beepIfEnabled();
+        }
+        if(err && !(err instanceof ZXing.NotFoundException)){
+          setStatus('Error: '+err.message, 'error');
+        }
+      });
+    }
+
+    function resetCamera(){
+      try{ codeReader && codeReader.reset(); }catch(e){}
+      isScanning=false; setStatus('Cámara detenida'); setFormat('—');
+    }
+
+    // --- Imagen + ROI ---
+    let selectedImageFile=null;
+    const imgCanvas = document.getElementById('imageCanvas');
+    const imgCtx = imgCanvas.getContext('2d');
+
+    // ROI en proporciones (0..1) para robustez ante escalado
+    let roi = { x:0.15, y:0.25, w:0.70, h:0.50 }; // inicio razonable para PDF417 horizontal
+    let natural = { w:0, h:0 }; // tamaño real de la imagen cargada
+    let drawSize = { w:0, h:0 }; // tamaño del canvas de dibujo
+    
+    // Variables para el arrastre del ROI con mouse
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+    let dragCurrent = { x: 0, y: 0 };
+
+    function handleImageSelection(e){
+      const f = e.target.files && e.target.files[0];
+      if(!f){
+        imgCanvas.classList.add('hidden');
+        $('#roiPanel').classList.add('hidden');
+        $('#roiInstructions').classList.add('hidden');
+        $('#processImageButton').disabled=true;
+        return;
+      }
+      selectedImageFile=f;
+      const reader=new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = ()=>{
+          natural.w = img.naturalWidth; natural.h = img.naturalHeight;
+
+          // Ajuste de canvas para encajar ancho de contenedor (máx ~440px en layout)
+          const maxW = Math.min(440, window.innerWidth - 64); // margen aprox
+          const scale = Math.min(1, maxW / img.naturalWidth);
+          drawSize.w = Math.round(img.naturalWidth * scale);
+          drawSize.h = Math.round(img.naturalHeight * scale);
+
+          imgCanvas.width = drawSize.w;
+          imgCanvas.height = drawSize.h;
+
+          // Dibuja imagen y ROI
+          imgCtx.drawImage(img, 0, 0, drawSize.w, drawSize.h);
+          drawROIOverlay();
+
+          imgCanvas.classList.remove('hidden');
+          $('#roiPanel').classList.remove('hidden');
+          $('#roiInstructions').classList.remove('hidden');
+          $('#processImageButton').disabled=false;
+
+          setStatus('Imagen cargada (puede ajustar el ROI y capturar)');
+          
+          // Configurar eventos de mouse para ROI
+          setupMouseEvents();
+        };
+        img.src = ev.target.result;
+        // guarda dataURL para futuros recortes a resolución nativa
+        imgCanvas.dataset.src = ev.target.result;
+      };
+      reader.readAsDataURL(f);
+    }
+    
+    function setupMouseEvents() {
+      // Limpiar eventos previos
+      imgCanvas.removeEventListener('mousedown', handleMouseDown);
+      imgCanvas.removeEventListener('mousemove', handleMouseMove);
+      imgCanvas.removeEventListener('mouseup', handleMouseUp);
+      imgCanvas.removeEventListener('mouseleave', handleMouseUp);
+      
+      // Agregar nuevos eventos
+      imgCanvas.addEventListener('mousedown', handleMouseDown);
+      imgCanvas.addEventListener('mousemove', handleMouseMove);
+      imgCanvas.addEventListener('mouseup', handleMouseUp);
+      imgCanvas.addEventListener('mouseleave', handleMouseUp);
+    }
+    
+    function handleMouseDown(e) {
+      const rect = imgCanvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / drawSize.w;
+      const y = (e.clientY - rect.top) / drawSize.h;
+      
+      isDragging = true;
+      dragStart.x = x;
+      dragStart.y = y;
+      dragCurrent.x = x;
+      dragCurrent.y = y;
+      
+      // Iniciar con un ROI pequeño en el punto de clic
+      roi.x = x;
+      roi.y = y;
+      roi.w = 0.1; // 10% del ancho
+      roi.h = 0.1; // 10% del alto
+      
+      drawROIOverlay();
+    }
+    
+    function handleMouseMove(e) {
+      if (!isDragging) return;
+      
+      const rect = imgCanvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / drawSize.w;
+      const y = (e.clientY - rect.top) / drawSize.h;
+      
+      dragCurrent.x = x;
+      dragCurrent.y = y;
+      
+      // Calcular nuevo ROI basado en arrastre
+      roi.x = Math.min(dragStart.x, dragCurrent.x);
+      roi.y = Math.min(dragStart.y, dragCurrent.y);
+      roi.w = Math.abs(dragCurrent.x - dragStart.x);
+      roi.h = Math.abs(dragCurrent.y - dragStart.y);
+      
+      // Asegurar que el ROI no sea demasiado pequeño
+      roi.w = Math.max(roi.w, 0.05);
+      roi.h = Math.max(roi.h, 0.05);
+      
+      drawROIOverlay();
+    }
+    
+    function handleMouseUp() {
+      if (!isDragging) return;
+      
+      isDragging = false;
+      
+      // Asegurar que el ROI esté dentro de los límites
+      roi.x = Math.max(0, Math.min(roi.x, 1 - roi.w));
+      roi.y = Math.max(0, Math.min(roi.y, 1 - roi.h));
+      
+      drawROIOverlay();
+      setStatus('ROI definido. Use "Capturar ROI y Procesar" para analizar.');
+    }
+
+    function processImage(){
+      if(!selectedImageFile){ setStatus('Seleccione una imagen primero','error'); return; }
+      setStatus('Procesando imagen (completa)…');
+      // Decodifica el canvas completo (ya que dibujamos la imagen en él)
+      const imgEl = new Image();
+      imgEl.onload = ()=>{
+        codeReader.decodeFromImageElement(imgEl).then(result=>{
+          const parsed = smartParse(result.text);
+          renderResult(parsed, result.text);
+          setFormat(result.format===10? 'PDF417' : String(result.format));
+          setStatus('Código detectado', 'success');
+          beepIfEnabled();
+        }).catch(err=>{
+          setStatus('Error al procesar la imagen: '+err.message,'error');
+          showTable(false); $('#jsonOut').textContent=''; $('#rawOut').textContent='';
+        });
+      };
+      imgEl.src = imgCanvas.toDataURL('image/png');
+    }
+
+    function drawROIOverlay(){
+      // Redibuja fondo (imagen) desde el dataURL para mantener nitidez del base layer
+      const src = imgCanvas.dataset.src;
+      if(!src) return;
+      const base = new Image();
+      base.onload = ()=>{
+        imgCtx.clearRect(0,0,imgCanvas.width,imgCanvas.height);
+        imgCtx.drawImage(base, 0, 0, drawSize.w, drawSize.h);
+
+        // Rectángulo ROI
+        const rx = Math.round(roi.x * drawSize.w);
+        const ry = Math.round(roi.y * drawSize.h);
+        const rw = Math.round(roi.w * drawSize.w);
+        const rh = Math.round(roi.h * drawSize.h);
+
+        // sombra exterior
+        imgCtx.save();
+        imgCtx.fillStyle = 'rgba(0,0,0,0.5)';
+        imgCtx.beginPath();
+        imgCtx.rect(0,0,drawSize.w,drawSize.h);
+        imgCtx.rect(rx,ry,rw,rh);
+        imgCtx.fill('evenodd');
+        imgCtx.restore();
+
+        // borde ROI
+        imgCtx.save();
+        imgCtx.strokeStyle = isDragging ? '#ff6' : '#0f6';
+        imgCtx.lineWidth = 3;
+        imgCtx.setLineDash([8,6]);
+        imgCtx.strokeRect(rx,ry,rw,rh);
+        imgCtx.restore();
+
+        // texto guía
+        imgCtx.save();
+        imgCtx.font = '12px system-ui';
+        imgCtx.fillStyle = isDragging ? '#ff6' : '#0f6';
+        imgCtx.fillText(isDragging ? 'Suelte para confirmar ROI' : 'ROI definido. Use "Capturar ROI y Procesar"', rx, Math.max(12, ry-6));
+        imgCtx.restore();
+
+        // mini preview del ROI
+        drawRoiPreview();
+      };
+      base.src = src;
+    }
+
+    function resetROI(){
+      roi = { x:0.15, y:0.25, w:0.70, h:0.50 };
+      drawROIOverlay();
+      setStatus('ROI reiniciado');
+    }
+
+    function drawRoiPreview(){
+      const prev = $('#roiPreview');
+      const ctx = prev.getContext('2d');
+      const img = new Image();
+      img.onload = ()=>{
+        const sx = Math.round(roi.x * img.naturalWidth);
+        const sy = Math.round(roi.y * img.naturalHeight);
+        const sw = Math.round(roi.w * img.naturalWidth);
+        const sh = Math.round(roi.h * img.naturalHeight);
+        // Limpia y dibuja
+        ctx.clearRect(0,0,prev.width,prev.height);
+        // Ajuste para encajar manteniendo proporción
+        const scale = Math.min(prev.width/sw, prev.height/sh);
+        const dw = Math.round(sw * scale);
+        const dh = Math.round(sh * scale);
+        const dx = Math.round((prev.width - dw)/2);
+        const dy = Math.round((prev.height - dh)/2);
+        ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+      };
+      img.src = imgCanvas.dataset.src;
+    }
+
+    function captureAndProcessROI(){
+      if(!imgCanvas.dataset.src){ setStatus('Cargue una imagen primero','error'); return; }
+      setStatus('Procesando ROI…');
+
+      // Carga imagen real a tamaño nativo
+      const base = new Image();
+      base.onload = ()=>{
+        // Coordenadas en píxeles reales
+        const sx = Math.round(roi.x * base.naturalWidth);
+        const sy = Math.round(roi.y * base.naturalHeight);
+        const sw = Math.round(roi.w * base.naturalWidth);
+        const sh = Math.round(roi.h * base.naturalHeight);
+
+        // Recorte a un canvas temporal a resolución nativa del ROI
+        const tmp = document.createElement('canvas');
+        tmp.width = sw; tmp.height = sh;
+        const tctx = tmp.getContext('2d');
+        tctx.drawImage(base, sx, sy, sw, sh, 0, 0, sw, sh);
+
+        // Decodifica el ROI: convertimos a Image y reutilizamos decodeFromImageElement
+        const roiImg = new Image();
+        roiImg.onload = ()=>{
+          codeReader.decodeFromImageElement(roiImg).then(result=>{
+            const parsed = smartParse(result.text);
+            renderResult(parsed, result.text);
+            setFormat(result.format===10? 'PDF417' : String(result.format));
+            setStatus('Código detectado (ROI)', 'success');
+            beepIfEnabled();
+          }).catch(err=>{
+            setStatus('No se detectó código en el ROI: '+err.message, 'error');
+          });
+        };
+        roiImg.src = tmp.toDataURL('image/png');
+      };
+      base.src = imgCanvas.dataset.src;
+    }
+
+    // --- Texto ---
+    const EXAMPLE_DUI = "01234567||AVENDANO MARTELL||RONALD OSWALDO||2||Qo8CBuyBtQIq/4MoAl1kghUCcYBDRgLWYoDlAuupQdgC9Z2DBANBZIIlA0apgrMDUGdCNANl10IqA3TOQmcDdNeC0QO22UCtA7u2QiADu8xBaQQWykDaBCHAgscEd1qAhASGwINvBLlhgnYFH16BxAVMXYFFBaNj||SAN SALVADOR||SAN SALVADOR||NO SABE||F||07/02/1998||16/03/2024||101012500||||SO||7||Qr0C/7hBAwOSKYIvA5cugzID1LmBVAP4JEODBAzGgSIEMJ1BxAR3G4BwBJUbg4MEvmiBJwTDHoPpBMhZguYE3RWCAQTiE4OsBRR3QjkFHw5C+gUkBoFfBUwUgfwFsglBHAW3DIMtBg2CQi8GLACCvQYsAEGwBkD8||72C3D403";
+
+    function decodeFromTextarea(){
+      const raw = $('#inputText').value.trim();
+      if(!raw){ setStatus('Ingrese texto a decodificar','error'); return; }
+      setStatus('Decodificando…');
+      const parsed = smartParse(raw);
+      renderResult(parsed, raw);
+      setStatus('Texto decodificado', 'success');
+    }
+
+    function exportJSON(){
+      const json = $('#jsonOut').textContent;
+      if(!json || json===''){ setStatus('No hay datos para exportar','error'); return; }
+      const blob = new Blob([json], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'pdf417-data.json';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setStatus('JSON exportado');
+    }
+  </script>
+</body>
+</html>
