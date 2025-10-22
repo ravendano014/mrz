@@ -293,9 +293,9 @@
       const parts = String(text||'').split('||');
       if(parts.length<3) return null;
       const fieldNames = [
-        "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Tipo de Documento","Firma Digital",
-        "Lugar de Nacimiento","Municipio","Departamento","Nacionalidad","Sexo","Fecha de Nacimiento",
-        "Fecha de Emisión","Número de Emisión","Categoría","Fecha de Vencimiento","Segunda Firma Digital","Código de Verificación"
+        "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Número de Emisión","Firma Digital",
+        "Lugar de Nacimiento","Municipio","Profesión u Oficio", "Sexo","Fecha de Nacimiento",
+        "Fecha de Emisión","Código de Zona","Categoría","Estdo Familiar","Nacionalidad","Segunda Firma Digital","Código de Verificación"
       ];
       const out = {};
       for(let i=0;i<fieldNames.length;i++) out[fieldNames[i]] = (i<parts.length? parts[i] : 'No disponible');
@@ -969,7 +969,7 @@
     }
 
     // --- Texto ---
-    const EXAMPLE_DUI = "01234567||AVENDANO MARTELL||RONALD OSWALDO||2||Qo8CBuyBtQIq/4MoAl1kghUCcYBDRgLWYoDlAuupQdgC9Z2DBANBZIIlA0apgrMDUGdCNANl10IqA3TOQmcDdNeC0QO22UCtA7u2QiADu8xBaQQWykDaBCHAgscEd1qAhASGwINvBLlhgnYFH16BxAVMXYFFBaNj||SAN SALVADOR||SAN SALVADOR||NO SABE||F||07/02/1998||16/03/2024||101012500||||SO||7||Qr0C/7hBAwOSKYIvA5cugzID1LmBVAP4JEODBAzGgSIEMJ1BxAR3G4BwBJUbg4MEvmiBJwTDHoPpBMhZguYE3RWCAQTiE4OsBRR3QjkFHw5C+gUkBoFfBUwUgfwFsglBHAW3DIMtBg2CQi8GLACCvQYsAEGwBkD8||72C3D403";
+    const EXAMPLE_DUI = "01234567||AVENDANO MARTELL||RONALD OSWALDO||2||Qo8CBuyBtQIq/4MoAl1kghUCcYBDRgLWYoDlAuupQdgC9Z2DBANBZIIlA0apgrMDUGdCNANl10IqA3TOQmcDdNeC0QO22UCtA7u2QiADu8xBaQQWykDaBCHAgscEd1qAhASGwINvBLlhgnYFH16BxAVMXYFFBaNj||SAN SALVADOR||SAN SALVADOR||NO SABE||M||07/02/1998||16/03/2024||101012500||||SO||7||Qr0C/7hBAwOSKYIvA5cugzID1LmBVAP4JEODBAzGgSIEMJ1BxAR3G4BwBJUbg4MEvmiBJwTDHoPpBMhZguYE3RWCAQTiE4OsBRR3QjkFHw5C+gUkBoFfBUwUgfwFsglBHAW3DIMtBg2CQi8GLACCvQYsAEGwBkD8||72C3D403";
 
     function decodeFromTextarea(){
       const raw = $('#inputText').value.trim();
@@ -994,4 +994,3 @@
   </script>
 </body>
 </html>
-
