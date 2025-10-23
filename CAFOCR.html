@@ -74,7 +74,10 @@
       <div class="row" style="margin-top:10px">
         <button id="startCam" class="primary">Iniciar cámara</button>
         <button id="stopCam" class="bad" disabled>Detener cámara</button>
-        <button id="captureAndExtract" class="good" disabled>Capturar &amp; Extraer</button>
+        
+        <button id="extractFromLiveCam" class="good" disabled>Extraer desde Cámara</button>
+
+        <button id="captureROI" disabled>Capturar ROI desde cámara</button>
 
         <label class="buttonlike">
           Subir imagen
@@ -147,7 +150,10 @@
   const langBadge = el.langBadge;
   const quality = el.quality;
   const barcodesFound = el.barcodesFound;
-  const autoDetectROIButton = el.autoDetectROI; // Referencia al nuevo botón
+  const autoDetectROIButton = el.autoDetectROI;
+  const captureROIButton = el.captureROI; 
+  // El botón 'Capturar & Extraer' fue renombrado a 'Extraer desde Cámara' con ID 'extractFromLiveCam'
+  const extractFromLiveCamButton = el.extractFromLiveCam;
 
   const ctxOverlay = canvasOverlay.getContext('2d');
   const ctxGuide = canvasGuide.getContext('2d');
@@ -160,14 +166,14 @@
   let lastImageEl = null;
   let videoRequestId = null;
 
-  let audioCtx = null;  // audio context fix
+  let audioCtx = null;
   let lastBeepAt = 0;
 
   // ROI en coordenadas de canvasOverlay (px)
   let roi = null; // {x,y,w,h}
-  const HANDLE = 10; // px para agarraderas
-  let dragMode = null; // 'move' | 'nw'|'ne'|'sw'|'se'|'n'|'s'|'w'|'e' | 'draw'
-  let dragStart = null; // {x,y}
+  const HANDLE = 10;
+  let dragMode = null;
+  let dragStart = null;
   const MIN_W = 20, MIN_H = 20;
 
   // ---------- utils ----------
@@ -358,7 +364,7 @@
   window.addEventListener('touchmove', onPointerMove, {passive:false});
   window.addEventListener('touchend', onPointerUp);
 
-  // ---------- Auto-detección ROI (NUEVA FUNCIÓN) ----------
+  // ---------- Auto-detección ROI ----------
   async function autoSelectROI(sourceEl){
     setStatus('Buscando códigos de barras para auto-ajustar el ROI...');
 
@@ -653,6 +659,47 @@
   }
 
   // ---------- Cámara / Imagen ----------
+
+  /**
+   * Congela el frame actual de la cámara, detiene el stream
+   * y establece la imagen capturada como la nueva fuente (lastImageEl).
+   */
+  captureROIButton.addEventListener('click', ()=>{
+    if(!stream || video.readyState<2){ setStatus('La cámara no está lista.'); return; }
+    
+    const vW = video.videoWidth;
+    const vH = video.videoHeight;
+    
+    if (vW === 0 || vH === 0) {
+        setStatus('Error: Dimensiones de video no válidas.');
+        return;
+    }
+
+    // 1. Crear un canvas para el frame actual
+    const snapshotCanvas = document.createElement('canvas');
+    snapshotCanvas.width = vW;
+    snapshotCanvas.height = vH;
+    const snapshotCtx = snapshotCanvas.getContext('2d');
+    snapshotCtx.drawImage(video, 0, 0, vW, vH);
+
+    // 2. Convertir el canvas a una imagen (data URL)
+    const dataURL = snapshotCanvas.toDataURL('image/png');
+    
+    // 3. Detener la cámara
+    el.stopCam.click(); 
+
+    // 4. Asignar la imagen capturada al elemento de vista previa
+    imgPrev.src = dataURL; 
+    imgPrev.style.display = 'block';
+    video.style.display = 'none';
+    lastImageEl = imgPrev;
+    
+    // 5. Sincronizar tamaños y actualizar estado
+    syncCanvasSizes();
+    setStatus('ROI Capturado y congelado. Ajusta el recuadro si es necesario y presiona “Extraer de imagen”.');
+  });
+
+
   el.startCam.addEventListener('click', async ()=>{
     if (videoRequestId) return;
     try{
@@ -660,14 +707,18 @@
       video.srcObject = stream;
       await video.play();
       el.stopCam.disabled = false;
-      el.captureAndExtract.disabled = true;
+      el.extractFromLiveCam.disabled = true; // Habilitado por el nuevo ID
+      captureROIButton.disabled = true; 
+
       camBadge.textContent='iniciando…';
       video.onplaying = ()=>{
-        el.captureAndExtract.disabled=false; camBadge.textContent='activa';
+        el.extractFromLiveCam.disabled=false; // Habilitado cuando esté lista
+        captureROIButton.disabled=false;
+        camBadge.textContent='activa';
         imgPrev.style.display='none'; video.style.display='block';
         syncCanvasSizes();
         drawOverlay();
-        setStatus('Cámara iniciada. Dibuja/ajusta el ROI y usa “Capturar & Extraer”.');
+        setStatus('Cámara iniciada. Dibuja/ajusta el ROI y usa “Extraer desde Cámara”.');
         detectVideoLoop(true);
       };
       lastImageEl = null;
@@ -681,10 +732,10 @@
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
     video.pause(); video.srcObject=null;
     el.stopCam.disabled=true;
-    el.captureAndExtract.disabled=true;
+    el.extractFromLiveCam.disabled=true; // Deshabilitar al detener
+    captureROIButton.disabled=true; 
     camBadge.textContent='detenida';
     setStatus('Cámara detenida.');
-    video.style.display='none';
     ctxOverlay.clearRect(0,0,canvasOverlay.width,canvasOverlay.height);
   });
 
@@ -701,10 +752,11 @@
     syncCanvasSizes();
   });
 
-  el.captureAndExtract.addEventListener('click', async ()=>{
+  // LISTENER para "Extraer desde Cámara" (evalúa ROI y auto-ajusta)
+  extractFromLiveCamButton.addEventListener('click', async ()=>{
     if(!stream || video.readyState<2){ setStatus('La cámara no está lista.'); return; }
     
-    // Si no hay ROI, intenta el auto-ajuste (NUEVA LÓGICA)
+    // Si no hay ROI, intenta el auto-ajuste (Evalúa si existe ROI)
     if(!roi){ 
         const success = await autoSelectROI(video);
         if(!success){
@@ -743,7 +795,7 @@
     }
   });
   
-  // Event listener para el nuevo botón de Auto-ajuste (NUEVO BOTÓN)
+  // Event listener para el nuevo botón de Auto-ajuste
   el.autoDetectROI.addEventListener('click', async ()=>{
     let source = null;
     if(stream && video.readyState >= 2){
