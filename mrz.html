@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lector MRZ con Persistente + Beep — Cámara + Parser</title>
+  <title>Lector MRZ con Tesseract.js — Cámara + Parser (Auto)</title>
   <style>
     :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb; }
     *{box-sizing:border-box}
@@ -23,69 +23,80 @@
     .primary{background:var(--accent);border-color:transparent;color:#052e16;font-weight:700}
     .danger{background:var(--danger);color:#fff;border-color:transparent}
     .muted{color:var(--muted)}
+
     .stage{position:relative;border-radius:16px;overflow:hidden;background:#000}
     video{width:100%;display:block;max-height:60vh;object-fit:cover}
     canvas.hidden{display:none}
-    .frame{position:absolute;inset:auto 10% 10% 10%; height:26%; border:4px solid #22c55e;border-radius:8px;box-shadow:0 0 0 3px rgba(34,197,94,.15) inset}
+
+    .frame{position:absolute;inset:auto 10% 10% 10%; height:26%;
+           border:4px solid #22c55e;border-radius:8px;box-shadow:0 0 0 3px rgba(34,197,94,.15) inset}
     .frame::after{content:""; position:absolute; left:6px; right:6px; top:50%; height:2px; background:#22c55e66}
+
     .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
     .out{white-space:pre-wrap; word-break:break-word; background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:.75rem; min-height:3.5rem}
+
     dl{margin:.25rem 0;display:grid;grid-template-columns:max-content 1fr;gap:.25rem .75rem}
     dt{color:#9ca3af}
     dd{margin:0}
     .hint{font-size:.92rem;color:#a3e635}
     footer{opacity:.7;text-align:center;padding:1rem}
     a{color:#93c5fd}
+
     .results-table {width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.875rem}
     .results-table th, .results-table td {padding:.5rem;text-align:left;border-bottom:1px solid #1f2937}
     .results-table th {color:#9ca3af;font-weight:600;width:40%}
     .results-table tr:last-child td {border-bottom:none}
     .check-ok {color:#22c55e}
     .check-fail {color:#ef4444}
+    .format-guide {background:#0b1220;border:1px solid #1f2937;border-radius:8px;padding:.5rem .75rem;margin:.5rem 0;font-size:.85rem}
     .json-container {position:relative}
     .copy-json-btn {position:absolute;top:.5rem;right:.5rem}
-    .thumb {margin-top:.5rem; max-width:100%; border-radius:8px; border:1px solid #1f2937}
+    .status-ok{color:#22c55e}
+    .status-warn{color:#f59e0b}
+    .status-bad{color:#ef4444}
   </style>
 </head>
 <body>
   <header>
-    <h1>Extractor de MRZ — Persistente + Beep</h1>
-    <p class="lead">Activa <strong>Persistente</strong> para que el lector intente detectar MRZ automáticamente y capture la imagen cuando se confirme. Se reproduce un beep al detectar MRZ.</p>
+    <h1>Extractor de código MRZ con Tesseract.js (Auto)</h1>
+    <p class="lead"><strong>MRZ (Machine Readable Zone)</strong>: zona de dos o tres líneas con caracteres <span class="mono">A–Z 0–9 &lt;</span>. Este lector usa la cámara para reconocer y <strong>parsear automáticamente</strong> la MRZ cuando se detecta.</p>
   </header>
 
   <main class="wrap">
     <section class="grid">
       <div class="card pad">
         <h2>Vista de cámara</h2>
-        <p class="hint">Alinea la MRZ dentro del recuadro verde.</p>
+        <p class="hint">Alinea la MRZ dentro del recuadro verde. En modo <strong>Auto</strong> el sistema captura, detecta y parsea sin pulsar botones.</p>
         <div id="stage" class="stage">
           <video id="video" playsinline muted></video>
           <div class="frame" aria-label="Área objetivo para MRZ"></div>
           <canvas id="snapshot" class="hidden"></canvas>
         </div>
-
         <div class="controls">
           <button id="start" class="primary">▶ Iniciar cámara</button>
           <button id="stop" class="danger" disabled>■ Detener</button>
           <button id="capture" disabled>📸 Capturar y extraer MRZ</button>
 
-          <label style="display:flex;align-items:center;gap:.5rem;margin-left:auto">
+          <label class="muted" style="margin-left:auto;display:flex;align-items:center;gap:.5rem">
             <input id="rear" type="checkbox" checked/> Cámara trasera
           </label>
         </div>
 
-        <div class="controls" style="margin-top:.5rem">
-          <label style="display:flex;align-items:center;gap:.5rem">
-            <input id="persistent" type="checkbox" /> <span class="muted">Persistente (auto-scan)</span>
+        <!-- NUEVO: Auto toggle -->
+        <div class="controls" style="justify-content:space-between">
+          <label class="muted" style="display:flex;align-items:center;gap:.5rem">
+            <input id="auto" type="checkbox" checked/> Auto (detectar y parsear)
           </label>
-          <label style="display:flex;align-items:center;gap:.5rem;margin-left:1rem">
-            Throttle: <input id="throttle" type="range" min="500" max="3000" step="250" value="1500"/> <small id="throttleVal" class="muted">1500ms</small>
-          </label>
+          <small id="autoscanStatus" class="muted">Autoescaneo: en espera…</small>
         </div>
 
-        <div id="captured-thumb"></div>
-
-        <small class="muted">Privacidad: el video y las imágenes no salen del dispositivo; OCR con Tesseract.js en el cliente.</small>
+        <div id="results-table-container" style="display:none; margin-top:1rem">
+          <h3>Resultados parseados</h3>
+          <table class="results-table">
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+        <small class="muted">Privacidad: todo ocurre localmente en tu dispositivo.</small>
       </div>
 
       <aside class="card pad">
@@ -102,7 +113,7 @@
         </div>
 
         <div class="format-guide">
-          <strong>Guía:</strong> TD1: 3×30 · TD2: 2×36 · TD3: 2×44
+          <strong>Guía rápida de longitudes:</strong> TD1: 3×30 · TD2: 2×36 · TD3: 2×44
         </div>
 
         <h3 style="margin-top:1rem">MRZ Parser (JSON)</h3>
@@ -121,24 +132,23 @@
     </section>
 
     <section class="card pad">
-      <h2>Cómo usar</h2>
+      <h2>Cómo se usa</h2>
       <ol>
-        <li>Inicia la cámara.</li>
-        <li>Activa <strong>Persistente</strong> si quieres que detecte automáticamente (throttle controla la frecuencia de intentos).</li>
-        <li>Coloca el documento dentro del recuadro y espera el beep: la imagen se guardará y el MRZ aparecerá.</li>
-        <li>Usa <em>Capturar y extraer MRZ</em> para extracción manual.</li>
+        <li>Haz clic en <strong>Iniciar cámara</strong> y permite el acceso.</li>
+        <li>Con <strong>Auto</strong> activo, mantén la MRZ en el recuadro verde: detectará y parseará sola.</li>
+        <li>Usa <strong>Limpiar</strong> para reanudar el autoescaneo tras una detección válida.</li>
       </ol>
     </section>
   </main>
 
   <footer>Hecho con <a href="https://tesseract.projectnaptha.com/" target="_blank" rel="noreferrer noopener">Tesseract.js</a> y <code>getUserMedia</code>.</footer>
 
-  <!-- Tesseract.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
-    const $ = s => document.querySelector(s);
+    const $ = (s) => document.querySelector(s);
     const video = $('#video');
     const canvas = $('#snapshot');
+    const stage = $('#stage');
     const startBtn = $('#start');
     const stopBtn = $('#stop');
     const capBtn = $('#capture');
@@ -149,18 +159,18 @@
     const parseBtn = $('#parse');
     const decodedEl = $('#decoded');
     const rearCbx = $('#rear');
-    const persistentCbx = $('#persistent');
-    const throttleRange = $('#throttle');
-    const throttleVal = $('#throttleVal');
-    const capturedThumb = $('#captured-thumb');
+    const autoCbx = $('#auto');
+    const autoscanStatus = $('#autoscanStatus');
+    const resultsContainer = $('#results-table-container');
+    const resultsBody = $('#results-body');
     const copyJsonBtn = $('#copy-json');
 
     let stream = null;
-    let persistentTimer = null;
-    let lastDetected = 0;
-    let audioCtx = null;
+    let ocrRunning = false;
+    let autoScanTimer = null;
+    let autoPaused = false; // se pausa tras éxito
 
-    function setBusy(isBusy, msg='') {
+    function setBusy(isBusy, msg = '') {
       statusEl.textContent = isBusy ? (msg || 'Procesando…') : (msg || 'Listo.');
       startBtn.disabled = isBusy || !!stream;
       stopBtn.disabled = isBusy || !stream;
@@ -172,44 +182,48 @@
       copyJsonBtn.disabled = !has || !decodedEl.textContent.trim();
       if(!has) {
         decodedEl.textContent = '';
+        resultsContainer.style.display = 'none';
+        copyJsonBtn.disabled = true;
       }
     }
 
-    throttleRange.addEventListener('input', ()=> throttleVal.textContent = throttleRange.value + 'ms');
-
     async function startCamera(){
       try{
-        setBusy(true,'Abriendo cámara…');
+        setBusy(true, 'Abriendo cámara…');
         const constraints = {
           audio:false,
-          video:{ facingMode: rearCbx.checked ? { ideal: 'environment'} : 'user', width:{ideal:1920}, height:{ideal:1080} }
+          video:{
+            facingMode: rearCbx.checked ? { ideal: 'environment' } : 'user',
+            width: { ideal: 1920 },
+            height:{ ideal: 1080 }
+          }
         };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         await video.play();
-        setBusy(false,'Cámara lista.');
-        if(persistentCbx.checked) startPersistent();
+        setBusy(false, 'Cámara lista.');
+        if (autoCbx.checked) startAutoScan();
       }catch(err){
         console.error(err);
-        setBusy(false,'No se pudo acceder a la cámara: ' + (err.message||err.name));
+        setBusy(false, 'No se pudo acceder a la cámara: ' + (err.message||err.name));
       }
     }
 
     function stopCamera(){
-      stopPersistent();
+      stopAutoScan();
       if(stream){
-        stream.getTracks().forEach(t=>t.stop());
+        stream.getTracks().forEach(t => t.stop());
         stream = null;
         video.srcObject = null;
       }
-      setBusy(false,'Cámara detenida.');
+      setBusy(false, 'Cámara detenida.');
     }
 
     function getMRZCrop(){
-      const rect = document.getElementById('stage').getBoundingClientRect();
-      const frame = document.querySelector('.frame').getBoundingClientRect();
+      const rect = stage.getBoundingClientRect();
+      const frame = stage.querySelector('.frame').getBoundingClientRect();
       const vw = video.videoWidth, vh = video.videoHeight;
-      if(!vw || !vh) throw new Error('Video no listo aún.');
+      if(!vw || !vh){ throw new Error('Video no listo aún.'); }
       const scaleX = vw / rect.width;
       const scaleY = vh / rect.height;
       const sx = (frame.left - rect.left) * scaleX;
@@ -227,110 +241,145 @@
       const allowed = /[A-Z0-9<]/g;
       const lines = text
         .toUpperCase()
-        .replace(/\s+/g,'\n')
+        .replace(/\s+/g, '\n')
         .split(/\n+/)
         .map(l => (l.match(allowed)||[]).join(''))
-        .filter(l=>l.length>=25);
-      const take = (n,len) => {
-        for(let i=0;i+n-1<lines.length;i++){
-          const group = lines.slice(i,i+n);
-          if(group.every(l=>Math.abs(l.length-len)<=2)) return group;
+        .filter(l => l.length >= 25);
+
+      const take = (n, len) => {
+        for(let i=0;i+ n-1 < lines.length;i++){
+          const group = lines.slice(i, i+n);
+          if(group.every(l => Math.abs(l.length - len) <= 2)) return group;
         }
         return null;
       };
       let group = take(3,30) || take(2,44) || take(2,36);
-      if(group) return group.map(l=>l.padEnd(group[0].length,'<')).join('\n');
+      if(group){
+        return group.map((l)=> l.padEnd(group[0].length,'<')).join('\n');
+      }
       const top = lines.sort((a,b)=>b.length-a.length).slice(0,3);
       return top.join('\n');
     }
 
-    // Play beep using WebAudio
-    function beep(durationMs = 120, freq=1000, volume=0.08) {
-      try {
-        if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.value = volume;
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        setTimeout(()=>{ osc.stop(); }, durationMs);
-      } catch(e) {
-        console.warn('No se pudo reproducir beep:', e);
-      }
-    }
-
-    async function captureAndOCR({auto=false} = {}) {
+    async function runOCRAndMaybeParse({auto=false} = {}){
+      if (ocrRunning) return;
       try{
-        setBusy(true,'Reconociendo MRZ…');
+        ocrRunning = true;
+        setBusy(true, auto ? 'Auto: Reconociendo…' : 'Reconociendo MRZ…');
         const crop = getMRZCrop();
-        // OCR: whitelist MRZ
         const { data } = await Tesseract.recognize(crop, 'eng', {
-          logger: m => { if(m.status==='recognizing text') statusEl.textContent = `Reconociendo… ${(m.progress*100).toFixed(0)}%`; },
+          logger: m => { if(m.status === 'recognizing text'){ statusEl.textContent = `Reconociendo… ${(m.progress*100).toFixed(0)}%`; } },
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ<0123456789'
         });
         const cleaned = normalizeMRZ(data.text||'').trim();
         outputEl.textContent = cleaned;
-        setBusy(false, cleaned ? 'MRZ extraída.' : 'No se detectó MRZ clara.');
-        if(cleaned) {
-          // auto actions: beep + save image if called from persistent OR auto flag
-          const now = Date.now();
-          // evita detecciones repetidas inmediatas
-          if(now - lastDetected > 900) {
-            lastDetected = now;
-            beep();
-            // show thumbnail and provide download link
-            const thumbData = canvas.toDataURL('image/jpeg', 0.9);
-            capturedThumb.innerHTML = `
-              <div style="margin-top:.5rem">
-                <img class="thumb" src="${thumbData}" alt="Captura MRZ"/>
-                <div style="margin-top:.5rem;display:flex;gap:.5rem">
-                  <a class="btn" href="${thumbData}" download="mrz-capture-${now}.jpg">⬇ Guardar imagen</a>
-                  <button id="openInNew" class="btn">Abrir</button>
-                </div>
-              </div>
-            `;
-            const btnOpen = document.getElementById('openInNew');
-            if(btnOpen) btnOpen.addEventListener('click', ()=> window.open(thumbData));
-            // optionally auto-parse
-            const parsed = parseMRZ(cleaned);
+        setBusy(false, cleaned ? (auto ? 'Auto: MRZ extraída.' : 'MRZ extraída.') : (auto ? 'Auto: sin MRZ clara.' : 'No se detectó MRZ clara.'));
+
+        // Auto-parseo si corresponde
+        if (auto && cleaned) {
+          const parsed = parseMRZ(cleaned);
+          if (isParsedLikelyValid(parsed)) {
             decodedEl.textContent = JSON.stringify(parsed, null, 2);
             displayResults(parsed);
             copyJsonBtn.disabled = false;
+            statusEl.textContent = `MRZ parseada automáticamente (${parsed.format}).`;
+            autoscanStatus.textContent = 'Autoescaneo: pausa tras detección válida';
+            autoscanStatus.className = 'status-ok';
+            autoPaused = true;
+            // pausa el autoescaneo hasta que el usuario limpie o desactive/active el switch
+            stopAutoScan();
+          } else {
+            // Mantener autoescaneo si no es suficientemente buena
+            autoscanStatus.textContent = 'Autoescaneo: MRZ insuficiente, reintentando…';
+            autoscanStatus.className = 'status-warn';
           }
         }
       }catch(err){
         console.error(err);
-        setBusy(false,'Error durante OCR: ' + (err.message||err));
+        setBusy(false, 'Error durante OCR: ' + (err.message||err));
+      } finally {
+        ocrRunning = false;
       }
     }
 
-    // Persistent scanning control
-    function startPersistent(){
-      stopPersistent();
-      if(!stream) return;
-      const ms = parseInt(throttleRange.value,10) || 1500;
-      persistentTimer = setInterval(async () => {
-        // Only attempt when video has data
-        if(video.readyState < 2) return;
-        try {
-          await captureAndOCR({auto:true});
-        } catch(e) { console.error('Persistente error', e); }
-      }, ms);
-      statusEl.textContent = 'Modo persistente activo.';
+    // Heurística: formato conocido + al menos 2 checks de 3 válidos (cuando existan)
+    function isParsedLikelyValid(parsed){
+      if (!parsed || !parsed.format || parsed.format === 'UNKNOWN') return false;
+      const checks = parsed.checks || {};
+      const vals = Object.values(checks).filter(v => v !== undefined);
+      if (vals.length === 0) {
+        // Algunos documentos (o OCR pobre) no proveen todos los checks; si el formato es conocido y longitudes coherentes, aceptamos.
+        return true;
+      }
+      const ok = vals.filter(Boolean).length;
+      return ok >= Math.max(2, Math.ceil(vals.length * 0.66));
     }
 
-    function stopPersistent(){
-      if(persistentTimer) { clearInterval(persistentTimer); persistentTimer = null; statusEl.textContent = 'Modo persistente detenido.'; }
+    function startAutoScan(){
+      if (!stream || autoScanTimer || autoPaused || !autoCbx.checked) return;
+      autoscanStatus.textContent = 'Autoescaneo: activo';
+      autoscanStatus.className = '';
+      autoScanTimer = setInterval(()=> runOCRAndMaybeParse({auto:true}), 900);
     }
 
-    // MRZ parsing utilities (copiado y simplificado de tu versión original)
+    function stopAutoScan(){
+      if (autoScanTimer){
+        clearInterval(autoScanTimer);
+        autoScanTimer = null;
+      }
+      if (!autoPaused) {
+        autoscanStatus.textContent = 'Autoescaneo: en espera…';
+        autoscanStatus.className = 'muted';
+      }
+    }
+
+    // === Eventos UI base ===
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    capBtn.addEventListener('click', ()=> runOCRAndMaybeParse({auto:false}));
+
+    video.addEventListener('loadedmetadata', ()=>{
+      capBtn.disabled = false; stopBtn.disabled = false; startBtn.disabled = true;
+    });
+    video.addEventListener('emptied', ()=>{
+      capBtn.disabled = true; stopBtn.disabled = true; startBtn.disabled = false;
+    });
+
+    copyBtn.addEventListener('click', async ()=>{
+      const txt = outputEl.textContent.trim();
+      if(!txt) return;
+      await navigator.clipboard.writeText(txt);
+      statusEl.textContent = 'MRZ copiada al portapapeles.';
+    });
+
+    copyJsonBtn.addEventListener('click', async ()=>{
+      const txt = decodedEl.textContent.trim();
+      if(!txt) return;
+      await navigator.clipboard.writeText(txt);
+      statusEl.textContent = 'JSON copiado al portapapeles.';
+    });
+
+    clearBtn.addEventListener('click', ()=>{
+      outputEl.textContent='';
+      decodedEl.textContent='';
+      resultsContainer.style.display = 'none';
+      copyJsonBtn.disabled = true;
+      autoPaused = false;
+      setBusy(false,'Listo.');
+      if (autoCbx.checked && stream) startAutoScan();
+    });
+
+    autoCbx.addEventListener('change', ()=>{
+      autoPaused = false;
+      if (autoCbx.checked && stream) startAutoScan();
+      else stopAutoScan();
+    });
+
+    // ====== MRZ Parser ======
     function mrzCharValue(ch){
       if(ch>='0' && ch<='9') return ch.charCodeAt(0)-48;
       if(ch>='A' && ch<='Z') return ch.charCodeAt(0)-55;
-      return 0;
+      return 0; // '<'
     }
     function mrzCheckDigit(data){
       const weights = [7,3,1];
@@ -340,7 +389,7 @@
     function splitNames(nameField){
       const [surname, rest=''] = nameField.split('<<');
       const given = rest.replace(/<+/g,' ').trim().replace(/\s+/g,' ');
-      return { surname: surname.replace(/<+/g,' ').trim(), givenNames: given };
+      return {surname: surname.replace(/<+/g,' ').trim(), givenNames: given};
     }
     function parseDateYYMMDD(s){
       const yy=s.slice(0,2), mm=s.slice(2,4), dd=s.slice(4,6);
@@ -349,46 +398,80 @@
     function detectFormat(lines){
       const L = lines.map(l=>l.length);
       if(lines.length===3 && L.every(n=>n>=28 && n<=32)) return 'TD1';
-      if(lines.length===2 && L.every(n=>n>=43 && n<=45)) return 'TD3';
-      if(lines.length===2 && L.every(n=>n>=35 && n<=37)) return 'TD2';
+      if(lines.length===2 && L.every(n=>n>=43 && n<=45)) return 'TD3'; // también MRV-A
+      if(lines.length===2 && L.every(n=>n>=35 && n<=37)) return 'TD2'; // también MRV-B
       return 'UNKNOWN';
     }
+
     function formatDateDisplay(dateObj) {
       if (!dateObj || !dateObj.yy) return '';
-      const year = parseInt(dateObj.yy) < 50 ? `20${dateObj.yy}` : `19${dateObj.yy}`;
+      const year = parseInt(dateObj.yy,10) < 50 ? `20${dateObj.yy}` : `19${dateObj.yy}`;
       return `${dateObj.yy}${dateObj.mm}${dateObj.dd} (${year}-${dateObj.mm}-${dateObj.dd})`;
     }
 
     function displayResults(parsed) {
-      const resultsBody = document.getElementById('results-body') || (() => {
-        const tbody = document.createElement('tbody'); document.querySelector('.results-table')?.appendChild(tbody); return tbody;
-      })();
-      // If no .results-table in DOM create it
-      let table = document.querySelector('.results-table');
-      if(!table){
-        const container = document.createElement('div'); container.style.marginTop = '.5rem';
-        container.innerHTML = `<table class="results-table"><tbody id="results-body"></tbody></table>`;
-        document.querySelector('aside .pad').insertBefore(container, document.querySelector('.json-container'));
-        table = document.querySelector('.results-table');
+      resultsBody.innerHTML = '';
+      if (!parsed.format || parsed.format === 'UNKNOWN') {
+        resultsContainer.style.display = 'none';
+        return;
       }
-      const body = table.tBodies[0] || resultsBody;
-      body.innerHTML = '';
-      if (!parsed.format || parsed.format === 'UNKNOWN') return;
-      const checks = parsed.checks || {};
-      let validChecks = 0, totalChecks = 0;
-      Object.values(checks).forEach(c => { if(c!==undefined){ totalChecks++; if(c) validChecks++; }});
-      addRow(body,'Formato detectado', parsed.format);
-      addRow(body,'Checks', `${validChecks} de ${totalChecks} OK`, validChecks===totalChecks);
-      if(parsed.documentNumber) addRow(body,'Document Number', parsed.documentNumber);
-      if(parsed.birthDate) addRow(body,'Birth (YYMMDD)', formatDateDisplay(parsed.birthDate));
-      if(parsed.expiryDate) addRow(body,'Expiry (YYMMDD)', formatDateDisplay(parsed.expiryDate));
+
+      // Contar checks válidos
+      let validChecks = 0;
+      let totalChecks = 0;
+      if (parsed.checks) {
+        Object.values(parsed.checks).forEach(check => {
+          if (check !== undefined) {
+            totalChecks++;
+            if (check) validChecks++;
+          }
+        });
+      }
+
+      addTableRow('Formato detectado', parsed.format);
+      addTableRow('Checksums', `${validChecks} de ${totalChecks} OK`, validChecks === totalChecks);
+
+      if (parsed.documentCode) addTableRow('Document Type', parsed.documentCode);
+      if (parsed.issuingState) addTableRow('Issuing Country', parsed.issuingState);
+      if (parsed.nationality) addTableRow('Nationality', parsed.nationality);
+      if (parsed.surname) addTableRow('Surname', parsed.surname);
+      if (parsed.givenNames) addTableRow('Given Names', parsed.givenNames);
+      if (parsed.documentNumber) {
+        const checkOk = parsed.checks && parsed.checks.documentNumber;
+        addTableRow('Document Number', parsed.documentNumber);
+        addTableRow('Doc No. Check', checkOk ? '✔ válido' : '✖ fallo', checkOk);
+      }
+      if (parsed.birthDate) {
+        const checkOk = parsed.checks && parsed.checks.birthDate;
+        addTableRow('Birth (YYMMDD)', formatDateDisplay(parsed.birthDate));
+        addTableRow('Birth Check', checkOk ? '✔ válido' : '✖ fallo', checkOk);
+      }
+      if (parsed.sex) addTableRow('Sex', parsed.sex);
+      if (parsed.expiryDate) {
+        const checkOk = parsed.checks && parsed.checks.expiryDate;
+        addTableRow('Expiry (YYMMDD)', formatDateDisplay(parsed.expiryDate));
+        addTableRow('Expiry Check', checkOk ? '✔ válido' : '✖ fallo', checkOk);
+      }
+      if (parsed.optionalData1) addTableRow('Optional 1', parsed.optionalData1);
+      if (parsed.optionalData2) addTableRow('Optional 2', parsed.optionalData2);
+      if (parsed.optionalData) addTableRow('Optional Data', parsed.optionalData);
+      if (parsed.optionalNumber) addTableRow('Optional Number', parsed.optionalNumber);
+
+      resultsContainer.style.display = 'block';
     }
-    function addRow(body,label,value,isValid){
+
+    function addTableRow(label, value, isValid) {
       const row = document.createElement('tr');
-      const a = document.createElement('td'); a.textContent = label;
-      const b = document.createElement('td'); b.textContent = value;
-      if(isValid!==undefined) b.className = isValid ? 'check-ok' : 'check-fail';
-      row.appendChild(a); row.appendChild(b); body.appendChild(row);
+      const labelCell = document.createElement('td');
+      const valueCell = document.createElement('td');
+      labelCell.textContent = label;
+      valueCell.textContent = value;
+      if (isValid !== undefined) {
+        valueCell.className = isValid ? 'check-ok' : 'check-fail';
+      }
+      row.appendChild(labelCell);
+      row.appendChild(valueCell);
+      resultsBody.appendChild(row);
     }
 
     function parseMRZ(text){
@@ -398,7 +481,8 @@
       try{
         if(format==='TD3'){
           const [L1,L2] = lines.map(l=>l.padEnd(44,'<'));
-          res.documentCode = L1.slice(0,2); res.issuingState = L1.slice(2,5);
+          res.documentCode = L1.slice(0,2);
+          res.issuingState = L1.slice(2,5);
           Object.assign(res, splitNames(L1.slice(5,44)));
           res.documentNumber = L2.slice(0,9).replace(/<+/g,'');
           res.documentNumberCheck = L2.slice(9,10);
@@ -419,7 +503,8 @@
         }
         if(format==='TD2'){
           const [L1,L2] = lines.map(l=>l.padEnd(36,'<'));
-          res.documentCode = L1.slice(0,2); res.issuingState = L1.slice(2,5);
+          res.documentCode = L1.slice(0,2);
+          res.issuingState = L1.slice(2,5);
           Object.assign(res, splitNames(L1.slice(5,36)));
           res.documentNumber = L2.slice(0,9).replace(/<+/g,'');
           res.documentNumberCheck = L2.slice(9,10);
@@ -440,7 +525,8 @@
         }
         if(format==='TD1'){
           const [A,B,C] = lines.map(l=>l.padEnd(30,'<'));
-          res.documentCode = A.slice(0,2); res.issuingState = A.slice(2,5);
+          res.documentCode = A.slice(0,2);
+          res.issuingState = A.slice(2,5);
           res.documentNumber = A.slice(5,14).replace(/<+/g,'');
           res.documentNumberCheck = A.slice(14,15);
           res.optionalData1 = A.slice(15,30).replace(/<+/g,'');
@@ -460,35 +546,11 @@
           };
           return res;
         }
-      }catch(e){ res.error = String(e); }
+      }catch(e){
+        res.error = String(e);
+      }
       return res;
     }
-
-    // Event bindings
-    startBtn.addEventListener('click', startCamera);
-    stopBtn.addEventListener('click', stopCamera);
-    capBtn.addEventListener('click', ()=> captureAndOCR({auto:false}));
-
-    video.addEventListener('loadedmetadata', ()=>{ capBtn.disabled = false; stopBtn.disabled = false; startBtn.disabled = true; });
-    video.addEventListener('emptied', ()=>{ capBtn.disabled = true; stopBtn.disabled = true; startBtn.disabled = false; });
-
-    copyBtn.addEventListener('click', async ()=> {
-      const txt = outputEl.textContent.trim();
-      if(!txt) return;
-      await navigator.clipboard.writeText(txt);
-      statusEl.textContent = 'MRZ copiada al portapapeles.';
-    });
-
-    copyJsonBtn.addEventListener('click', async ()=>{
-      const txt = decodedEl.textContent.trim();
-      if(!txt) return;
-      await navigator.clipboard.writeText(txt);
-      statusEl.textContent = 'JSON copiado al portapapeles.';
-    });
-
-    clearBtn.addEventListener('click', ()=> {
-      outputEl.textContent=''; decodedEl.textContent=''; capturedThumb.innerHTML=''; setBusy(false,'Listo.');
-    });
 
     parseBtn.addEventListener('click', ()=>{
       const raw = outputEl.textContent.trim();
@@ -499,18 +561,6 @@
       copyJsonBtn.disabled = false;
       statusEl.textContent = parsed && parsed.format ? `MRZ parseada (${parsed.format}).` : 'No se pudo parsear.';
     });
-
-    // Persistent checkbox behavior
-    persistentCbx.addEventListener('change', ()=>{
-      if(persistentCbx.checked) startPersistent();
-      else stopPersistent();
-    });
-    throttleRange.addEventListener('change', ()=>{
-      if(persistentCbx.checked) startPersistent();
-    });
-
-    // Initialize state
-    setBusy(false,'Listo.');
   </script>
 </body>
 </html>
