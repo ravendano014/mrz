@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OCR + Lector de Códigos (Cámara/Imagen) → JSON/Tabla</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0b0f14; --panel:#121821; --muted:#708090; --border:#243144; --accent:#3ba0ff; --good:#24c07a; --bad:#ff5964;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial; background:var(--bg); color:#e6edf3}
+  header{padding:16px 20px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#0d121a,#0b0f14)}
+  h1{font-size:18px; margin:0 0 4px}
+  p.subtitle{margin:0; color:var(--muted); font-size:13px}
+  .container{max-width:1100px; margin:18px auto; padding:0 16px; display:grid; gap:16px}
+  .grid{display:grid; grid-template-columns:1.1fr 1fr; gap:16px}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px}
+  .title{font-size:14px; color:#b9c4d0; margin-bottom:10px; letter-spacing:.2px}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  button, label.buttonlike{
+    background:#172131; border:1px solid var(--border); color:#e6edf3;
+    padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600; font-size:14px
+  }
+  button:hover, label.buttonlike:hover{border-color:#31405a}
+  button.primary{background:var(--accent); color:#001224; border-color:#2c7ed6}
+  button.good{background:var(--good); color:#00160c; border-color:#1fa466}
+  button.bad{background:var(--bad); color:#240005; border-color:#d34a53}
+  input[type="file"]{display:none}
+  select, input[type="text"]{
+    background:#0f1622; color:#e6edf3; border:1px solid var(--border); border-radius:10px; padding:9px 10px; font-weight:600
+  }
+  .media{display:grid; gap:8px}
+  video, img.preview, canvas{width:100%; max-height:360px; background:#0a0a0a; border:1px solid var(--border); border-radius:12px; object-fit:contain}
+  .status{font-size:13px; color:var(--muted); margin-top:6px; min-height:18px}
+  pre.json{margin:0; padding:12px; background:#0f141c; border:1px dashed var(--border); border-radius:10px; overflow:auto; max-height:260px}
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th,td{border-bottom:1px solid var(--border); padding:10px 8px; text-align:left}
+  th{color:#b9c4d0; font-weight:600}
+  .badge{display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:#0f1622}
+  .ok{color:var(--good)} .warn{color:var(--bad)}
+  .hint{font-size:12px; color:var(--muted)}
+  .sectionline{height:1px; background:var(--border); margin:10px 0}
+  .mini{font-size:12px; color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>OCR + Lector de Códigos → JSON y Tabla</h1>
+  <p class="subtitle">Cámara o imagen. OCR multi-idioma y lectura de códigos (QR, Code128, EAN, PDF417, etc.).</p>
+</header>
+
+<div class="container">
+  <div class="grid">
+    <!-- Entrada -->
+    <section class="card">
+      <div class="title">Entrada (Cámara o Imagen)</div>
+
+      <div class="media">
+        <video id="video" playsinline muted></video>
+        <img id="imgPreview" class="preview" alt="Vista previa" style="display:none" />
+        <canvas id="canvas" style="display:none"></canvas>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button id="startCam" class="primary">Iniciar cámara</button>
+        <button id="stopCam" class="bad" disabled>Detener cámara</button>
+        <button id="capture" class="good" disabled>Capturar &amp; OCR</button>
+
+        <label class="buttonlike">
+          Subir imagen
+          <input id="fileInput" type="file" accept="image/*" />
+        </label>
+        <button id="extractFromImage">OCR de imagen</button>
+      </div>
+
+      <!-- Idiomas OCR -->
+      <div class="row" style="margin-top:10px">
+        <label class="badge">Idioma OCR:
+          <select id="langSelect" style="margin-left:8px">
+            <option value="eng" selected>Inglés (eng)</option>
+            <option value="spa">Español (spa)</option>
+            <option value="ita">Italiano (ita)</option>
+            <option value="fra">Francés (fra)</option>
+          </select>
+        </label>
+        <input id="langCustom" type="text" placeholder="Códigos extra: p. ej., eng+spa, por, deu" size="34" />
+      </div>
+
+      <!-- Lector de Códigos -->
+      <div class="sectionline"></div>
+      <div class="title">Lector de Códigos de Barra (ZXing)</div>
+      <div class="row">
+        <label class="badge">Formato:
+          <select id="formatSelect" style="margin-left:8px">
+            <option value="auto" selected>Auto (múltiples)</option>
+            <option value="QR_CODE">QR_CODE</option>
+            <option value="CODE_128">CODE_128</option>
+            <option value="EAN_13">EAN_13</option>
+            <option value="EAN_8">EAN_8</option>
+            <option value="UPC_A">UPC_A</option>
+            <option value="UPC_E">UPC_E</option>
+            <option value="ITF">ITF</option>
+            <option value="CODE_39">CODE_39</option>
+            <option value="PDF_417">PDF_417</option>
+          </select>
+        </label>
+        <label class="badge"><input type="checkbox" id="continuous" checked style="margin-right:6px">Escaneo continuo</label>
+        <label class="badge"><input type="checkbox" id="beep" checked style="margin-right:6px">Beep al detectar</label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="startBarcode" class="primary" disabled>Iniciar lector</button>
+        <button id="stopBarcode" class="bad" disabled>Detener lector</button>
+
+        <button id="decodeFromImageBtn">Leer código de la imagen</button>
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <span class="badge" id="camBadge">Cámara: <strong id="camState">detenida</strong></span>
+        <span class="badge">Idioma OCR: <strong id="langBadge">eng</strong></span>
+        <span class="badge">Lector: <strong id="scanState">apagado</strong></span>
+        <span class="hint">Puedes combinar idiomas OCR con “+” (ej.: <b>eng+spa</b>).</span>
+      </div>
+      <div class="status" id="status">Listo.</div>
+      <div class="mini">Consejo: si usarás cámara para OCR y Códigos, inicia la cámara una vez y alterna botones “Capturar &amp; OCR” / “Iniciar lector”.</div>
+    </section>
+
+    <!-- Resultados -->
+    <section class="card">
+      <div class="title">Resultados</div>
+      <div class="row" style="gap:12px; margin-bottom:10px">
+        <button id="clear">Limpiar</button>
+        <span id="quality" class="badge">Confianza media (OCR): —</span>
+      </div>
+      <pre id="jsonOut" class="json">{}</pre>
+      <div style="height:10px"></div>
+      <table id="tableOut">
+        <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="title">Notas</div>
+    <ul style="margin:6px 0 0 18px; line-height:1.6">
+      <li>El campo “Códigos extra” (OCR) tiene prioridad sobre el selector.</li>
+      <li>Idiomas OCR típicos: <code>eng</code>, <code>spa</code>, <code>ita</code>, <code>fra</code>, <code>por</code>, <code>deu</code>, etc. Combinaciones: <code>eng+spa</code>.</li>
+      <li>Para el lector, “Auto (múltiples)” intenta varios formatos con ZXing; si conoces el formato, selecciónalo para mayor velocidad.</li>
+    </ul>
+  </section>
+</div>
+
+<!-- Librerías -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+
+<script>
+(function(){
+  // ======== Referencias UI ========
+  const video   = document.getElementById('video');
+  const canvas  = document.getElementById('canvas');
+  const imgPrev = document.getElementById('imgPreview');
+  const status  = document.getElementById('status');
+  const jsonOut = document.getElementById('jsonOut');
+  const table   = document.getElementById('tableOut').querySelector('tbody');
+  const camBadge= document.getElementById('camState');
+  const langBadge = document.getElementById('langBadge');
+  const quality = document.getElementById('quality');
+  const scanState = document.getElementById('scanState');
+
+  const btnStart   = document.getElementById('startCam');
+  const btnStop    = document.getElementById('stopCam');
+  const btnCapture = document.getElementById('capture');
+  const fileInput  = document.getElementById('fileInput');
+  const btnExtract = document.getElementById('extractFromImage');
+  const btnClear   = document.getElementById('clear');
+
+  const langSelect = document.getElementById('langSelect');
+  const langCustom = document.getElementById('langCustom');
+
+  // Barcode controls
+  const formatSelect = document.getElementById('formatSelect');
+  const btnStartBarcode = document.getElementById('startBarcode');
+  const btnStopBarcode  = document.getElementById('stopBarcode');
+  const btnDecodeFromImage = document.getElementById('decodeFromImageBtn');
+  const chkContinuous = document.getElementById('continuous');
+  const chkBeep = document.getElementById('beep');
+
+  let stream = null;
+  let lastImageEl = null;
+
+  // ZXing
+  const ZXing = window.ZXing; // UMD
+  const codeReader = new ZXing.BrowserMultiFormatReader();
+  let videoDeviceId = null;
+  let runningVideoDecode = false;
+
+  // ======== Util ========
+  function currentLang(){
+    const custom = (langCustom.value || '').trim();
+    const lang = custom || langSelect.value || 'eng';
+    langBadge.textContent = lang;
+    return lang;
+  }
+  langSelect.addEventListener('change', currentLang);
+  langCustom.addEventListener('input', currentLang);
+
+  function setStatus(msg){ status.textContent = msg; }
+  function addRow(k,v){
+    const tr=document.createElement('tr');
+    const td1=document.createElement('td'); td1.textContent=k;
+    const td2=document.createElement('td'); td2.textContent=v;
+    tr.appendChild(td1); tr.appendChild(td2); table.appendChild(tr);
+  }
+
+  function playBeep(){
+    if(!chkBeep.checked) return;
+    try{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type='sine'; o.frequency.value=880;
+      o.connect(g); g.connect(ctx.destination);
+      g.gain.value=0.05; o.start();
+      setTimeout(()=>{ o.stop(); ctx.close(); }, 120);
+    }catch(e){}
+  }
+
+  // ======== Preproceso para OCR ========
+  function preprocessToCanvas(srcEl){
+    const w = srcEl.naturalWidth || srcEl.videoWidth || srcEl.width;
+    const h = srcEl.naturalHeight || srcEl.videoHeight || srcEl.height;
+    if(!w || !h){ throw new Error('Imagen no válida.'); }
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(srcEl, 0, 0, w, h);
+    const imgData = ctx.getImageData(0,0,w,h);
+    const d = imgData.data;
+    const contrast = 1.35, threshold = 155;
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i], g=d[i+1], b=d[i+2];
+      let gray = 0.2126*r + 0.7152*g + 0.0722*b;
+      gray = (gray-128)*contrast + 128;
+      const v = gray > threshold ? 255 : 0;
+      d[i]=d[i+1]=d[i+2]=v;
+    }
+    ctx.putImageData(imgData,0,0);
+    return canvas;
+  }
+
+  // ======== OCR ========
+  async function runOCR(srcEl){
+    const lang = currentLang();
+    setStatus(`Preparando OCR (${lang})…`);
+    const pre = preprocessToCanvas(srcEl);
+
+    const worker = await Tesseract.createWorker(lang, 1, {
+      logger: m => {
+        if(m.status) setStatus(`OCR (${lang}): ${m.status}${m.progress ? ' ' + Math.round(m.progress*100)+'%' : ''}`);
+      }
+    });
+
+    try{
+      const { data } = await worker.recognize(pre);
+      const texto = (data.text || '').trim().replace(/\s+/g,' ');
+      const digits = (texto.match(/\d+/g) || []).join('') || '';
+      const digitsArr = digits ? digits.split('').map(Number) : [];
+      const conf = Array.isArray(data.words) && data.words.length
+        ? data.words.reduce((s,w)=>s+(w.confidence||0),0)/data.words.length
+        : (data.confidence ?? 0);
+
+      const payload = {
+        origen: 'OCR',
+        idioma_ocr: lang,
+        texto_bruto: texto,
+        digitos: digits,
+        arreglo_digitos: digitsArr,
+        confianza_media: Number(conf.toFixed(2))
+      };
+
+      renderPayload(payload);
+      quality.innerHTML = `Confianza media: <strong>${payload.confianza_media.toFixed(2)}%</strong>`;
+      quality.style.borderColor = payload.confianza_media >= 70 ? 'var(--good)' : 'var(--bad)';
+      quality.style.color = payload.confianza_media >= 70 ? 'var(--good)' : 'var(--bad)';
+      setStatus('OCR finalizado.');
+    }catch(err){
+      console.error(err);
+      setStatus('Error en OCR: ' + err.message);
+    }finally{
+      await worker.terminate();
+    }
+  }
+
+  // ======== Render/Tabla ========
+  function renderPayload(payload){
+    // Muestra JSON y tabla, fusionando con lo previo si aplica
+    jsonOut.textContent = JSON.stringify(payload, null, 2);
+    table.innerHTML = '';
+    for(const [k,v] of Object.entries(payload)){
+      addRow(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+    }
+  }
+
+  // ======== Cámara ========
+  btnStart.addEventListener('click', async ()=>{
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
+      video.srcObject = stream;
+      await video.play();
+      btnStop.disabled=false;
+      btnCapture.disabled=true;
+      camBadge.textContent='iniciando…';
+      video.onplaying = async ()=>{
+        btnCapture.disabled=false; 
+        camBadge.textContent='activa';
+        // Guarda deviceId para ZXing
+        try{
+          const tracks = stream.getVideoTracks();
+          const track = tracks[0];
+          const settings = track.getSettings && track.getSettings();
+          videoDeviceId = settings && settings.deviceId ? settings.deviceId : null;
+          btnStartBarcode.disabled = false;
+        }catch(_){}
+      };
+      imgPrev.style.display='none';
+      setStatus('Cámara iniciada. Usa “Capturar & OCR” o “Iniciar lector”.');
+      lastImageEl = null;
+    }catch(err){
+      setStatus('No se pudo iniciar la cámara: ' + err.message);
+    }
+  });
+
+  btnStop.addEventListener('click', ()=>{
+    stopBarcode(); // por si estuviera encendido
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    video.pause(); video.srcObject=null;
+    btnStop.disabled=true;
+    btnCapture.disabled=true;
+    btnStartBarcode.disabled=true;
+    btnStopBarcode.disabled=true;
+    camBadge.textContent='detenida';
+    setStatus('Cámara detenida.');
+  });
+
+  btnCapture.addEventListener('click', async ()=>{
+    if(!stream || video.readyState<2){ setStatus('La cámara no está lista.'); return; }
+    lastImageEl = video;
+    await runOCR(video);
+  });
+
+  fileInput.addEventListener('change', ()=>{
+    const f = fileInput.files && fileInput.files[0];
+    if(!f) return;
+    const url = URL.createObjectURL(f);
+    imgPrev.src = url; imgPrev.style.display='block';
+    setStatus('Imagen cargada. Puedes hacer OCR o leer código.');
+    lastImageEl = imgPrev;
+  });
+
+  btnExtract.addEventListener('click', async ()=>{
+    if(!lastImageEl){ setStatus('No hay imagen. Carga una imagen o usa la cámara.'); return; }
+    await runOCR(lastImageEl);
+  });
+
+  btnClear.addEventListener('click', ()=>{
+    jsonOut.textContent='{}';
+    table.innerHTML='';
+    quality.innerHTML='Confianza media (OCR): —';
+    quality.style.removeProperty('border-color'); quality.style.removeProperty('color');
+    setStatus('Limpio.');
+  });
+
+  // ======== Lector ZXing ========
+  function getFormatsFromSelect(){
+    const v = formatSelect.value;
+    if(v === 'auto') return undefined; // ZXing decide
+    // Mapea a enum de ZXing
+    const f = ZXing.BarcodeFormat;
+    const map = {
+      'QR_CODE': f.QR_CODE, 'CODE_128': f.CODE_128, 'EAN_13': f.EAN_13, 'EAN_8': f.EAN_8,
+      'UPC_A': f.UPC_A, 'UPC_E': f.UPC_E, 'ITF': f.ITF, 'CODE_39': f.CODE_39, 'PDF_417': f.PDF_417
+    };
+    return new Set([ map[v] ].filter(Boolean));
+  }
+
+  async function startBarcode(){
+    if(runningVideoDecode) return;
+    if(!videoDeviceId){
+      // Si no tenemos deviceId pero hay cámara, ZXing igual puede usar null para el por-defecto
+      try{
+        const devices = await codeReader.listVideoInputDevices();
+        if(devices && devices.length) videoDeviceId = devices[0].deviceId;
+      }catch(_){}
+    }
+
+    scanState.textContent = 'iniciando…';
+    btnStartBarcode.disabled = true;
+    btnStopBarcode.disabled = false;
+
+    const hints = new Map();
+    const DecodeHintType = ZXing.DecodeHintType;
+    const formats = getFormatsFromSelect();
+    if(formats) hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
+
+    try{
+      runningVideoDecode = true;
+      codeReader.setHints(hints);
+
+      const onResult = (result, err, controls) => {
+        if(!runningVideoDecode) return;
+        if(result){
+          const text = result.getText ? result.getText() : String(result.text || '');
+          const format = result.getBarcodeFormat ? result.getBarcodeFormat() : (result.format || 'DESCONOCIDO');
+          playBeep();
+
+          const payload = {
+            origen: 'Barcode',
+            formato: String(format),
+            valor: text,
+            timestamp: new Date().toISOString()
+          };
+          renderPayload(payload);
+          setStatus(`Código detectado (${format}).`);
+          if(!chkContinuous.checked){
+            stopBarcode();
+          }
+        }else if(err){
+          // errores de “NotFound” son normales en cada frame
+        }
+      };
+
+      await codeReader.decodeFromVideoDevice(videoDeviceId || null, video, onResult);
+      scanState.textContent = 'encendido';
+      setStatus('Lector activo. Apunta al código.');
+    }catch(e){
+      runningVideoDecode = false;
+      scanState.textContent = 'apagado';
+      btnStartBarcode.disabled = false;
+      btnStopBarcode.disabled = true;
+      setStatus('No se pudo iniciar el lector: ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  function stopBarcode(){
+    try{ codeReader.reset(); }catch(_){}
+    runningVideoDecode = false;
+    scanState.textContent = 'apagado';
+    btnStartBarcode.disabled = false;
+    btnStopBarcode.disabled = true;
+    setStatus('Lector detenido.');
+  }
+
+  btnStartBarcode.addEventListener('click', startBarcode);
+  btnStopBarcode.addEventListener('click', stopBarcode);
+
+  // Leer código desde IMAGEN cargada (no video)
+  btnDecodeFromImage.addEventListener('click', async ()=>{
+    if(!lastImageEl){ setStatus('No hay imagen. Carga una imagen o usa la cámara.'); return; }
+    // Para mayor compatibilidad, dibujamos al canvas y pasamos dataURL
+    try{
+      const c = preprocessToCanvas(lastImageEl); // reusa canvas (no binariza para ZXing, pero mantiene tamaño)
+      const dataURL = c.toDataURL('image/png');
+      const hints = new Map();
+      const DecodeHintType = ZXing.DecodeHintType;
+      const formats = getFormatsFromSelect();
+      if(formats) hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
+      codeReader.setHints(hints);
+
+      setStatus('Buscando código en imagen…');
+      const result = await codeReader.decodeFromImageUrl(dataURL);
+      if(result){
+        playBeep();
+        const payload = {
+          origen: 'Barcode',
+          formato: String(result.getBarcodeFormat ? result.getBarcodeFormat() : result.format || 'DESCONOCIDO'),
+          valor: result.getText ? result.getText() : String(result.text || ''),
+          timestamp: new Date().toISOString()
+        };
+        renderPayload(payload);
+        setStatus('Código detectado en imagen.');
+      }else{
+        setStatus('No se detectó código en la imagen.');
+      }
+    }catch(e){
+      setStatus('No se detectó código en la imagen.');
+    }
+  });
+
+  // ======== Estado inicial ========
+  function updateLang(){ currentLang(); }
+  updateLang();
+
+  // Habilitar lector cuando haya cámara
+  video.addEventListener('playing', ()=>{ btnStartBarcode.disabled = false; });
+
+})();
+</script>
+
+<!-- Si colocas "CAFNoBarcode.jpg" junto a este archivo, puedes precargarlo así:
+<script>
+  const demo = 'CAFNoBarcode.jpg';
+  const img = document.getElementById('imgPreview');
+  img.src = demo; img.style.display='block';
+  document.getElementById('status').textContent='Imagen de ejemplo cargada. Presiona “OCR de imagen” o “Leer código de la imagen”.';
+</script>
+-->
+</body>
+</html>
