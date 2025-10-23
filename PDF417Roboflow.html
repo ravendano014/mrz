@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>PDF417 — Cámara / Imagen, ROI, Raw, JSON, Tabla (1 archivo)</title>
+  <title>PDF417 — Cámara / Imagen, ROI, Raw, JSON, Tabla</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- ====== Librerías por CDN ====== -->
@@ -23,14 +23,44 @@
       font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
       overflow:hidden;
     }
-    #stage{ position:fixed; inset:0; }
-    #video,#overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; }
-    #overlay{ pointer-events:none; }
+    #stage{ 
+      position:fixed; 
+      inset:0; 
+      background:#000;
+      z-index: 1;
+    }
+    #video{
+      position:absolute; 
+      inset:0; 
+      width:100%; 
+      height:100%; 
+      object-fit:contain; 
+      background:#000; 
+      display: block !important;
+      z-index: 1;
+    }
+    #overlay{ 
+      position:absolute; 
+      inset:0; 
+      width:100%; 
+      height:100%; 
+      object-fit:contain; 
+      pointer-events:none; 
+      z-index: 2;
+    }
 
     #panel{
-      position:fixed; top:0; right:0; height:100%; width:min(420px, 42vw);
-      background:linear-gradient(180deg,var(--panel),#0b1117); border-left:1px solid var(--line);
-      padding:14px 14px 88px; overflow:auto; box-shadow:-8px 0 24px rgba(0,0,0,.35);
+      position:fixed; 
+      top:0; 
+      right:0; 
+      height:100%; 
+      width:min(420px, 42vw);
+      background:linear-gradient(180deg,var(--panel),#0b1117); 
+      border-left:1px solid var(--line);
+      padding:14px 14px 88px; 
+      overflow:auto; 
+      box-shadow:-8px 0 24px rgba(0,0,0,.35);
+      z-index: 3;
     }
     #panel h1{ font-size:16px; margin:0 0 8px; letter-spacing:.3px }
     .sub{ color:var(--muted); font-size:12px; margin:0 0 12px }
@@ -58,6 +88,7 @@
       display:flex; gap:8px; align-items:center; flex-wrap:wrap;
       padding:10px 12px; border-radius:12px; background:#0d1318cc; backdrop-filter: blur(4px);
       border:1px solid var(--line);
+      z-index: 4;
     }
     .pill{ padding:4px 8px; border-radius:999px; font-weight:700; letter-spacing:.3px; border:1px solid var(--line); background:#0f161ccc }
     .ok{ color:#c9ffd9; border-color:#1f4e2c; background:#0e2316 }
@@ -79,12 +110,32 @@
     .preview canvas, .preview img{ width:100%; height:100%; object-fit:contain }
     .tag{ font-size:11px; color:#9fb3c8 }
     .badge{ padding:2px 6px; border-radius:6px; border:1px solid var(--line); background:#0e141a; color:#ffd866; font-weight:700 }
+    
+    /* Mensaje de ayuda */
+    .help-message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(15, 20, 25, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      max-width: 300px;
+      z-index: 5;
+      backdrop-filter: blur(4px);
+    }
   </style>
 </head>
 <body>
 
   <!-- Escenario cámara -->
   <div id="stage">
+    <div class="help-message" id="helpMessage">
+      <h3>Inicia la cámara</h3>
+      <p>Haz clic en "▶ Iniciar cámara" para comenzar</p>
+    </div>
     <video id="video" autoplay muted playsinline></video>
     <canvas id="overlay"></canvas>
   </div>
@@ -175,6 +226,7 @@
     const roictx = roiCanvas.getContext('2d');
     const imgCanvasPreview = document.getElementById('imgCanvasPreview');
     const ipctx = imgCanvasPreview.getContext('2d');
+    const helpMessage = document.getElementById('helpMessage');
 
     const sCam = $('#sCam'), sModel = $('#sModel'), sDec = $('#sDec'), sHit = $('#sHit'), sMiss = $('#sMiss'), sFPS = $('#sFPS');
     const tagDetector = $('#tag-detector');
@@ -207,6 +259,7 @@
       const vh = video.videoHeight || 720;
       overlay.width = vw; overlay.height = vh;
     }
+    
     function updateFPS() {
       const now = performance.now();
       const delta = now - lastTS;
@@ -217,6 +270,7 @@
       const avg = fpsSMA.reduce((a,b)=>a+b,0)/fpsSMA.length || 0;
       sFPS.text(`FPS: ${avg.toFixed(0)}`);
     }
+    
     function paintBoxesCanvas(ctx, boxes, color='#39d353'){
       ctx.lineWidth = 4; ctx.font = '16px ui-monospace';
       boxes.forEach(p=>{
@@ -231,18 +285,22 @@
         ctx.fillText(label, x - width/2 + 5, y - height/2 - 7);
       });
     }
+    
     function paintBoxesVideo(preds){
       octx.clearRect(0,0,overlay.width,overlay.height);
       if (!preds || !preds.length) return;
       paintBoxesCanvas(octx, preds);
     }
+    
     function setHit(ok){
       if (ok){ sHit.removeClass('hidden'); sMiss.addClass('hidden'); }
       else { sMiss.removeClass('hidden'); sHit.addClass('hidden'); }
     }
+    
     function escapeHtml(str){
       return String(str).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;");
     }
+    
     function renderTable(obj){
       const $tb = $('#tbl tbody'); $tb.empty();
       if (!obj || typeof obj!=='object') return;
@@ -257,24 +315,60 @@
     async function startCamera(){
       stopCamera();
       try{
-        stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode }, audio:false });
+        // Forzar dimensiones específicas
+        const constraints = { 
+          video: { 
+            facingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }, 
+          audio: false 
+        };
+        
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
+        
+        // Esperar a que el video esté listo
+        await new Promise((resolve) => {
+          video.onloadedmetadata = resolve;
+        });
+        
         await video.play();
         setCanvasToVideoSize();
         sCam.removeClass('bad info').addClass('ok').text(`Cámara: activa (${facingMode})`);
         sourceMode = 'video';
         running = true;
+        
+        // Ocultar mensaje de ayuda
+        helpMessage.classList.add('hidden');
+        
         loopDetect();
+        
       }catch(err){
-        sCam.removeClass('ok info').addClass('bad').text('Cámara: error');
-        console.error(err);
+        sCam.removeClass('ok info').addClass('bad').text('Cámara: error - ' + err.message);
+        console.error('Error cámara:', err);
+        
+        // Mostrar mensaje de error
+        helpMessage.innerHTML = '<h3>Error de cámara</h3><p>' + err.message + '</p>';
+        helpMessage.classList.remove('hidden');
       }
     }
+    
     function stopCamera(){
       running = false;
       if (rafId) cancelAnimationFrame(rafId);
-      if (stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+      if (stream){ 
+        stream.getTracks().forEach(t=>t.stop()); 
+        stream = null; 
+      }
       sCam.removeClass('ok info').addClass('bad').text('Cámara: detenida');
+      
+      // Mostrar mensaje de ayuda
+      helpMessage.innerHTML = '<h3>Inicia la cámara</h3><p>Haz clic en "▶ Iniciar cámara" para comenzar</p>';
+      helpMessage.classList.remove('hidden');
+      
+      // Limpiar overlay
+      octx.clearRect(0,0,overlay.width,overlay.height);
     }
 
     // ====== Modelo ======
@@ -340,7 +434,10 @@
 
     // ====== Detección (loop cámara) ======
     async function loopDetect(){
-      if (!running || !workerId || !video.videoWidth) { rafId = requestAnimationFrame(loopDetect); return; }
+      if (!running || !workerId || !video.videoWidth) { 
+        rafId = requestAnimationFrame(loopDetect); 
+        return; 
+      }
       const image = new CVImage(video);
       try{
         const preds = await engine.infer(workerId, image);
@@ -376,6 +473,7 @@
         reader.readAsDataURL(file);
       });
     }
+    
     function fitPreview(img){
       const W = imgCanvasPreview.width = imgCanvasPreview.clientWidth || 640;
       const H = imgCanvasPreview.height = imgCanvasPreview.clientHeight || 480;
@@ -389,6 +487,7 @@
       ipctx.fillStyle = '#000'; ipctx.fillRect(0,0,W,H);
       ipctx.drawImage(img, dx, dy, dw, dh);
     }
+    
     async function detectOnImage(){
       if (!imgCanvasFull.width) return null;
       const image = new CVImage(imgCanvasFull);
@@ -473,7 +572,10 @@
     // ====== Eventos UI ======
     $('#btnStart').on('click', startCamera);
     $('#btnStop').on('click', stopCamera);
-    $('#btnFlip').on('click', async ()=>{ facingMode = (facingMode==='environment') ? 'user':'environment'; if (running) await startCamera(); });
+    $('#btnFlip').on('click', async ()=>{ 
+      facingMode = (facingMode==='environment') ? 'user':'environment'; 
+      if (running) await startCamera(); 
+    });
 
     $('#btnPick').on('click', ()=> $('#fileImage').trigger('click'));
     $('#fileImage').on('change', async (e)=>{
