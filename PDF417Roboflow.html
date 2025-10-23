@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>PDF417 — Cámara / Imagen, ROI preciso + Capturar ROI (cámara) + Auto-captura</title>
+  <title>PDF417 — Cámara / Imagen, ROI preciso + Auto-captura + Zoom</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- ====== Librerías por CDN ====== -->
@@ -26,6 +26,7 @@
     #stage{ position:fixed; inset:0; background:#000; z-index: 1; }
     #video{
       position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:block !important; z-index:1;
+      touch-action:none; /* para pinch */
     }
     #overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; z-index:2; }
 
@@ -50,7 +51,9 @@
     button:disabled{ opacity:.5; cursor:not-allowed }
     .ghost{ background:transparent }
     label.small{ font-size:12px; color:var(--muted) }
+    .mini{ font-size:12px; opacity:.9 }
 
+    input[type="range"]{ width:180px; }
     textarea, pre, input[type="text"], input[type="number"]{
       width:100%; background:var(--card); color:var(--fg); border:1px solid var(--line);
       border-radius:10px; padding:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -119,8 +122,8 @@
 
   <!-- Panel -->
   <aside id="panel">
-    <h1>PDF417 — cámara e imagen (ROI preciso + Auto-captura)</h1>
-    <p class="sub">Roboflow (InferenceJS), **Capturar ROI (cámara)** manual/automática desde bbox, ROI preciso en imagen, y parseo JSON.</p>
+    <h1>PDF417 — cámara e imagen (ROI preciso + Auto-captura + Zoom)</h1>
+    <p class="sub">Roboflow (InferenceJS), ROI (cámara/imagen), decodificación y parseo. Incluye beep al detectar y zoom (si el dispositivo lo soporta).</p>
 
     <!-- Cámara -->
     <div class="row">
@@ -132,6 +135,16 @@
       <span class="badge">Detección: InferenceJS</span>
     </div>
 
+    <!-- Zoom cámara (si disponible) -->
+    <div class="row seg" id="zoomSeg">
+      <span class="mini">Zoom cámara:</span>
+      <button id="btnZoomOut">−</button>
+      <input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1" />
+      <button id="btnZoomIn">+</button>
+      <span id="zoomVal" class="mini">1.00×</span>
+      <span id="zoomUnsupported" class="mini hidden" style="opacity:.7">No soportado en este dispositivo/navegador</span>
+    </div>
+
     <!-- Auto-captura -->
     <div class="row seg">
       <div class="grid split3" style="gap:10px">
@@ -139,7 +152,7 @@
         <label class="small">Umbral conf. ≥ <input type="number" id="numThresh" min="0" max="1" step="0.01" value="0.60" /></label>
         <label class="small">Pausa (s) <input type="number" id="numCooldown" min="0" max="30" step="0.5" value="2.5" /></label>
       </div>
-      <p class="sub" style="margin-top:6px">Si la confianza de la detección supera el umbral, se captura el ROI automáticamente y se pausa el disparo por el tiempo indicado.</p>
+      <p class="sub" style="margin-top:6px">Si la confianza supera el umbral, se captura el ROI automáticamente y se pausa por el tiempo indicado.</p>
     </div>
 
     <!-- Imagen -->
@@ -163,22 +176,16 @@
         <canvas id="imgCanvasPreview" class="hidden" tabindex="0" aria-label="Canvas de imagen con ROI"></canvas>
 
         <div class="hintbox">
-          Arrastra dentro del rectángulo para mover; usa los 8 puntos (esquinas/lados) para redimensionar.
-          Móvil: un dedo mueve; dos dedos (pinch) escalan. Con el canvas enfocado: flechas mueven (Shift = 5 px),
-          +/- cambia tamaño (Shift = x3).
+          Arrastra para mover y usa los 8 puntos para redimensionar el ROI. En móvil: un dedo mueve, pinch con dos dedos escala. Con el canvas enfocado: flechas y +/-.
         </div>
 
         <div class="grid split2" style="margin-top:8px">
           <div>
             <label>Vista previa ROI (imagen o cámara)</label>
             <div class="preview"><canvas id="roiPreview" width="200" height="150"></canvas></div>
-
-            <!-- NUEVO: acción bajo la vista previa -->
             <div class="row" style="margin-top:8px">
               <button id="btnProcessCurrentROI" class="success">▶ Procesar ROI actual (extraer y parsear)</button>
             </div>
-            <!-- /NUEVO -->
-
           </div>
           <div>
             <label>JSON parseado</label>
@@ -207,7 +214,7 @@
     </div>
 
     <div class="spacer"></div>
-    <p class="sub">Consejo: acerca el código al centro del encuadre y evita reflejos.</p>
+    <p class="sub">Consejo: acerca el código al centro del encuadre, ajusta zoom (si está disponible) y evita reflejos.</p>
   </aside>
 
   <div class="status" id="status">
@@ -239,6 +246,13 @@
     const imgCtx = imgCanvasPreview.getContext('2d');
     const roiPreview = document.getElementById('roiPreview');
     const roiCtx = roiPreview.getContext('2d');
+
+    // Zoom UI
+    const zoomRange = document.getElementById('zoomRange');
+    const zoomVal = document.getElementById('zoomVal');
+    const zoomUnsupported = document.getElementById('zoomUnsupported');
+    const btnZoomIn = document.getElementById('btnZoomIn');
+    const btnZoomOut = document.getElementById('btnZoomOut');
 
     // ====== Estado ======
     let facingMode = 'environment';
@@ -281,6 +295,12 @@
     let hasBarcodeDetector = ('BarcodeDetector' in window);
     let nativePdf417Supported = false;
     let pdfReader = null; // ZXing BrowserPDF417Reader
+
+    // Zoom de cámara
+    let videoTrack = null;
+    let zoomCaps = null;
+    let currentZoom = 1, minZoom = 1, maxZoom = 1, stepZoom = 0.1;
+    let pinchCache = new Map(); // para pinch sobre el <video>
 
     // ====== Utilidades ======
     function setCanvasToVideoSize() {
@@ -374,6 +394,11 @@
         video.srcObject = stream;
         await new Promise((resolve) => { video.onloadedmetadata = resolve; });
         await video.play();
+
+        // Track y zoom
+        videoTrack = stream.getVideoTracks()[0] || null;
+        await setupZoom(videoTrack);
+
         setCanvasToVideoSize();
         sCam.removeClass('bad info').addClass('ok').text(`Cámara: activa (${facingMode})`);
         sourceMode = 'video';
@@ -395,6 +420,107 @@
       helpMessage.classList.remove('hidden');
       octx.clearRect(0,0,overlay.width,overlay.height);
       setHit(false);
+      // reset zoom ui
+      zoomRange.disabled = true; btnZoomIn.disabled = true; btnZoomOut.disabled = true;
+      zoomUnsupported.classList.add('hidden');
+    }
+
+    // ====== Zoom de cámara (MediaTrackCapabilities.zoom) ======
+    async function setupZoom(track){
+      zoomCaps = null;
+      if (!track) { markZoomUnsupported(); return; }
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (!caps || typeof caps.zoom === 'undefined'){
+        markZoomUnsupported();
+        return;
+      }
+      zoomCaps = caps.zoom; // puede ser {min,max,step} o número
+      const settings = track.getSettings ? track.getSettings() : {};
+      // Normaliza parámetros
+      if (typeof zoomCaps === 'number'){ minZoom = 1; maxZoom = zoomCaps || 1; stepZoom = 0.1; }
+      else {
+        minZoom = Math.max(1, zoomCaps.min ?? 1);
+        maxZoom = Math.max(minZoom, zoomCaps.max ?? minZoom);
+        stepZoom = Math.max(0.01, zoomCaps.step ?? 0.1);
+      }
+      currentZoom = Math.min(maxZoom, Math.max(minZoom, settings.zoom || minZoom));
+
+      zoomRange.min = String(minZoom);
+      zoomRange.max = String(maxZoom);
+      zoomRange.step = String(stepZoom);
+      zoomRange.value = String(currentZoom);
+      zoomVal.textContent = currentZoom.toFixed(2) + '×';
+      zoomRange.disabled = false; btnZoomIn.disabled = false; btnZoomOut.disabled = false;
+      zoomUnsupported.classList.add('hidden');
+
+      // Eventos UI
+      zoomRange.oninput = async () => { await applyZoom(parseFloat(zoomRange.value)); };
+      btnZoomIn.onclick = async ()=> { await applyZoom(clamp(currentZoom + stepZoom, minZoom, maxZoom)); };
+      btnZoomOut.onclick = async ()=> { await applyZoom(clamp(currentZoom - stepZoom, minZoom, maxZoom)); };
+
+      // Rueda del mouse sobre el video
+      video.addEventListener('wheel', onWheelZoom, {passive:false});
+
+      // Pinch sobre el video
+      video.addEventListener('pointerdown', onPointerDown);
+      video.addEventListener('pointermove', onPointerMove, {passive:false});
+      video.addEventListener('pointerup', onPointerUpCancel);
+      video.addEventListener('pointercancel', onPointerUpCancel);
+      video.addEventListener('pointerleave', onPointerUpCancel);
+    }
+
+    function markZoomUnsupported(){
+      zoomRange.disabled = true; btnZoomIn.disabled = true; btnZoomOut.disabled = true;
+      zoomUnsupported.classList.remove('hidden');
+    }
+
+    async function applyZoom(z){
+      if (!videoTrack) return;
+      try{
+        currentZoom = clamp(z, minZoom, maxZoom);
+        await videoTrack.applyConstraints({ advanced: [{ zoom: currentZoom }] });
+        zoomRange.value = String(currentZoom);
+        zoomVal.textContent = currentZoom.toFixed(2) + '×';
+      }catch(e){
+        // Si falla (algunos navegadores requieren exacto)
+        try{
+          await videoTrack.applyConstraints({ zoom: currentZoom });
+        }catch(_e){
+          markZoomUnsupported();
+        }
+      }
+    }
+
+    function onWheelZoom(e){
+      if (!zoomCaps){ return; }
+      e.preventDefault();
+      const delta = (e.deltaY < 0 ? stepZoom : -stepZoom) * (e.shiftKey ? 3 : 1);
+      applyZoom(currentZoom + delta);
+    }
+
+    function onPointerDown(e){
+      video.setPointerCapture?.(e.pointerId);
+      pinchCache.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    }
+    function onPointerMove(e){
+      if (!pinchCache.has(e.pointerId)) return;
+      pinchCache.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      if (pinchCache.size === 2){
+        e.preventDefault();
+        const pts = Array.from(pinchCache.values());
+        const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+        if (!onPointerMove.lastD){ onPointerMove.lastD = d; return; }
+        const scale = d / onPointerMove.lastD;
+        if (Math.abs(scale - 1) > 0.02){
+          const delta = (scale > 1 ? stepZoom : -stepZoom);
+          applyZoom(currentZoom + delta);
+          onPointerMove.lastD = d;
+        }
+      }
+    }
+    function onPointerUpCancel(e){
+      pinchCache.delete(e.pointerId);
+      if (pinchCache.size < 2) onPointerMove.lastD = null;
     }
 
     // ====== Modelo Roboflow (InferenceJS) ======
@@ -484,7 +610,7 @@
               captureCooldown = true;
               setTimeout(async ()=>{
                 const ok = await captureRoiFromCamera(true);
-                if (ok) playBeep();
+                if (ok) playBeep(); // beep en auto-captura exitosa
                 const cooldownMs = Math.max(0, (parseFloat($('#numCooldown').val()) || 2.5) * 1000);
                 setTimeout(()=>{ captureCooldown = false; }, cooldownMs);
               }, 0);
@@ -559,8 +685,7 @@
 
       const crop = document.createElement('canvas');
       crop.width = rw; crop.height = rh;
-      const cctx = crop.getContext('2d');
-      cctx.drawImage(frame, rx, ry, rw, rh, 0, 0, rw, rh);
+      crop.getContext('2d').drawImage(frame, rx, ry, rw, rh, 0, 0, rw, rh);
 
       const raw = await decodeFromCanvas(crop);
       if(raw){
@@ -573,17 +698,15 @@
       }
     }
 
-    // ====== Procesar ROI ACTUAL (nuevo, unifica cámara/imagen) ======
+    // ====== Procesar ROI ACTUAL (unifica cámara/imagen) ======
     async function processCurrentROI(){
       let roiCanvas = null;
 
       if (sourceMode === 'video' && running && lastBBox && video.videoWidth){
-        // Cortar ROI desde la cámara, usando la bbox más reciente
         const vw = video.videoWidth, vh = video.videoHeight;
         const frame = document.createElement('canvas');
         frame.width = vw; frame.height = vh;
-        const fctx = frame.getContext('2d', { willReadFrequently:true });
-        fctx.drawImage(video, 0, 0, vw, vh);
+        frame.getContext('2d', { willReadFrequently:true }).drawImage(video, 0, 0, vw, vh);
 
         const { x, y, width, height } = lastBBox;
         const rx = Math.max(0, Math.round(x - width/2));
@@ -595,7 +718,6 @@
         roiCanvas.width = rw; roiCanvas.height = rh;
         roiCanvas.getContext('2d').drawImage(frame, rx, ry, rw, rh, 0, 0, rw, rh);
       } else if (sourceMode === 'image' && imgLoaded && imgCanvasFull.width){
-        // Cortar ROI desde la imagen a resolución nativa
         const sx = Math.max(0, Math.round(roi.x * imgCanvasFull.width));
         const sy = Math.max(0, Math.round(roi.y * imgCanvasFull.height));
         const sw = Math.max(1, Math.round(roi.w * imgCanvasFull.width));
@@ -623,6 +745,7 @@
         $('#txtJson').val(JSON.stringify(parsed?.data || {}, null, 2));
         renderTable(parsed?.data || {});
         setStatus('ROI actual procesado: texto crudo y datos parseados','ok');
+        playBeep(); // <-- beep en éxito de "Procesar ROI actual"
       } else {
         setStatus('No se pudo decodificar el ROI actual','bad');
       }
@@ -790,8 +913,7 @@
       const sh = Math.max(1, Math.round(roi.h * imgCanvasFull.height));
       const temp = document.createElement('canvas');
       temp.width = sw; temp.height = sh;
-      const tctx = temp.getContext('2d');
-      tctx.drawImage(imgCanvasFull, sx, sy, sw, sh, 0, 0, sw, sh);
+      temp.getContext('2d').drawImage(imgCanvasFull, sx, sy, sw, sh, 0, 0, sw, sh);
       return temp;
     }
 
@@ -848,7 +970,7 @@
     });
     $('#btnCaptureCamROI').on('click', ()=>captureRoiFromCamera(false));
     $('#btnCaptureCamROIRaw').on('click', captureRoiRawFromCamera);
-    $('#btnProcessCurrentROI').on('click', processCurrentROI); // NUEVO
+    $('#btnProcessCurrentROI').on('click', processCurrentROI);
 
     // Auto-captura toggles
     $('#chkAuto').on('change', function(){ isAuto = !!this.checked; setStatus(isAuto?'Auto-captura ON':'Auto-captura OFF','info'); });
@@ -932,7 +1054,7 @@
     });
     window.addEventListener('mouseup', ()=>{ action=null; });
 
-    // Touch (drag + pinch)
+    // Touch (drag + pinch) en canvas de imagen
     imgCanvasPreview.addEventListener('touchstart', (e)=>{
       if(!imgLoaded) return;
       e.preventDefault();
