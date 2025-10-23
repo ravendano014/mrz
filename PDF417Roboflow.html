@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>PDF417 — Cámara / Imagen, ROI preciso + Capturar ROI (cámara)</title>
+  <title>PDF417 — Cámara / Imagen, ROI preciso + Capturar ROI (cámara) + Auto-captura</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- ====== Librerías por CDN ====== -->
@@ -30,9 +30,9 @@
     #overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; z-index:2; }
 
     #panel{
-      position:fixed; top:0; right:0; height:100%; width:min(500px, 44vw);
+      position:fixed; top:0; right:0; height:100%; width:min(520px, 44vw);
       background:linear-gradient(180deg,var(--panel),#0b1117); border-left:1px solid var(--line);
-      padding:14px 14px 100px; overflow:auto; box-shadow:-8px 0 24px rgba(0,0,0,.35); z-index:3;
+      padding:14px 14px 120px; overflow:auto; box-shadow:-8px 0 24px rgba(0,0,0,.35); z-index:3;
     }
     #panel h1{ font-size:16px; margin:0 0 8px; letter-spacing:.3px }
     .sub{ color:var(--muted); font-size:12px; margin:0 0 12px }
@@ -49,14 +49,17 @@
     button.danger{ border-color:#4f1f1f; background:#281012; color:#ffdede }
     button:disabled{ opacity:.5; cursor:not-allowed }
     .ghost{ background:transparent }
+    label.small{ font-size:12px; color:var(--muted) }
 
-    textarea, pre, input[type="text"]{
+    textarea, pre, input[type="text"], input[type="number"]{
       width:100%; background:var(--card); color:var(--fg); border:1px solid var(--line);
       border-radius:10px; padding:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
     }
+    input[type="number"]{ width:86px; }
     textarea{ min-height:110px; resize:vertical }
     .grid{ display:grid; gap:8px; }
     .split2{ grid-template-columns:1fr 1fr }
+    .split3{ grid-template-columns:auto auto auto; align-items:center }
     table{
       width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line);
       border-radius:10px; overflow:hidden; display:block; max-height:260px; overflow:auto;
@@ -65,7 +68,7 @@
     th{ position:sticky; top:0; background:#0f1820; z-index:1 }
 
     .status{
-      position:fixed; left:12px; right:calc(min(500px, 44vw) + 12px); bottom:12px;
+      position:fixed; left:12px; right:calc(min(520px, 44vw) + 12px); bottom:12px;
       display:flex; gap:8px; align-items:center; flex-wrap:wrap;
       padding:10px 12px; border-radius:12px; background:#0d1318cc; backdrop-filter: blur(4px);
       border:1px solid var(--line); z-index: 4;
@@ -116,8 +119,8 @@
 
   <!-- Panel -->
   <aside id="panel">
-    <h1>PDF417 — cámara e imagen (ROI preciso)</h1>
-    <p class="sub">Roboflow (InferenceJS) para detectar, **Capturar ROI (cámara)** desde bbox del modelo, ROI preciso en imagen, y parseo JSON.</p>
+    <h1>PDF417 — cámara e imagen (ROI preciso + Auto-captura)</h1>
+    <p class="sub">Roboflow (InferenceJS), **Capturar ROI (cámara)** manual/automática desde bbox, ROI preciso en imagen, y parseo JSON.</p>
 
     <!-- Cámara -->
     <div class="row">
@@ -126,6 +129,16 @@
       <button id="btnFlip">↺ Cambiar cámara</button>
       <button id="btnCaptureCamROI" class="success" disabled>⧉ Capturar ROI (cámara)</button>
       <span class="badge">Detección: InferenceJS</span>
+    </div>
+
+    <!-- Auto-captura -->
+    <div class="row seg">
+      <div class="grid split3" style="gap:10px">
+        <label class="small"><input type="checkbox" id="chkAuto" /> Auto-captura</label>
+        <label class="small">Umbral conf. ≥ <input type="number" id="numThresh" min="0" max="1" step="0.01" value="0.60" /></label>
+        <label class="small">Pausa (s) <input type="number" id="numCooldown" min="0" max="30" step="0.5" value="2.5" /></label>
+      </div>
+      <p class="sub" style="margin-top:6px">Si la confianza de la detección supera el umbral, se captura el ROI automáticamente y se pausa el disparo por el tiempo indicado.</p>
     </div>
 
     <!-- Imagen -->
@@ -228,8 +241,12 @@
     const engine = new InferenceEngine();
     let workerId = null;
     let rafId = 0;
-    let lastBBox = null; // bbox de cámara (centro + width/height)
+    let lastBBox = null; // bbox de cámara (centro + size)
     let lastTS = performance.now(), fpsSMA = [];
+
+    // Auto-captura
+    let isAuto = false;
+    let captureCooldown = false;
 
     // Imagen cargada a resolución nativa (fuera de vista)
     const imgCanvasFull = document.createElement('canvas');
@@ -328,8 +345,8 @@
         setCanvasToVideoSize();
         sCam.removeClass('bad info').addClass('ok').text(`Cámara: activa (${facingMode})`);
         sourceMode = 'video';
-        running = true;
         helpMessage.classList.add('hidden');
+        running = true;
         loopDetect();
       }catch(err){
         sCam.removeClass('ok info').addClass('bad').text('Cámara: error - ' + err.message);
@@ -417,9 +434,32 @@
         const preds = await engine.infer(workerId, image);
         octx.clearRect(0,0,overlay.width,overlay.height);
         if (preds && preds.length){
-          const best = preds.find(p => (p.class||'').toLowerCase().includes('pdf')) || preds[0];
+          // Elige el PDF417 con mayor confianza
+          const best = preds.reduce((a,b)=>{
+            const ap = (a.class||'').toLowerCase().includes('pdf') ? a : null;
+            const bp = (b.class||'').toLowerCase().includes('pdf') ? b : null;
+            if(!ap) return bp || a;
+            if(!bp) return ap;
+            return (bp.confidence > ap.confidence) ? bp : ap;
+          }, preds[0]);
           paintBox(octx, best.bbox, best.class || 'pdf417', best.confidence);
           lastBBox = best.bbox; setHit(true);
+
+          // --- Auto-captura ---
+          if(isAuto && !captureCooldown){
+            const thr = clamp(parseFloat($('#numThresh').val()) || 0.6, 0, 1);
+            if(best.confidence >= thr){
+              captureCooldown = true;
+              // Dispara captura asincrónica sin bloquear FPS
+              setTimeout(async ()=>{
+                await captureRoiFromCamera();
+                const cooldownMs = Math.max(0, (parseFloat($('#numCooldown').val()) || 2.5) * 1000);
+                setTimeout(()=>{ captureCooldown = false; }, cooldownMs);
+              }, 0);
+            }
+          }
+          // --- fin auto-captura ---
+
         } else { lastBBox = null; setHit(false); }
       }catch(e){ /* noop */ }
       updateFPS();
@@ -432,34 +472,30 @@
         setStatus('No hay detección activa para capturar','bad');
         return;
       }
-      // 1) Copiar frame actual a un canvas a resolución nativa del video
       const vw = video.videoWidth, vh = video.videoHeight;
       const frame = document.createElement('canvas');
       frame.width = vw; frame.height = vh;
       const fctx = frame.getContext('2d', { willReadFrequently:true });
       fctx.drawImage(video, 0, 0, vw, vh);
 
-      // 2) Convertir bbox (centro + size) a rectángulo (x,y,w,h) en px
       const { x, y, width, height } = lastBBox;
       const rx = Math.max(0, Math.round(x - width/2));
       const ry = Math.max(0, Math.round(y - height/2));
       const rw = Math.max(1, Math.round(width));
       const rh = Math.max(1, Math.round(height));
 
-      // 3) Recortar el ROI del frame
       const crop = document.createElement('canvas');
       crop.width = rw; crop.height = rh;
       const cctx = crop.getContext('2d');
       cctx.drawImage(frame, rx, ry, rw, rh, 0, 0, rw, rh);
 
-      // 4) Mostrar preview del ROI de cámara en el mismo panel
+      // Preview en panel
       roiCtx.clearRect(0,0,roiPreview.width,roiPreview.height);
       const scale = Math.min(roiPreview.width / rw, roiPreview.height / rh);
       const dw = Math.round(rw * scale), dh = Math.round(rh * scale);
       const dx = Math.round((roiPreview.width - dw)/2), dy = Math.round((roiPreview.height - dh)/2);
       roiCtx.drawImage(crop, 0, 0, rw, rh, dx, dy, dw, dh);
 
-      // 5) Decodificar ROI + parseo y render
       const raw = await decodeFromCanvas(crop);
       if(raw){
         setStatus('Código detectado en ROI (cámara)','ok');
@@ -689,6 +725,14 @@
     });
     $('#btnCaptureCamROI').on('click', captureRoiFromCamera);
 
+    // Auto-captura toggles
+    $('#chkAuto').on('change', function(){ isAuto = !!this.checked; setStatus(isAuto?'Auto-captura ON':'Auto-captura OFF','info'); });
+    $('#numThresh,#numCooldown').on('change', function(){
+      const v = $(this).val();
+      if(this.id==='numThresh') $(this).val(String(clamp(parseFloat(v)||0.6,0,1)));
+      if(this.id==='numCooldown') $(this).val(String(clamp(parseFloat(v)||2.5,0,30)));
+    });
+
     // Imagen
     $('#btnPick').on('click', ()=> document.getElementById('fileImage').click());
     $('#fileImage').on('change', async (e)=>{
@@ -732,12 +776,11 @@
     $('#btnClearRaw').on('click', ()=>{ $('#txtRaw').val(''); $('#txtJson').val(''); renderTable({}); });
 
     // ====== Interacción precisa (imagen) ======
-    function roiToPxBox(r){ return roiToPx(r); }
     imgCanvasPreview.addEventListener('mousedown', (e)=>{
       if(!imgLoaded) return;
       const rect = imgCanvasPreview.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-      const rpx = roiToPxBox(roi);
+      const rpx = roiToPx(roi);
       action = getHandleAt(mx, my, rpx);
       start = {x:mx, y:my};
       startRoi = {...roi};
@@ -751,10 +794,10 @@
 
       if(action==='move'){ rpx.x += dx; rpx.y += dy; }
       else{
-        if(action.includes('e')) rpx.w += dx;
-        if(action.includes('s')) rpx.h += dy;
-        if(action.includes('w')){ rpx.x += dx; rpx.w -= dx; }
-        if(action.includes('n')){ rpx.y += dy; rpx.h -= dy; }
+        if(action?.includes('e')) rpx.w += dx;
+        if(action?.includes('s')) rpx.h += dy;
+        if(action?.includes('w')){ rpx.x += dx; rpx.w -= dx; }
+        if(action?.includes('n')){ rpx.y += dy; rpx.h -= dy; }
       }
       rpx.w = Math.max(MIN_SIZE_PX, rpx.w);
       rpx.h = Math.max(MIN_SIZE_PX, rpx.h);
@@ -878,7 +921,12 @@
       });
     });
 
+    // Helpers
+    function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
   })();
   </script>
 </body>
 </html>
+
+
