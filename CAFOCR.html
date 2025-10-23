@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>OCR y Detector de Códigos de Barras por Cámara o Imagen</title>
+<title>OCR y Detector de Códigos de Barras con ROI</title>
 <style>
   :root{
     color-scheme: dark;
@@ -44,13 +44,17 @@
   th{color:#b9c4d0; font-weight:600}
   .badge{display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:#0f1622}
   .ok{color:var(--good)} .warn{color:var(--bad)}
-  .hint{font-size:12px; color:var(--muted)}
+  .hint{font-size:12px; color:#708090}
+  /* Línea guía opcional */
+  @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+  .roi-guide { animation: blink 1s step-end infinite; }
+  #roiPreview { max-height: 120px; width: 100%; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--border); background:#0f141c }
 </style>
 </head>
 <body>
 <header>
-  <h1>OCR y Detector de Códigos de Barras</h1>
-  <p class="subtitle">Extrae texto con OCR y detecta códigos de barras desde cámara o imagen.</p>
+  <h1>OCR y Detector de Códigos de Barras con ROI</h1>
+  <p class="subtitle">Dibuja un recuadro ROI con el mouse o los dedos. Captura & extrae usando ese ROI.</p>
 </header>
 
 <div class="container">
@@ -62,7 +66,7 @@
         <div class="viewport">
           <video id="video" playsinline muted></video>
           <img id="imgPreview" class="preview" alt="Vista previa" style="display:none" />
-          <canvas id="canvasGuide"></canvas>
+          <canvas id="canvasGuide" class="roi-guide"></canvas>
           <canvas id="canvasOverlay"></canvas>
         </div>
       </div>
@@ -106,6 +110,7 @@
 
     <section class="card">
       <div class="title">Resultados</div>
+      <canvas id="roiPreview" style="display:none;"></canvas>
       <div class="row" style="gap:12px; margin-bottom:10px">
         <button id="clear">Limpiar</button>
         <span id="quality" class="badge">Confianza OCR: —</span>
@@ -125,6 +130,7 @@
 <script type="module">
   import { BarcodeDetectorPolyfill } from "https://cdn.jsdelivr.net/npm/@undecaf/barcode-detector-polyfill@latest/dist/main.js";
 
+  // ---------- refs ----------
   const el = {};
   document.querySelectorAll('[id]').forEach(e => el[e.id] = e);
 
@@ -132,6 +138,7 @@
   const canvasGuide = el.canvasGuide;
   const canvasOverlay = el.canvasOverlay;
   const imgPrev = el.imgPreview;
+  const roiPreview = el.roiPreview;
   const status  = el.status;
   const jsonOut = el.jsonOut;
   const table   = el.tableOut.querySelector('tbody');
@@ -142,29 +149,281 @@
 
   const ctxOverlay = canvasOverlay.getContext('2d');
   const ctxGuide = canvasGuide.getContext('2d');
+  const ctxRoiPrev = roiPreview.getContext('2d');
 
+  // ---------- state ----------
   let detector = null;
   let supportedFormats = [];
   let stream = null;
   let lastImageEl = null;
   let videoRequestId = null;
 
-  // --- Detector de Códigos de Barras ---
+  let audioCtx = null;  // audio context fix
+  let lastBeepAt = 0;
+
+  // ROI en coordenadas de canvasOverlay (px)
+  let roi = null; // {x,y,w,h}
+  const HANDLE = 10; // px para agarraderas
+  let dragMode = null; // 'move' | 'nw'|'ne'|'sw'|'se'|'n'|'s'|'w'|'e' | 'draw'
+  let dragStart = null; // {x,y}
+  const MIN_W = 20, MIN_H = 20;
+
+  // ---------- utils ----------
+  function setStatus(msg){ status.textContent = msg; }
+  function currentLang(){
+    const custom = (el.langCustom.value || '').trim();
+    const lang = custom || el.langSelect.value || 'eng';
+    langBadge.textContent = lang;
+    return lang;
+  }
+  el.langSelect.addEventListener('change', currentLang);
+  el.langCustom.addEventListener('input', currentLang);
+
+  // Ajusta tamaños de canvases a tamaño visible
+  function syncCanvasSizes(){
+    const W = canvasOverlay.clientWidth;
+    const H = canvasOverlay.clientHeight;
+    canvasOverlay.width = W; canvasOverlay.height = H;
+    canvasGuide.width = W;   canvasGuide.height = H;
+    drawGuide();
+    drawOverlay();
+  }
+
+  // Línea guía (opcional)
+  function drawGuide() {
+    const W = canvasGuide.width, H = canvasGuide.height;
+    ctxGuide.clearRect(0, 0, W, H);
+    const y = H/2;
+    ctxGuide.lineWidth = 3;
+    ctxGuide.strokeStyle = '#ff5964';
+    ctxGuide.beginPath();
+    ctxGuide.moveTo(W*0.1, y);
+    ctxGuide.lineTo(W*0.9, y);
+    ctxGuide.stroke();
+  }
+
+  // Dibuja máscara, rectángulo ROI y agarraderas
+  function drawOverlay(){
+    const W = canvasOverlay.width, H = canvasOverlay.height;
+    ctxOverlay.clearRect(0,0,W,H);
+
+    if (!roi) {
+      // Un mensaje sutil
+      ctxOverlay.fillStyle = 'rgba(0,0,0,0.25)';
+      ctxOverlay.fillRect(0,0,W,H);
+      ctxOverlay.fillStyle = '#b9c4d0';
+      ctxOverlay.font = '12px system-ui';
+      ctxOverlay.fillText('Dibuja un ROI: arrastra con el mouse o los dedos', 12, 20);
+      return;
+    }
+
+    // Máscara fuera del ROI
+    ctxOverlay.fillStyle = 'rgba(0,0,0,0.45)';
+    ctxOverlay.fillRect(0,0,W,roi.y); // arriba
+    ctxOverlay.fillRect(0,roi.y,roi.x,roi.h); // izquierda
+    ctxOverlay.fillRect(roi.x+roi.w,roi.y,W-(roi.x+roi.w),roi.h); // derecha
+    ctxOverlay.fillRect(0,roi.y+roi.h,W,H-(roi.y+roi.h)); // abajo
+
+    // Borde ROI
+    ctxOverlay.lineWidth = 2;
+    ctxOverlay.strokeStyle = '#3ba0ff';
+    ctxOverlay.setLineDash([6,4]);
+    ctxOverlay.strokeRect(roi.x, roi.y, roi.w, roi.h);
+    ctxOverlay.setLineDash([]);
+
+    // Agarraderas
+    ctxOverlay.fillStyle = '#3ba0ff';
+    const handles = getHandlePoints(roi);
+    for (const p of handles) ctxOverlay.fillRect(p.x-HANDLE/2, p.y-HANDLE/2, HANDLE, HANDLE);
+  }
+
+  function getHandlePoints(r){
+    return [
+      {name:'nw', x:r.x, y:r.y},
+      {name:'ne', x:r.x+r.w, y:r.y},
+      {name:'sw', x:r.x, y:r.y+r.h},
+      {name:'se', x:r.x+r.w, y:r.y+r.h},
+      {name:'n',  x:r.x+r.w/2, y:r.y},
+      {name:'s',  x:r.x+r.w/2, y:r.y+r.h},
+      {name:'w',  x:r.x, y:r.y+r.h/2},
+      {name:'e',  x:r.x+r.w, y:r.y+r.h/2},
+    ];
+  }
+  function hitTestHandle(x,y){
+    if (!roi) return null;
+    for(const h of getHandlePoints(roi)){
+      if (Math.abs(x-h.x) <= HANDLE && Math.abs(y-h.y) <= HANDLE) return h.name;
+    }
+    // dentro del ROI para mover
+    if (x>=roi.x && x<=roi.x+roi.w && y>=roi.y && y<=roi.y+roi.h) return 'move';
+    return null;
+  }
+
+  function getPointFromEvent(ev){
+    if (ev.touches && ev.touches.length){
+      const t = ev.touches[0];
+      const rect = canvasOverlay.getBoundingClientRect();
+      return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    } else {
+      const rect = canvasOverlay.getBoundingClientRect();
+      return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+    }
+  }
+
+  function clampROI(r){
+    const W = canvasOverlay.width, H = canvasOverlay.height;
+    if (r.w < MIN_W) r.w = MIN_W;
+    if (r.h < MIN_H) r.h = MIN_H;
+    if (r.x < 0) r.x = 0;
+    if (r.y < 0) r.y = 0;
+    if (r.x + r.w > W) r.x = W - r.w;
+    if (r.y + r.h > H) r.y = H - r.h;
+  }
+
+  function setCursor(mode){
+    const map = {
+      move:'move', n:'ns-resize', s:'ns-resize', w:'ew-resize', e:'ew-resize',
+      nw:'nwse-resize', se:'nwse-resize', ne:'nesw-resize', sw:'nesw-resize', draw:'crosshair'
+    };
+    canvasOverlay.style.cursor = map[mode] || 'crosshair';
+  }
+
+  // ---------- ROI interactions ----------
+  function onPointerDown(ev){
+    ev.preventDefault();
+    const p = getPointFromEvent(ev);
+    const hit = roi ? hitTestHandle(p.x,p.y) : null;
+
+    if (!roi || !hit){
+      // empezar a dibujar desde cero
+      roi = { x:p.x, y:p.y, w:1, h:1 };
+      dragMode = 'draw';
+    } else {
+      dragMode = hit;
+      dragStart = { x:p.x, y:p.y, rx:roi.x, ry:roi.y, rw:roi.w, rh:roi.h };
+    }
+    drawOverlay();
+  }
+  function onPointerMove(ev){
+    const p = getPointFromEvent(ev);
+    if (!dragMode){
+      setCursor(roi ? (hitTestHandle(p.x,p.y) || 'draw') : 'draw');
+      return;
+    }
+
+    if (dragMode === 'draw'){
+      roi.w = p.x - roi.x;
+      roi.h = p.y - roi.y;
+      if (roi.w < 0){ roi.x += roi.w; roi.w = -roi.w; }
+      if (roi.h < 0){ roi.y += roi.h; roi.h = -roi.h; }
+      clampROI(roi);
+    } else if (dragMode === 'move'){
+      const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
+      roi.x = dragStart.rx + dx;
+      roi.y = dragStart.ry + dy;
+      clampROI(roi);
+    } else {
+      // resize por lados/esquinas
+      const r = { ...dragStart };
+      const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
+      if (dragMode.includes('e')) r.rw += dx;
+      if (dragMode.includes('s')) r.rh += dy;
+      if (dragMode.includes('w')) { r.rx += dx; r.rw -= dx; }
+      if (dragMode.includes('n')) { r.ry += dy; r.rh -= dy; }
+      // aplicar
+      roi.x = r.rx; roi.y = r.ry; roi.w = r.rw; roi.h = r.rh;
+      if (roi.w < 0){ roi.x += roi.w; roi.w = -roi.w; }
+      if (roi.h < 0){ roi.y += roi.h; roi.h = -roi.h; }
+      clampROI(roi);
+    }
+    drawOverlay();
+  }
+  function onPointerUp(ev){
+    dragMode = null;
+    drawOverlay();
+  }
+
+  // Eventos mouse/touch
+  canvasOverlay.addEventListener('mousedown', onPointerDown);
+  window.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('mouseup', onPointerUp);
+
+  canvasOverlay.addEventListener('touchstart', onPointerDown, {passive:false});
+  window.addEventListener('touchmove', onPointerMove, {passive:false});
+  window.addEventListener('touchend', onPointerUp);
+
+  // ---------- Barcode ----------
   async function createBarcodeDetector() {
     supportedFormats = await BarcodeDetectorPolyfill.getSupportedFormats();
     el.formats.textContent = supportedFormats.join(', ');
     detector = new BarcodeDetectorPolyfill({ formats: supportedFormats });
   }
 
-  // --- Sonido de beep (WebAudio) ---
-  let audioCtx = null;
-  let lastBeepAt = 0;
+  async function detectBarcodes(source) {
+    const sW = source.naturalWidth || source.videoWidth || source.width || canvasOverlay.clientWidth;
+    const sH = source.naturalHeight || source.videoHeight || source.height || canvasOverlay.clientHeight;
+
+    // No pintamos overlay aquí (podría ser ROI), el loop en vivo sí.
+    const symbols = await detector.detect(source);
+
+    if (el.beepChk.checked && symbols.length) beep();
+
+    // Limpia detalles si no se piden
+    return symbols.map(s => {
+      const obj = { ...s };
+      if (!el.detailsChk.checked) {
+        delete obj.boundingBox;
+        delete obj.cornerPoints;
+      }
+      return obj;
+    });
+  }
+
+  // Bucle de detección en vivo (usando la fuente de video para dibujar BB en pantalla completa)
+  function detectVideoLoop(on) {
+    if (on) {
+      drawOverlay(); // mantener overlay
+      detector.detect(video).then(symbols=>{
+        // dibuja bounding boxes del stream completo (guía visual)
+        const sW = canvasOverlay.width, sH = canvasOverlay.height;
+        // no limpiar ROI/máscara ya hecha; solo extra layer
+        ctxOverlay.save();
+        ctxOverlay.lineWidth = 3;
+        ctxOverlay.strokeStyle = '#24c07a';
+        ctxOverlay.setLineDash([8,5]);
+        for (const s of symbols) {
+          if (s.cornerPoints && s.cornerPoints.length){
+            ctxOverlay.beginPath();
+            const pts = s.cornerPoints;
+            ctxOverlay.moveTo(pts[0].x / video.videoWidth * sW, pts[0].y / video.videoHeight * sH);
+            for (let i=1;i<pts.length;i++){
+              ctxOverlay.lineTo(pts[i].x / video.videoWidth * sW, pts[i].y / video.videoHeight * sH);
+            }
+            ctxOverlay.closePath();
+            ctxOverlay.stroke();
+          }
+        }
+        ctxOverlay.restore();
+        videoRequestId = requestAnimationFrame(()=>detectVideoLoop(true));
+      }).catch(()=>{
+        videoRequestId = requestAnimationFrame(()=>detectVideoLoop(true));
+      });
+    } else {
+      if (videoRequestId) cancelAnimationFrame(videoRequestId);
+      videoRequestId = null;
+    }
+  }
+
+  // ---------- Beep ----------
   function beep() {
     const now = performance.now();
     if (now - lastBeepAt < 600) return;
     lastBeepAt = now;
 
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+    }
+    if (!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'sine';
@@ -175,160 +434,9 @@
     setTimeout(() => osc.stop(), 150);
   }
 
-  // --- Dibuja guía (recuadro verde con esquinas) ---
-  function drawGuide() {
-    const W = canvasGuide.width = canvasGuide.clientWidth;
-    const H = canvasGuide.height = canvasGuide.clientHeight;
-    ctxGuide.clearRect(0, 0, W, H);
-
-    // Marco de referencia ~ 70% del ancho, 60% del alto
-    const w = Math.round(W * 0.72);
-    const h = Math.round(H * 0.62);
-    const x = Math.round((W - w) / 2);
-    const y = Math.round((H - h) / 2);
-    const L = 22;
-
-    ctxGuide.lineWidth = 3;
-    ctxGuide.strokeStyle = '#00e000';
-    ctxGuide.beginPath();
-    // Esquinas tipo "L"
-    ctxGuide.moveTo(x, y + L); ctxGuide.lineTo(x, y); ctxGuide.lineTo(x + L, y);
-    ctxGuide.moveTo(x + w - L, y); ctxGuide.lineTo(x + w, y); ctxGuide.lineTo(x + w, y + L);
-    ctxGuide.moveTo(x, y + h - L); ctxGuide.lineTo(x, y + h); ctxGuide.lineTo(x + L, y + h);
-    ctxGuide.moveTo(x + w - L, y + h); ctxGuide.lineTo(x + w, y + h); ctxGuide.lineTo(x + w, y + h - L);
-    ctxGuide.stroke();
-
-    // Borde suave punteado
-    ctxGuide.setLineDash([8, 8]);
-    ctxGuide.lineDashOffset = 0;
-    ctxGuide.strokeStyle = 'rgba(0,224,0,0.6)';
-    ctxGuide.lineWidth = 2;
-    ctxGuide.strokeRect(x, y, w, h);
-    ctxGuide.setLineDash([]);
-  }
-
-  // --- Detección de Códigos de Barras ---
-  async function detectBarcodes(source) {
-    const sW = source.naturalWidth || source.videoWidth || source.width || canvasGuide.clientWidth;
-    const sH = source.naturalHeight || source.videoHeight || source.height || canvasGuide.clientHeight;
-
-    // Ajusta canvas de dibujo de overlays
-    canvasOverlay.width = sW;  canvasOverlay.height = sH;
-    ctxOverlay.clearRect(0, 0, sW, sH);
-
-    const symbols = await detector.detect(source);
-
-    // Dibuja polígonos sobre códigos
-    for (const symbol of symbols) {
-      const pts = symbol.cornerPoints || [];
-      if (pts.length) {
-        ctxOverlay.beginPath();
-        const last = pts[pts.length - 1];
-        ctxOverlay.moveTo(last.x, last.y);
-        for (const p of pts) ctxOverlay.lineTo(p.x, p.y);
-        ctxOverlay.lineWidth = 3;
-        ctxOverlay.strokeStyle = '#3ba0ff'; // Color azul para códigos
-        ctxOverlay.stroke();
-      }
-    }
-
-    // Limpia detalles sensibles si no se solicitan
-    const out = symbols.map(s => {
-      const obj = { ...s };
-      if (!el.detailsChk.checked) {
-        delete obj.boundingBox;
-        delete obj.cornerPoints;
-      }
-      return obj;
-    });
-
-    // Beep opcional
-    if (el.beepChk.checked && symbols.length) beep();
-
-    return out;
-  }
-
-  // --- Bucle de vídeo de detección de Códigos de Barras ---
-  function detectVideoLoop(on) {
-    if (on) {
-      detectBarcodes(video).then(() => videoRequestId = requestAnimationFrame(() => detectVideoLoop(true)));
-    } else {
-      if (videoRequestId) cancelAnimationFrame(videoRequestId);
-      videoRequestId = null;
-    }
-  }
-
-  // --- Lógica de la cámara ---
-  el.startCam.addEventListener('click', async ()=>{
-    if (videoRequestId) return;
-    try{
-      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
-      video.srcObject = stream;
-      await video.play();
-      el.stopCam.disabled=false;
-      el.captureAndExtract.disabled=true;
-      camBadge.textContent='iniciando…';
-      video.onplaying = ()=>{ el.captureAndExtract.disabled=false; camBadge.textContent='activa'; };
-      imgPrev.style.display='none';
-      video.style.display='block';
-      setStatus('Cámara iniciada. Usando detección en vivo de códigos de barras.');
-      lastImageEl = null;
-      detectVideoLoop(true); // Inicia bucle de detección en vivo
-    }catch(err){
-      setStatus('No se pudo iniciar la cámara: ' + err.message);
-    }
-  });
-
-  el.stopCam.addEventListener('click', ()=>{
-    detectVideoLoop(false); // Detiene bucle de detección en vivo
-    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
-    video.pause(); video.srcObject=null;
-    el.stopCam.disabled=true;
-    el.captureAndExtract.disabled=true;
-    camBadge.textContent='detenida';
-    setStatus('Cámara detenida.');
-    ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height); // Limpia overlay
-    video.style.display='none';
-  });
-
-  el.captureAndExtract.addEventListener('click', async ()=>{
-    if(!stream || video.readyState<2){ setStatus('La cámara no está lista.'); return; }
-    lastImageEl = video;
-    await runExtraction(video);
-  });
-
-  // --- Lógica de imagen (Archivo) ---
-  el.fileInput.addEventListener('change', ()=>{
-    el.stopCam.click(); // Asegura detener cámara si está activa
-    const f = el.fileInput.files && el.fileInput.files[0];
-    if(!f) return;
-    const url = URL.createObjectURL(f);
-    imgPrev.src = url; imgPrev.style.display='block';
-    video.style.display='none';
-    setStatus('Imagen cargada. Presiona “Extraer de imagen”.');
-    lastImageEl = imgPrev;
-    ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height); // Limpia overlay
-  });
-
-  el.extractFromImage.addEventListener('click', async ()=>{
-    if(!lastImageEl){ setStatus('No hay imagen seleccionada. Carga una imagen o usa la cámara.'); return; }
-    await runExtraction(lastImageEl);
-  });
-
-  // --- Lógica del OCR (Adaptada de CAFOCR.html) ---
-  function currentLang(){
-    const custom = (el.langCustom.value || '').trim();
-    const lang = custom || el.langSelect.value || 'eng';
-    langBadge.textContent = lang;
-    return lang;
-  }
-  el.langSelect.addEventListener('change', currentLang);
-  el.langCustom.addEventListener('input', currentLang);
-
-  function setStatus(msg){ status.textContent = msg; }
-
+  // ---------- Preproceso & OCR ----------
   function preprocessToCanvas(srcEl){
-    const canvas = document.createElement('canvas'); // Usar canvas temporal
+    const canvas = document.createElement('canvas');
     const w = srcEl.naturalWidth || srcEl.videoWidth || srcEl.width;
     const h = srcEl.naturalHeight || srcEl.videoHeight || srcEl.height;
     if(!w || !h){ throw new Error('Imagen no válida.'); }
@@ -369,67 +477,102 @@
         ? data.words.reduce((s,w)=>s+(w.confidence||0),0)/data.words.length
         : (data.confidence ?? 0);
 
-      const ocrPayload = {
+      return {
         idioma_ocr: lang,
         texto_bruto: texto,
         digitos: digits,
         arreglo_digitos: digitsArr,
-        confianza_media: Number(conf.toFixed(2))
+        confianza_media: Number((conf||0).toFixed(2))
       };
-
-      return ocrPayload;
 
     }catch(err){
       console.error('Error en OCR:', err);
       setStatus('Error en OCR: ' + err.message);
-      return { error_ocr: err.message };
+      return { error_ocr: err.message, idioma_ocr: lang, confianza_media: 0 };
     }finally{
       await worker.terminate();
     }
   }
 
-  // --- Ejecución Combinada ---
-  async function runExtraction(source){
-    // 1. Detección de Códigos de Barras
-    const barcodes = await detectBarcodes(source);
+  // ---------- ROI -> fuente recortada ----------
+  function applyROIFromRect(source){
+    // Dimensiones reales de la fuente
+    const sW = source.naturalWidth || source.videoWidth || source.width;
+    const sH = source.naturalHeight || source.videoHeight || source.height;
+    if (!sW || !sH) throw new Error('Fuente no válida.');
+
+    // Dimensiones visibles de overlay
+    const vW = canvasOverlay.width;
+    const vH = canvasOverlay.height;
+
+    // Mapear ROI (coordenadas canvasOverlay) a coordenadas de la fuente
+    const scaleX = sW / vW;
+    const scaleY = sH / vH;
+
+    const cropX = Math.max(0, Math.round(roi.x * scaleX));
+    const cropY = Math.max(0, Math.round(roi.y * scaleY));
+    const cropW = Math.min(sW - cropX, Math.round(roi.w * scaleX));
+    const cropH = Math.min(sH - cropY, Math.round(roi.h * scaleY));
+
+    const roiCanvas = document.createElement('canvas');
+    roiCanvas.width = cropW;
+    roiCanvas.height = cropH;
+    const roiCtx = roiCanvas.getContext('2d');
+    roiCtx.drawImage(source, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+    // Mostrar preview
+    roiPreview.style.display = 'block';
+    roiPreview.width = cropW;
+    roiPreview.height = cropH;
+    ctxRoiPrev.clearRect(0,0,roiPreview.width,roiPreview.height);
+    ctxRoiPrev.drawImage(roiCanvas, 0, 0);
+
+    return roiCanvas;
+  }
+
+  // ---------- Extracción combinada ----------
+  async function runExtraction(roiSource){
+    const barcodes = await detectBarcodes(roiSource);
     barcodesFound.textContent = `Códigos detectados: ${barcodes.length}`;
     barcodesFound.style.borderColor = barcodes.length > 0 ? 'var(--good)' : 'var(--border)';
 
-    // 2. OCR
-    const ocrResult = await runOCR(source);
+    const ocrResult = await runOCR(roiSource);
 
-    // 3. Consolidar Resultados
     const finalPayload = {
       codigos_barras: barcodes,
       ocr: ocrResult
     };
 
-    // 4. Mostrar en UI
     jsonOut.textContent = JSON.stringify(finalPayload, null, 2);
     table.innerHTML = '';
-    
-    addRow('--- CÓDIGOS DE BARRAS ---', '');
+
+    addRow('--- CÓDIGOS DE BARRAS (Desde ROI) ---', '');
     if (barcodes.length === 0) {
       addRow('Resultado', 'No se detectaron códigos de barras.');
     } else {
       barcodes.forEach((b, i) => {
-        const value = el.detailsChk.checked ? JSON.stringify(b) : b.format + ': ' + b.rawValue;
+        const value = el.detailsChk.checked ? JSON.stringify(b) : `${b.format}: ${b.rawValue}`;
         addRow(`Código #${i+1}`, value);
       });
     }
 
-    addRow('--- OCR (Reconocimiento de Texto) ---', '');
+    addRow('--- OCR (Reconocimiento de Texto desde ROI) ---', '');
     addRow('Idioma OCR', ocrResult.idioma_ocr);
     addRow('Texto bruto', ocrResult.texto_bruto || '—');
     addRow('Dígitos (solo números)', ocrResult.digitos || '—');
-    addRow('Arreglo de dígitos', ocrResult.arreglo_digitos?.length ? '['+ocrResult.arreglo_digitos.join(', ')+']' : '—');
-    addRow('Confianza media', ocrResult.confianza_media + '%');
-    
-    quality.innerHTML = `Confianza OCR: <strong>${ocrResult.confianza_media.toFixed(2)}%</strong>`;
-    quality.style.borderColor = ocrResult.confianza_media >= 70 ? 'var(--good)' : 'var(--bad)';
-    quality.style.color = ocrResult.confianza_media >= 70 ? 'var(--good)' : 'var(--bad)';
+    addRow('Arreglo de dígitos', (ocrResult.arreglo_digitos?.length ? '['+ocrResult.arreglo_digitos.join(', ')+']' : '—'));
+    if (typeof ocrResult.confianza_media === 'number') {
+      addRow('Confianza media', ocrResult.confianza_media + '%');
+      quality.innerHTML = `Confianza OCR: <strong>${ocrResult.confianza_media.toFixed(2)}%</strong>`;
+      quality.style.borderColor = ocrResult.confianza_media >= 70 ? 'var(--good)' : 'var(--bad)';
+      quality.style.color = ocrResult.confianza_media >= 70 ? 'var(--good)' : 'var(--bad)';
+    } else {
+      addRow('Confianza media', '—');
+      quality.innerHTML = 'Confianza OCR: —';
+      quality.style.removeProperty('border-color'); quality.style.removeProperty('color');
+    }
 
-    setStatus('Extracción combinada finalizada.');
+    setStatus('Extracción combinada finalizada (aplicado ROI).');
   }
 
   function addRow(k,v){
@@ -440,6 +583,77 @@
     tr.appendChild(td1); tr.appendChild(td2); table.appendChild(tr);
   }
 
+  // ---------- Cámara / Imagen ----------
+  el.startCam.addEventListener('click', async ()=>{
+    if (videoRequestId) return;
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
+      video.srcObject = stream;
+      await video.play();
+      el.stopCam.disabled = false;
+      el.captureAndExtract.disabled = true;
+      camBadge.textContent='iniciando…';
+      video.onplaying = ()=>{
+        el.captureAndExtract.disabled=false; camBadge.textContent='activa';
+        imgPrev.style.display='none'; video.style.display='block';
+        syncCanvasSizes();
+        drawOverlay();
+        setStatus('Cámara iniciada. Dibuja/ajusta el ROI y usa “Capturar & Extraer”.');
+        detectVideoLoop(true);
+      };
+      lastImageEl = null;
+    }catch(err){
+      setStatus('No se pudo iniciar la cámara: ' + err.message);
+    }
+  });
+
+  el.stopCam.addEventListener('click', ()=>{
+    detectVideoLoop(false);
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    video.pause(); video.srcObject=null;
+    el.stopCam.disabled=true;
+    el.captureAndExtract.disabled=true;
+    camBadge.textContent='detenida';
+    setStatus('Cámara detenida.');
+    video.style.display='none';
+    ctxOverlay.clearRect(0,0,canvasOverlay.width,canvasOverlay.height);
+  });
+
+  el.fileInput.addEventListener('change', ()=>{
+    el.stopCam.click(); // asegurar detener
+    const f = el.fileInput.files && el.fileInput.files[0];
+    if(!f) return;
+    const url = URL.createObjectURL(f);
+    imgPrev.src = url; imgPrev.style.display='block';
+    video.style.display='none';
+    setStatus('Imagen cargada. Dibuja/ajusta el ROI y presiona “Extraer de imagen”.');
+    lastImageEl = imgPrev;
+    roi = null; // nuevo ROI
+    syncCanvasSizes();
+  });
+
+  el.captureAndExtract.addEventListener('click', async ()=>{
+    if(!stream || video.readyState<2){ setStatus('La cámara no está lista.'); return; }
+    if(!roi){ setStatus('Primero dibuja el ROI sobre el video.'); return; }
+    try {
+      const roiSource = applyROIFromRect(video);
+      await runExtraction(roiSource);
+    } catch (e) {
+      setStatus('Error al aplicar ROI: ' + e.message);
+    }
+  });
+
+  el.extractFromImage.addEventListener('click', async ()=>{
+    if(!lastImageEl){ setStatus('No hay imagen. Carga una imagen o usa la cámara.'); return; }
+    if(!roi){ setStatus('Primero dibuja el ROI sobre la imagen.'); return; }
+    try {
+      const roiSource = applyROIFromRect(lastImageEl);
+      await runExtraction(roiSource);
+    } catch (e) {
+      setStatus('Error al aplicar ROI: ' + e.message);
+    }
+  });
+
   el.clear.addEventListener('click', ()=>{
     jsonOut.textContent='{}';
     table.innerHTML='';
@@ -449,9 +663,13 @@
     barcodesFound.style.removeProperty('border-color');
     setStatus('Limpio.');
     ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+    roiPreview.style.display = 'none';
+    ctxRoiPrev.clearRect(0, 0, roiPreview.width, roiPreview.height);
+    roi = null;
+    drawOverlay();
   });
 
-  // Habilita contexto de audio al primer gesto del usuario
+  // Habilitar contexto de audio en primer gesto (si está marcado beep)
   ['click','change'].forEach(evt => {
     document.addEventListener(evt, () => {
       if (!audioCtx && el.beepChk.checked) {
@@ -460,17 +678,16 @@
     }, { once:true, capture:true });
   });
 
-  // --- Inicialización ---
+  // ---------- Init ----------
   await createBarcodeDetector();
-  drawGuide();
-  
-  // Redibuja guía al redimensionar
-  const ro = new ResizeObserver(drawGuide);
+  const ro = new ResizeObserver(syncCanvasSizes);
   ro.observe(document.querySelector('.viewport'));
-  
-  // Ocultar video/imagen al inicio
+
+  // ocultar al inicio
   video.style.display='none';
   imgPrev.style.display='none';
+  syncCanvasSizes(); // establece tamaños y dibuja overlay inicial
+  setStatus('Listo. Inicia cámara o sube una imagen, luego dibuja el ROI.');
 
 </script>
 </body>
