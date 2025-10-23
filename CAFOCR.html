@@ -81,6 +81,7 @@
           <input id="fileInput" type="file" accept="image/*" />
         </label>
         <button id="extractFromImage">Extraer de imagen</button>
+        <button id="autoDetectROI">Auto-ajustar ROI (Barra)</button>
       </div>
 
       <div class="row" style="margin-top:10px">
@@ -146,6 +147,7 @@
   const langBadge = el.langBadge;
   const quality = el.quality;
   const barcodesFound = el.barcodesFound;
+  const autoDetectROIButton = el.autoDetectROI; // Referencia al nuevo botón
 
   const ctxOverlay = canvasOverlay.getContext('2d');
   const ctxGuide = canvasGuide.getContext('2d');
@@ -274,9 +276,13 @@
     const W = canvasOverlay.width, H = canvasOverlay.height;
     if (r.w < MIN_W) r.w = MIN_W;
     if (r.h < MIN_H) r.h = MIN_H;
+    
+    // Ajustar límites de X
     if (r.x < 0) r.x = 0;
-    if (r.y < 0) r.y = 0;
     if (r.x + r.w > W) r.x = W - r.w;
+    
+    // Ajustar límites de Y
+    if (r.y < 0) r.y = 0;
     if (r.y + r.h > H) r.y = H - r.h;
   }
 
@@ -352,6 +358,69 @@
   window.addEventListener('touchmove', onPointerMove, {passive:false});
   window.addEventListener('touchend', onPointerUp);
 
+  // ---------- Auto-detección ROI (NUEVA FUNCIÓN) ----------
+  async function autoSelectROI(sourceEl){
+    setStatus('Buscando códigos de barras para auto-ajustar el ROI...');
+
+    // 1. Obtener las dimensiones de la fuente real y el viewport
+    const sW = sourceEl.naturalWidth || sourceEl.videoWidth || sourceEl.width;
+    const sH = sourceEl.naturalHeight || sourceEl.videoHeight || sourceEl.height;
+    const vW = canvasOverlay.width;
+    const vH = canvasOverlay.height;
+
+    if (!sW || !sH || !vW || !vH) {
+      setStatus('Fuente o viewport no válidos para auto-ajuste.');
+      return false;
+    }
+
+    // 2. Detectar códigos de barras en la imagen completa
+    const symbols = await detector.detect(sourceEl);
+
+    if (symbols.length === 0) {
+      setStatus('No se detectaron códigos de barras para auto-ajustar el ROI.');
+      return false;
+    }
+
+    // 3. Usar el primer bounding box detectado
+    const bb = symbols[0].boundingBox;
+    if (!bb) {
+      setStatus('Código detectado sin bounding box, no se puede auto-ajustar.');
+      return false;
+    }
+
+    // 4. Mapear el bounding box real (source coords) a las coordenadas del viewport (canvasOverlay)
+    const scaleX = vW / sW;
+    const scaleY = vH / sH;
+
+    // Calcular el ROI en coordenadas del viewport, aplicando un margen (e.g., 20px en el viewport)
+    const margin = 20;
+    const vx = bb.x * scaleX;
+    const vy = bb.y * scaleY;
+    const vw = bb.width * scaleX;
+    const vh = bb.height * scaleY;
+
+    // Ajustar el ROI con el margen, asegurando que no se salga de los límites del viewport
+    const newRoi = {
+      x: Math.max(0, vx - margin),
+      y: Math.max(0, vy - margin),
+      w: vw + margin * 2,
+      h: vh + margin * 2
+    };
+
+    // Ajustar W y H para que no se excedan los límites del canvas
+    newRoi.w = Math.min(newRoi.w, vW - newRoi.x);
+    newRoi.h = Math.min(newRoi.h, vH - newRoi.y);
+    
+    // Aplicar el nuevo ROI y forzar la validación (clampROI)
+    roi = newRoi;
+    clampROI(roi);
+
+    // 5. Actualizar la interfaz
+    drawOverlay();
+    setStatus(`ROI auto-ajustado alrededor de un código de barras detectado (${symbols[0].format}).`);
+    return true;
+  }
+  
   // ---------- Barcode ----------
   async function createBarcodeDetector() {
     supportedFormats = await BarcodeDetectorPolyfill.getSupportedFormats();
@@ -634,8 +703,18 @@
 
   el.captureAndExtract.addEventListener('click', async ()=>{
     if(!stream || video.readyState<2){ setStatus('La cámara no está lista.'); return; }
-    if(!roi){ setStatus('Primero dibuja el ROI sobre el video.'); return; }
+    
+    // Si no hay ROI, intenta el auto-ajuste (NUEVA LÓGICA)
+    if(!roi){ 
+        const success = await autoSelectROI(video);
+        if(!success){
+            setStatus('Primero dibuja el ROI sobre el video o no se pudo auto-ajustar.'); 
+            return;
+        }
+    }
+    
     try {
+      // Usa el ROI recién dibujado o el auto-ajustado
       const roiSource = applyROIFromRect(video);
       await runExtraction(roiSource);
     } catch (e) {
@@ -645,13 +724,39 @@
 
   el.extractFromImage.addEventListener('click', async ()=>{
     if(!lastImageEl){ setStatus('No hay imagen. Carga una imagen o usa la cámara.'); return; }
-    if(!roi){ setStatus('Primero dibuja el ROI sobre la imagen.'); return; }
+    
+    // Si no hay ROI, intenta el auto-ajuste (NUEVA LÓGICA)
+    if(!roi){
+        const success = await autoSelectROI(lastImageEl);
+        if(!success){
+            setStatus('Primero dibuja el ROI sobre la imagen o no se pudo auto-ajustar.'); 
+            return;
+        }
+    }
+
     try {
+      // Usa el ROI recién dibujado o el auto-ajustado
       const roiSource = applyROIFromRect(lastImageEl);
       await runExtraction(roiSource);
     } catch (e) {
       setStatus('Error al aplicar ROI: ' + e.message);
     }
+  });
+  
+  // Event listener para el nuevo botón de Auto-ajuste (NUEVO BOTÓN)
+  el.autoDetectROI.addEventListener('click', async ()=>{
+    let source = null;
+    if(stream && video.readyState >= 2){
+        source = video; // Cámara activa
+    } else if (lastImageEl) {
+        source = lastImageEl; // Imagen cargada
+    } else {
+        setStatus('No hay fuente activa (cámara o imagen) para auto-ajustar.');
+        return;
+    }
+    
+    // Ejecutar el auto-ajuste
+    await autoSelectROI(source);
   });
 
   el.clear.addEventListener('click', ()=>{
