@@ -521,6 +521,69 @@
         background: rgba(245, 158, 11, 0.2);
         color: #f59e0b;
     }
+    
+    /* Nuevos estilos para el panel de propiedades */
+    .properties-panel {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        background-color: #0b1220;
+        display: none;
+    }
+    
+    .properties-panel.active {
+        display: block;
+    }
+    
+    .properties-panel h3 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        color: #cbd5e1;
+        font-size: 1rem;
+    }
+    
+    .property-group {
+        margin-bottom: 1rem;
+    }
+    
+    .property-label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #9ca3af;
+        font-size: 0.85rem;
+    }
+    
+    .property-input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #1f2937;
+        border-radius: 6px;
+        background: #0b1220;
+        color: var(--text);
+        box-sizing: border-box;
+    }
+    
+    .property-row {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .property-row .property-input {
+        flex: 1;
+    }
+    
+    .update-button {
+        width: 100%;
+        margin-top: 0.5rem;
+    }
+    
+    .no-selection {
+        text-align: center;
+        color: var(--muted);
+        padding: 1rem;
+    }
     </style>
 </head>
 <body>
@@ -566,6 +629,54 @@
                 <div class="pad">
                     <h2>Gestión de ROIs</h2>
                     <p class="muted">Agregar, eliminar y configurar Regiones de Interés</p>
+                    
+                    <!-- Panel de propiedades de ROI seleccionada -->
+                    <div id="propertiesPanel" class="properties-panel">
+                        <h3>Propiedades de ROI</h3>
+                        <div id="noSelectionMessage" class="no-selection">
+                            Selecciona una ROI para ver y editar sus propiedades
+                        </div>
+                        <div id="propertiesForm" style="display: none;">
+                            <div class="property-group">
+                                <label class="property-label">Nombre del campo</label>
+                                <input type="text" id="propertyName" class="property-input" placeholder="Nombre del campo">
+                            </div>
+                            
+                            <div class="property-group">
+                                <label class="property-label">Tipo de campo</label>
+                                <select id="propertyType" class="property-input">
+                                    <option value="data_field">Campo de Datos</option>
+                                    <option value="label">Etiqueta</option>
+                                    <option value="static_text">Texto Estático</option>
+                                    <option value="roi">Área de Imagen</option>
+                                    <option value="mrz">MRZ</option>
+                                    <option value="pdf417">PDF417</option>
+                                    <option value="qr">QR Code</option>
+                                    <option value="barcode">Barcode</option>
+                                    <option value="url">URL</option>
+                                </select>
+                            </div>
+                            
+                            <div class="property-group">
+                                <label class="property-label">Contenido</label>
+                                <input type="text" id="propertyContent" class="property-input" placeholder="Contenido">
+                            </div>
+                            
+                            <div class="property-group">
+                                <label class="property-label">Coordenadas</label>
+                                <div class="property-row">
+                                    <input type="number" id="propertyX" class="property-input" placeholder="X">
+                                    <input type="number" id="propertyY" class="property-input" placeholder="Y">
+                                </div>
+                                <div class="property-row">
+                                    <input type="number" id="propertyWidth" class="property-input" placeholder="Ancho">
+                                    <input type="number" id="propertyHeight" class="property-input" placeholder="Alto">
+                                </div>
+                            </div>
+                            
+                            <button id="updatePropertiesBtn" class="primary update-button" onclick="updateSelectedROI()">🔄 Actualizar ROI</button>
+                        </div>
+                    </div>
                     
                     <div class="add-roi-panel">
                         <h3>Agregar Nueva ROI</h3>
@@ -805,7 +916,14 @@
 
     <script>
     // Plantilla JSON Inicial
-    let TEMPLATE = {};
+    let TEMPLATE = {
+        template_name: "DUI_El_Salvador",
+        metadata: {
+            expected_width: 1000,
+            expected_height: 600
+        },
+        regions: []
+    };
 
     let currentScaleX = 1;
     let currentScaleY = 1;
@@ -817,6 +935,12 @@
     let imageResults = {};
     let codesResults = {};
     let advancedResults = {};
+
+    // Inicializar la aplicación
+    document.addEventListener('DOMContentLoaded', function() {
+        // Mostrar el panel de propiedades
+        document.getElementById('propertiesPanel').classList.add('active');
+    });
 
     // Agregar event listener para la tecla Delete
     document.addEventListener('keydown', handleKeyDown);
@@ -880,6 +1004,9 @@
         updateImageInfo(canvas.width, canvas.height);
         updateROICount();
         clearAllResults();
+        
+        // Deseleccionar cualquier ROI al cargar nueva imagen
+        deselectAllROIs();
     }
 
     function createROIBox(region, index) {
@@ -955,6 +1082,95 @@
         roiBox.classList.add('selected');
         
         document.getElementById('selectedRoi').textContent = `Seleccionada: ${TEMPLATE.regions[index].field_name}`;
+        
+        // Mostrar propiedades de la ROI seleccionada
+        showROIProperties(index);
+    }
+
+    // FUNCIÓN PARA MOSTRAR PROPIEDADES DE LA ROI SELECCIONADA
+    function showROIProperties(index) {
+        const roi = TEMPLATE.regions[index];
+        const propertiesPanel = document.getElementById('propertiesPanel');
+        const noSelectionMessage = document.getElementById('noSelectionMessage');
+        const propertiesForm = document.getElementById('propertiesForm');
+        
+        // Ocultar mensaje de no selección y mostrar formulario
+        noSelectionMessage.style.display = 'none';
+        propertiesForm.style.display = 'block';
+        
+        // Llenar formulario con datos de la ROI
+        document.getElementById('propertyName').value = roi.field_name;
+        document.getElementById('propertyType').value = roi.field_type;
+        document.getElementById('propertyContent').value = roi.content || '';
+        document.getElementById('propertyX').value = roi.coordinates.x;
+        document.getElementById('propertyY').value = roi.coordinates.y;
+        document.getElementById('propertyWidth').value = roi.coordinates.width;
+        document.getElementById('propertyHeight').value = roi.coordinates.height;
+    }
+
+    // FUNCIÓN PARA ACTUALIZAR ROI SELECCIONADA
+    function updateSelectedROI() {
+        if (selectedROIIndex === -1) return;
+        
+        const roi = TEMPLATE.regions[selectedROIIndex];
+        const oldName = roi.field_name;
+        
+        // Obtener nuevos valores del formulario
+        const newName = document.getElementById('propertyName').value.trim();
+        const newType = document.getElementById('propertyType').value;
+        const newContent = document.getElementById('propertyContent').value.trim();
+        const newX = parseInt(document.getElementById('propertyX').value);
+        const newY = parseInt(document.getElementById('propertyY').value);
+        const newWidth = parseInt(document.getElementById('propertyWidth').value);
+        const newHeight = parseInt(document.getElementById('propertyHeight').value);
+        
+        // Validaciones
+        if (!newName) {
+            alert('El nombre del campo no puede estar vacío');
+            return;
+        }
+        
+        // Verificar si el nombre ya existe (excepto para la ROI actual)
+        if (newName !== oldName && TEMPLATE.regions.some(region => region.field_name === newName)) {
+            alert('Ya existe una ROI con ese nombre. Por favor, use un nombre único.');
+            return;
+        }
+        
+        // Actualizar propiedades de la ROI
+        roi.field_name = newName;
+        roi.field_type = newType;
+        roi.content = newContent;
+        roi.coordinates.x = newX;
+        roi.coordinates.y = newY;
+        roi.coordinates.width = newWidth;
+        roi.coordinates.height = newHeight;
+        
+        // Actualizar data_type según el tipo de campo
+        if (['roi', 'mrz', 'pdf417', 'qr', 'barcode', 'url'].includes(newType)) {
+            roi.data_type = 'image';
+        } else {
+            roi.data_type = 'text';
+        }
+        
+        // Actualizar visualización
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display !== 'none') {
+            const img = new Image();
+            img.onload = function() {
+                displayImageAndDrawROIs(img);
+                // Reseleccionar la ROI actualizada
+                const updatedROIBox = document.querySelector(`.roi-box[data-roi-index="${selectedROIIndex}"]`);
+                if (updatedROIBox) {
+                    selectROI(selectedROIIndex, updatedROIBox);
+                }
+            };
+            img.src = canvas.toDataURL();
+        }
+        
+        // Actualizar información en la interfaz
+        document.getElementById('selectedRoi').textContent = `Seleccionada: ${newName}`;
+        
+        alert(`ROI "${oldName}" actualizada exitosamente.`);
     }
 
     // FUNCIÓN PARA DESELECCIONAR TODAS LAS ROIs
@@ -964,6 +1180,10 @@
             selectedROI = null;
             selectedROIIndex = -1;
             document.getElementById('selectedRoi').textContent = 'Ninguna ROI seleccionada';
+            
+            // Ocultar formulario y mostrar mensaje de no selección
+            document.getElementById('noSelectionMessage').style.display = 'block';
+            document.getElementById('propertiesForm').style.display = 'none';
         }
     }
 
