@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de ROIs - DUI El Salvador</title>
+    <style>
+    :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;background:linear-gradient(180deg,#0b1220,#111827);color:var(--text);min-height:100vh}
+    header{padding:1.25rem 1rem 0.5rem;max-width:1000px;margin:auto}
+    h1{margin:0 0 .25rem;font-size:clamp(1.25rem,2.5vw,1.6rem)}
+    p.lead{margin:.25rem 0 1rem;color:var(--muted)}
+    .wrap{max-width:1000px;margin:0 auto;padding:1rem;display:grid;gap:1rem}
+    .grid{display:grid;grid-template-columns:1fr;gap:1rem}
+    @media(min-width:980px){.grid{grid-template-columns:1.2fr .8fr}}
+    .card{background:var(--card);border:1px solid #1f2937;border-radius:16px;box-shadow:0 6px 28px rgba(0,0,0,.35)}
+    .card h2{font-size:1rem;margin:0 0 .25rem;color:#cbd5e1}
+    .pad{padding:1rem}
+    .controls{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0 0}
+    button, .btn{appearance:none;border:1px solid #1f2937;background:#0b1220;color:var(--text);padding:.6rem .9rem;border-radius:10px;cursor:pointer}
+    button:hover{border-color:#374151}
+    .primary{background:var(--accent);border-color:transparent;color:#052e16;font-weight:700}
+    .danger{background:var(--danger);color:#fff;border-color:transparent}
+    .muted{color:var(--muted)}
+
+    .stage{position:relative;border-radius:16px;overflow:auto;background:#000;max-height:80vh}
+    video{width:100%;display:block;max-height:60vh;object-fit:cover}
+    canvas.hidden{display:none}
+
+    /* Marco verde del MRZ */
+    .frame{position:absolute;inset:auto 10% 10% 10%; height:26%;
+           border:4px solid #22c55e;border-radius:8px;box-shadow:0 0 0 3px rgba(34,197,94,.15) inset}
+    .frame::after{content:""; position:absolute; left:6px; right:6px; top:50%; height:2px; background:#22c55e66}
+
+    .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
+    .out{white-space:pre-wrap; word-break:break-word; background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:.75rem; min-height:3.5rem}
+
+    dl{margin:.25rem 0;display:grid;grid-template-columns:max-content 1fr;gap:.25rem .75rem}
+    dt{color:#9ca3af}
+    dd{margin:0}
+    .hint{font-size:.92rem;color:#a3e635}
+    footer{opacity:.7;text-align:center;padding:1rem}
+    a{color:#93c5fd}
+    
+    /* Estilos para la tabla de resultados */
+    .results-table {width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.875rem}
+    .results-table th, .results-table td {padding:.5rem;text-align:left;border-bottom:1px solid #1f2937}
+    .results-table th {color:#9ca3af;font-weight:600;width:40%}
+    .results-table tr:last-child td {border-bottom:none}
+    .check-ok {color:#22c55e}
+    .check-fail {color:#ef4444}
+    .format-guide {background:#0b1220;border:1px solid #1f2937;border-radius:8px;padding:.5rem .75rem;margin:.5rem 0;font-size:.85rem}
+    .json-container {position:relative}
+    .copy-json-btn {position:absolute;top:.5rem;right:.5rem}
+
+    /* Estilos específicos para la aplicación de ROIs */
+    #canvasContainer {
+        position: relative;
+        border-radius: 8px;
+        overflow: auto;
+        background: #000;
+        min-height: 300px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        border: 1px solid #1f2937;
+        max-height: 80vh;
+    }
+    
+    #roiCanvas {
+        display: block;
+        max-width: none; /* Eliminar limitación de ancho máximo */
+    }
+    
+    .roi-box {
+        position: absolute;
+        border: 2px solid;
+        cursor: move;
+        opacity: 0.7;
+        font-size: 10px;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: 2px;
+        box-sizing: border-box;
+        overflow: hidden;
+        font-weight: bold;
+        resize: both;
+        overflow: auto;
+        border-radius: 4px;
+    }
+    
+    .roi-box.selected {
+        border-width: 3px;
+        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.5);
+        z-index: 100;
+    }
+    
+    .roi-box.resizing {
+        cursor: grabbing;
+    }
+    
+    .data-field-box {
+        border-color: #ef4444;
+        background-color: rgba(239, 68, 68, 0.2);
+    }
+    
+    .label-box {
+        border-color: #22c55e;
+        background-color: rgba(34, 197, 94, 0.2);
+    }
+    
+    .static-text-box {
+        border-color: #3b82f6;
+        background-color: rgba(59, 130, 246, 0.2);
+    }
+    
+    .roi-area-box {
+        border-color: #a855f7;
+        background-color: rgba(168, 85, 247, 0.2);
+    }
+    
+    .delete-button {
+        background-color: #ef4444;
+        color: white;
+        font-size: 12px;
+        padding: 5px;
+        position: absolute;
+        top: -10px;
+        right: -10px;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 10;
+        border: none;
+    }
+    
+    .add-roi-panel {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        background-color: #0b1220;
+    }
+    
+    .add-roi-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+    }
+    
+    .add-roi-form select, .add-roi-form input {
+        padding: 8px;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        flex: 1;
+        min-width: 150px;
+        background: #0b1220;
+        color: var(--text);
+    }
+    
+    .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-top: 1rem;
+        font-size: 0.85rem;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .legend-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1px solid;
+    }
+    
+    .instructions {
+        margin-top: 1rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+    }
+    
+    .instructions ul {
+        padding-left: 1.2rem;
+        margin: 0.5rem 0;
+    }
+    
+    .instructions li {
+        margin-bottom: 0.25rem;
+    }
+    
+    .placeholder-text {
+        color: var(--muted);
+        text-align: center;
+        padding: 2rem;
+    }
+    
+    input[type="file"] {
+        display: block;
+        margin-bottom: 1rem;
+        padding: 10px;
+        border: 1px dashed #1f2937;
+        border-radius: 8px;
+        width: 100%;
+        box-sizing: border-box;
+        background: #0b1220;
+        color: var(--text);
+    }
+    
+    .template-controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+    
+    .template-controls button {
+        flex: 1;
+        min-width: 150px;
+    }
+    
+    .status-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1rem;
+        padding: 0.5rem;
+        background: #0b1220;
+        border-radius: 8px;
+        border: 1px solid #1f2937;
+        font-size: 0.85rem;
+    }
+    
+    .roi-count {
+        color: var(--muted);
+    }
+    
+    .selected-roi {
+        color: var(--accent);
+    }
+    
+    .image-info {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+        color: var(--muted);
+    }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Editor de ROIs - DUI El Salvador</h1>
+        <p class="lead">Superposición y edición de Regiones de Interés para Documento Único de Identidad</p>
+    </header>
+
+    <div class="wrap">
+        <div class="grid">
+            <div class="card">
+                <div class="pad">
+                    <h2>Visualizador de ROIs</h2>
+                    <p class="muted">Sube una imagen del DUI para visualizar y ajustar las Regiones de Interés</p>
+                    
+                    <input type="file" id="imageUpload" accept="image/*">
+                    
+                    <div id="canvasContainer" class="stage">
+                        <canvas id="roiCanvas" class="hidden"></canvas>
+                        <p id="placeholderText" class="placeholder-text">Sube una imagen para comenzar</p>
+                    </div>
+                    
+                    <div class="image-info">
+                        <div id="imageDimensions">Tamaño: -</div>
+                        <div id="imageScale">Escala: 1:1</div>
+                    </div>
+                    
+                    <div class="status-bar">
+                        <div class="roi-count" id="roiCount">0 ROIs cargadas</div>
+                        <div class="selected-roi" id="selectedRoi">Ninguna ROI seleccionada</div>
+                    </div>
+                    
+                    <div class="controls">
+                        <button id="saveButton" class="primary" onclick="saveTemplateToJSON()">💾 Guardar Plantilla</button>
+                        <button id="exportTemplate" onclick="exportTemplate()">📤 Exportar</button>
+                        <button id="importTemplate" onclick="document.getElementById('templateUpload').click()">📥 Importar</button>
+                        <input type="file" id="templateUpload" accept=".json" style="display: none;" onchange="importTemplate(event)">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="pad">
+                    <h2>Gestión de ROIs</h2>
+                    <p class="muted">Agregar, eliminar y configurar Regiones de Interés</p>
+                    
+                    <div class="add-roi-panel">
+                        <h3>Agregar Nueva ROI</h3>
+                        <div class="add-roi-form">
+                            <select id="roiType">
+                                <option value="data_field">Campo de Datos</option>
+                                <option value="label">Etiqueta</option>
+                                <option value="static_text">Texto Estático</option>
+                                <option value="roi">Área de Imagen/ROI</option>
+                            </select>
+                            <input type="text" id="roiName" placeholder="Nombre del campo">
+                            <input type="text" id="roiContent" placeholder="Contenido">
+                            <button id="addROIButton" class="primary" onclick="addNewROI()">➕ Agregar ROI</button>
+                        </div>
+                    </div>
+                    
+                    <div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(239, 68, 68, 0.2); border-color: #ef4444;"></div>
+                            <span>Campo de Datos</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(34, 197, 94, 0.2); border-color: #22c55e;"></div>
+                            <span>Etiqueta</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(59, 130, 246, 0.2); border-color: #3b82f6;"></div>
+                            <span>Texto Estático</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(168, 85, 247, 0.2); border-color: #a855f7;"></div>
+                            <span>Área de Imagen/ROI</span>
+                        </div>
+                    </div>
+                    
+                    <div class="instructions">
+                        <p><strong>Instrucciones:</strong></p>
+                        <ul>
+                            <li>Haz clic en una ROI para seleccionarla (borde verde)</li>
+                            <li>Presiona <strong>Delete</strong> o <strong>Suprimir</strong> para eliminar la ROI seleccionada</li>
+                            <li>Arrastra para mover y usa la esquina inferior derecha para redimensionar</li>
+                            <li>También puedes usar el botón × en cada ROI para eliminarla</li>
+                            <li>La imagen se muestra en su tamaño original con scroll si es necesario</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p class="muted">Herramienta de edición de ROIs para DUI de El Salvador</p>
+    </footer>
+
+    <script>
+    // Plantilla JSON Inicial
+    let TEMPLATE = {};
+
+    let currentScaleX = 1;
+    let currentScaleY = 1;
+    let canvasTopOffset = 0;
+    let canvasLeftOffset = 0;
+    let selectedROI = null;
+    let selectedROIIndex = -1;
+
+    // Agregar event listener para la tecla Delete
+    document.addEventListener('keydown', handleKeyDown);
+
+    function handleKeyDown(e) {
+        // Verificar si se presionó Delete (46) o Suprimir (8 en algunos navegadores)
+        if ((e.key === 'Delete' || e.key === 'Suprimir' || e.keyCode === 46 || e.keyCode === 8) && selectedROIIndex !== -1) {
+            e.preventDefault(); // Prevenir comportamiento por defecto
+            deleteROI(selectedROIIndex);
+        }
+    }
+
+    document.getElementById('imageUpload').addEventListener('change', handleImageUpload);
+
+    function handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                displayImageAndDrawROIs(img);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function displayImageAndDrawROIs(img) {
+        const canvas = document.getElementById('roiCanvas');
+        const container = document.getElementById('canvasContainer');
+        const placeholder = document.getElementById('placeholderText');
+        const saveButton = document.getElementById('saveButton');
+        
+        // Configurar canvas con el tamaño original de la imagen
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.style.display = 'block';
+        canvas.style.maxWidth = 'none'; // Eliminar cualquier limitación de ancho máximo
+        placeholder.style.display = 'none';
+        saveButton.style.display = 'block';
+
+        const ctx = canvas.getContext('2d');
+        
+        // Dibujar la imagen en su tamaño original
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Limpiar cualquier superposición de cajas HTML anterior
+        document.querySelectorAll('.roi-box').forEach(box => box.remove());
+        
+        // Recalcular factores de escala basados en el tamaño esperado vs real
+        const templateWidth = TEMPLATE.metadata.expected_width;
+        const templateHeight = TEMPLATE.metadata.expected_height;
+        currentScaleX = canvas.width / templateWidth;
+        currentScaleY = canvas.height / templateHeight;
+
+        const canvasRect = canvas.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        canvasLeftOffset = canvasRect.left - containerRect.left;
+        canvasTopOffset = canvasRect.top - containerRect.top;
+
+        // Dibujar las ROIs (cajas HTML)
+        TEMPLATE.regions.forEach((region, index) => {
+            createROIBox(region, index);
+        });
+        
+        // Actualizar información de la imagen
+        updateImageInfo(canvas.width, canvas.height);
+        
+        // Actualizar contador de ROIs
+        updateROICount();
+    }
+
+    function createROIBox(region, index) {
+        const { x, y, width, height } = region.coordinates;
+        const container = document.getElementById('canvasContainer');
+
+        // Escalar las coordenadas al tamaño real de la imagen
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+        
+        // Crear la caja superpuesta (div)
+        const roiBox = document.createElement('div');
+        roiBox.classList.add('roi-box');
+        
+        // Usar un índice de datos para identificación
+        roiBox.dataset.roiIndex = index; 
+
+        let fieldClass = '';
+        let labelText = region.field_name;
+
+        switch(region.field_type) {
+            case 'data_field':
+                fieldClass = 'data-field-box';
+                labelText = region.field_name;
+                break;
+            case 'label':
+                fieldClass = 'label-box';
+                labelText = region.content.split('/')[0].trim();
+                break;
+            case 'static_text':
+                fieldClass = 'static-text-box';
+                labelText = region.content;
+                break;
+            case 'roi':
+                fieldClass = 'roi-area-box';
+                labelText = 'ROI: ' + region.field_name;
+                break;
+            default:
+                fieldClass = 'static-text-box';
+        }
+        roiBox.classList.add(fieldClass);
+
+        // Posicionamiento de la caja dentro del contenedor, relativo al canvas
+        const left = canvasLeftOffset + scaledX;
+        const top = canvasTopOffset + scaledY;
+
+        roiBox.style.left = `${left}px`;
+        roiBox.style.top = `${top}px`;
+        roiBox.style.width = `${scaledWidth}px`;
+        roiBox.style.height = `${scaledHeight}px`;
+
+        if (scaledWidth > 50 && scaledHeight > 10) {
+            roiBox.textContent = labelText;
+        }
+
+        // Agregar botón de eliminar
+        const deleteButton = document.createElement('button');
+        deleteButton.classList.add('delete-button');
+        deleteButton.innerHTML = '×';
+        deleteButton.title = 'Eliminar ROI';
+        deleteButton.addEventListener('click', function(e) {
+            e.stopPropagation();
+            deleteROI(index);
+        });
+        roiBox.appendChild(deleteButton);
+
+        // Configurar eventos de arrastre y selección
+        roiBox.addEventListener('mousedown', handleROIAdjust);
+        roiBox.addEventListener('click', function(e) {
+            e.stopPropagation();
+            selectROI(index, roiBox);
+        });
+        
+        // Observar cambios de tamaño nativos (resize: both en CSS)
+        new ResizeObserver(handleROIResize).observe(roiBox);
+
+        container.appendChild(roiBox);
+    }
+
+    // FUNCIÓN PARA SELECCIONAR ROI
+    function selectROI(index, roiBox) {
+        // Deseleccionar ROI anterior
+        if (selectedROI) {
+            selectedROI.classList.remove('selected');
+        }
+        
+        // Seleccionar nueva ROI
+        selectedROI = roiBox;
+        selectedROIIndex = index;
+        roiBox.classList.add('selected');
+        
+        // Actualizar información de ROI seleccionada
+        document.getElementById('selectedRoi').textContent = `Seleccionada: ${TEMPLATE.regions[index].field_name}`;
+    }
+
+    // FUNCIÓN PARA DESELECCIONAR TODAS LAS ROIs
+    function deselectAllROIs() {
+        if (selectedROI) {
+            selectedROI.classList.remove('selected');
+            selectedROI = null;
+            selectedROIIndex = -1;
+            document.getElementById('selectedRoi').textContent = 'Ninguna ROI seleccionada';
+        }
+    }
+
+    // Evento para deseleccionar al hacer clic fuera de las ROIs
+    document.getElementById('canvasContainer').addEventListener('click', function(e) {
+        if (e.target === this) {
+            deselectAllROIs();
+        }
+    });
+
+    let startX, startY, startLeft, startTop;
+
+    // FUNCIÓN PARA REDIMENSIONAR (Manejada por el navegador, pero necesitamos capturar el final)
+    function handleROIResize(entries) {
+        entries.forEach(entry => {
+            const roiBox = entry.target;
+            // Solo necesitamos esta función para actualizar el template.
+            // La actualización de posición se hace en mouseup/mousemove.
+            // La actualización de tamaño se hace aquí si se usa el handle nativo.
+            if (!selectedROI) { // Si no estamos en un evento de arrastre/movimiento
+                updateTemplateCoordinates(roiBox);
+            }
+        });
+    }
+
+    // FUNCIÓN PARA MOVER (Arrastrar)
+    function handleROIAdjust(e) {
+        // Solo permitir el arrastre si no se hizo clic en el handle de redimensionamiento (esquina inferior derecha)
+        if (e.target !== e.currentTarget || e.offsetX > e.target.offsetWidth - 15 && e.offsetY > e.target.offsetHeight - 15) {
+            // Permitir el redimensionamiento nativo por el CSS
+            return; 
+        }
+
+        selectedROI = e.currentTarget;
+        selectedROIIndex = parseInt(selectedROI.dataset.roiIndex);
+        selectedROI.classList.add('resizing');
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = parseFloat(selectedROI.style.left);
+        startTop = parseFloat(selectedROI.style.top);
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    function handleMouseMove(e) {
+        if (!selectedROI) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        // Actualizar la posición de la caja HTML (coordenadas de pantalla)
+        selectedROI.style.left = `${startLeft + dx}px`;
+        selectedROI.style.top = `${startTop + dy}px`;
+    }
+
+    function handleMouseUp(e) {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        
+        if (selectedROI) {
+            selectedROI.classList.remove('resizing');
+            // Actualizar las coordenadas del template con el valor final
+            updateTemplateCoordinates(selectedROI);
+        }
+    }
+
+    // **FUNCIÓN CLAVE: Desescalar y actualizar el objeto TEMPLATE**
+    function updateTemplateCoordinates(roiBox) {
+        const roiIndex = parseInt(roiBox.dataset.roiIndex);
+        if (isNaN(roiIndex) || roiIndex < 0) return;
+
+        // Coordenadas del div HTML (escaladas)
+        const scaledX = parseFloat(roiBox.style.left) - canvasLeftOffset;
+        const scaledY = parseFloat(roiBox.style.top) - canvasTopOffset;
+        const scaledWidth = roiBox.offsetWidth;
+        const scaledHeight = roiBox.offsetHeight;
+
+        // **DESESCALAR** las coordenadas a las dimensiones del template
+        const templateX = Math.round(scaledX / currentScaleX);
+        const templateY = Math.round(scaledY / currentScaleY);
+        const templateWidth = Math.round(scaledWidth / currentScaleX);
+        const templateHeight = Math.round(scaledHeight / currentScaleY);
+
+        // Actualizar el objeto TEMPLATE
+        TEMPLATE.regions[roiIndex].coordinates.x = templateX;
+        TEMPLATE.regions[roiIndex].coordinates.y = templateY;
+        TEMPLATE.regions[roiIndex].coordinates.width = templateWidth;
+        TEMPLATE.regions[roiIndex].coordinates.height = templateHeight;
+
+        console.log(`ROI [${TEMPLATE.regions[roiIndex].field_name}] actualizado a: x:${templateX}, y:${templateY}, w:${templateWidth}, h:${templateHeight}`);
+    }
+
+    // FUNCIÓN PARA ACTUALIZAR INFORMACIÓN DE LA IMAGEN
+    function updateImageInfo(width, height) {
+        document.getElementById('imageDimensions').textContent = `Tamaño: ${width} × ${height} px`;
+        document.getElementById('imageScale').textContent = `Escala: ${currentScaleX.toFixed(2)}:1`;
+    }
+
+    // FUNCIÓN PARA ACTUALIZAR CONTADOR DE ROIs
+    function updateROICount() {
+        const roiCount = TEMPLATE.regions.length;
+        document.getElementById('roiCount').textContent = `${roiCount} ROIs cargadas`;
+    }
+
+    // FUNCIÓN PARA ELIMINAR ROI
+    function deleteROI(index) {
+        if (confirm(`¿Está seguro de que desea eliminar la ROI "${TEMPLATE.regions[index].field_name}"?`)) {
+            TEMPLATE.regions.splice(index, 1);
+            
+            // Deseleccionar ROI eliminada
+            deselectAllROIs();
+            
+            // Volver a dibujar todas las ROIs
+            const canvas = document.getElementById('roiCanvas');
+            if (canvas.style.display !== 'none') {
+                const img = new Image();
+                img.onload = function() {
+                    displayImageAndDrawROIs(img);
+                };
+                img.src = canvas.toDataURL();
+            }
+            
+            // Actualizar contador
+            updateROICount();
+        }
+    }
+
+    // FUNCIÓN PARA AGREGAR NUEVA ROI
+    function addNewROI() {
+        const roiType = document.getElementById('roiType').value;
+        const roiName = document.getElementById('roiName').value.trim();
+        const roiContent = document.getElementById('roiContent').value.trim();
+        
+        if (!roiName) {
+            alert('Por favor, ingrese un nombre para la ROI');
+            return;
+        }
+        
+        // Verificar si ya existe una ROI con ese nombre
+        if (TEMPLATE.regions.some(region => region.field_name === roiName)) {
+            alert('Ya existe una ROI con ese nombre. Por favor, use un nombre único.');
+            return;
+        }
+        
+        // Crear nueva ROI
+        const newROI = {
+            field_name: roiName,
+            field_type: roiType,
+            content: roiContent || roiName,
+            coordinates: {
+                x: 50,
+                y: 50,
+                width: 100,
+                height: 30
+            },
+            data_type: roiType === 'roi' ? 'image' : 'text'
+        };
+        
+        // Agregar a la plantilla
+        TEMPLATE.regions.push(newROI);
+        
+        // Volver a dibujar todas las ROIs
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display !== 'none') {
+            const img = new Image();
+            img.onload = function() {
+                displayImageAndDrawROIs(img);
+            };
+            img.src = canvas.toDataURL();
+        }
+        
+        // Actualizar contador
+        updateROICount();
+        
+        // Limpiar formulario
+        document.getElementById('roiName').value = '';
+        document.getElementById('roiContent').value = '';
+        
+        alert(`ROI "${roiName}" agregada exitosamente.`);
+    }
+
+    // FUNCIÓN PARA IMPORTAR PLANTILLA
+    function importTemplate(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const importedTemplate = JSON.parse(e.target.result);
+                
+                // Validar estructura básica de la plantilla
+                if (!importedTemplate.template_name || !importedTemplate.regions || !importedTemplate.metadata) {
+                    throw new Error('El archivo no tiene la estructura correcta de plantilla');
+                }
+                
+                TEMPLATE = importedTemplate;
+                
+                // Deseleccionar ROI actual
+                deselectAllROIs();
+                
+                // Volver a dibujar si hay una imagen cargada
+                const canvas = document.getElementById('roiCanvas');
+                if (canvas.style.display !== 'none') {
+                    const img = new Image();
+                    img.onload = function() {
+                        displayImageAndDrawROIs(img);
+                    };
+                    img.src = canvas.toDataURL();
+                }
+                
+                // Actualizar contador
+                updateROICount();
+                
+                alert('Plantilla importada exitosamente');
+            } catch (error) {
+                alert('Error al importar la plantilla: ' + error.message);
+            }
+        };
+        reader.readAsText(file);
+        
+        // Limpiar el input para permitir cargar el mismo archivo nuevamente
+        event.target.value = '';
+    }
+
+    // FUNCIÓN PARA EXPORTAR PLANTILLA
+    function exportTemplate() {
+        const json = JSON.stringify(TEMPLATE, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${TEMPLATE.template_name}_template.json`;
+        link.click();
+    }
+
+    function saveTemplateToJSON() {
+        const json = JSON.stringify(TEMPLATE, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'adjusted_salvador_id_card_template.json';
+        link.click();
+        alert('Plantilla guardada como adjusted_salvador_id_card_template.json');
+    }
+    </script>
+</body>
+</html>
