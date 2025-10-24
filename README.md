@@ -1,4 +1,4 @@
-<span style="color:green;">Document ROI Temolate</span> [Doc Multi ROI Extractor](https://ravendano014.github.io/mrz/DocTemplate.html)
+<span style="color:green;">Document ROI Template</span> [Doc Multi ROI Extractor](https://ravendano014.github.io/mrz/DocTemplate.html)
 
 <span style="color:green;">MRZ</span> [MRZ Online Cam Reader](https://ravendano014.github.io/mrz/)
 
