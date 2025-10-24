@@ -19,8 +19,8 @@
       "field_type": "data_field",
       "content": "ACAJUTLA",
       "coordinates": {
-        "x": 14,
-        "y": 253,
+        "x": 16,
+        "y": 186,
         "width": 140,
         "height": 25
       },
@@ -75,6 +75,30 @@
       "data_type": "text"
     },
     {
+      "field_name": "nit_value",
+      "field_type": "data_field",
+      "content": "0000-000000-000-0",
+      "coordinates": {
+        "x": 338,
+        "y": 149,
+        "width": 109,
+        "height": 36
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "special_value",
+      "field_type": "data_field",
+      "content": "",
+      "coordinates": {
+        "x": 340,
+        "y": 213,
+        "width": 99,
+        "height": 28
+      },
+      "data_type": "text"
+    },
+    {
       "field_name": "MRZ",
       "field_type": "mrz",
       "content": "MRZ",
@@ -91,8 +115,8 @@
       "field_type": "label",
       "content": "Departamento  / State",
       "coordinates": {
-        "x": 15,
-        "y": 127,
+        "x": 16,
+        "y": 126,
         "width": 99,
         "height": 28
       },
