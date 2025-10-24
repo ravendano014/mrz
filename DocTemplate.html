@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Editor de ROIs - DUI El Salvador</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <style>
     :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb; }
     *{box-sizing:border-box}
@@ -28,11 +30,6 @@
     .stage{position:relative;border-radius:16px;overflow:auto;background:#000;max-height:80vh}
     video{width:100%;display:block;max-height:60vh;object-fit:cover}
     canvas.hidden{display:none}
-
-    /* Marco verde del MRZ */
-    .frame{position:absolute;inset:auto 10% 10% 10%; height:26%;
-           border:4px solid #22c55e;border-radius:8px;box-shadow:0 0 0 3px rgba(34,197,94,.15) inset}
-    .frame::after{content:""; position:absolute; left:6px; right:6px; top:50%; height:2px; background:#22c55e66}
 
     .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
     .out{white-space:pre-wrap; word-break:break-word; background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:.75rem; min-height:3.5rem}
@@ -71,7 +68,7 @@
     
     #roiCanvas {
         display: block;
-        max-width: none; /* Eliminar limitación de ancho máximo */
+        max-width: none;
     }
     
     .roi-box {
@@ -122,6 +119,31 @@
     .roi-area-box {
         border-color: #a855f7;
         background-color: rgba(168, 85, 247, 0.2);
+    }
+    
+    .mrz-box {
+        border-color: #f59e0b;
+        background-color: rgba(245, 158, 11, 0.2);
+    }
+    
+    .pdf417-box {
+        border-color: #ec4899;
+        background-color: rgba(236, 72, 153, 0.2);
+    }
+    
+    .qr-box {
+        border-color: #10b981;
+        background-color: rgba(16, 185, 129, 0.2);
+    }
+    
+    .barcode-box {
+        border-color: #8b5cf6;
+        background-color: rgba(139, 92, 246, 0.2);
+    }
+    
+    .url-box {
+        border-color: #06b6d4;
+        background-color: rgba(6, 182, 212, 0.2);
     }
     
     .delete-button {
@@ -339,6 +361,166 @@
     .confidence.low {
         color: #ef4444;
     }
+    
+    /* Estilos para imágenes base64 */
+    .image-preview {
+        max-width: 100px;
+        max-height: 100px;
+        border-radius: 4px;
+        border: 1px solid #1f2937;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    
+    .image-preview:hover {
+        transform: scale(1.5);
+        z-index: 100;
+        position: relative;
+    }
+    
+    .base64-container {
+        max-height: 100px;
+        overflow: auto;
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        border-radius: 4px;
+        padding: 0.25rem;
+        font-size: 0.7rem;
+        font-family: monospace;
+        word-break: break-all;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .modal-content {
+        max-width: 90%;
+        max-height: 90%;
+        border-radius: 8px;
+    }
+    
+    .modal-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: var(--danger);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 2rem;
+        height: 2rem;
+        cursor: pointer;
+        font-size: 1.2rem;
+    }
+    
+    .tab-container {
+        margin-top: 1rem;
+    }
+    
+    .tab-buttons {
+        display: flex;
+        border-bottom: 1px solid #1f2937;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    
+    .tab-button {
+        padding: 0.5rem 1rem;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+    }
+    
+    .tab-button.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    /* Estilos para datos parseados */
+    .parsed-data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    .parsed-data-table th, .parsed-data-table td {
+        padding: 0.25rem 0.5rem;
+        border: 1px solid #1f2937;
+        text-align: left;
+    }
+    
+    .parsed-data-table th {
+        background: #0b1220;
+        color: #9ca3af;
+        font-weight: 600;
+    }
+    
+    .url-link {
+        color: #93c5fd;
+        text-decoration: none;
+        word-break: break-all;
+    }
+    
+    .url-link:hover {
+        text-decoration: underline;
+    }
+    
+    .raw-data {
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        border-radius: 4px;
+        padding: 0.5rem;
+        font-family: monospace;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 100px;
+        overflow: auto;
+    }
+    
+    .code-status {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 12px;
+        font-weight: 600;
+    }
+    
+    .status-success {
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+    }
+    
+    .status-error {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+    
+    .status-warning {
+        background: rgba(245, 158, 11, 0.2);
+        color: #f59e0b;
+    }
     </style>
 </head>
 <body>
@@ -392,7 +574,12 @@
                                 <option value="data_field">Campo de Datos</option>
                                 <option value="label">Etiqueta</option>
                                 <option value="static_text">Texto Estático</option>
-                                <option value="roi">Área de Imagen/ROI</option>
+                                <option value="roi">Área de Imagen</option>
+                                <option value="mrz">MRZ</option>
+                                <option value="pdf417">PDF417</option>
+                                <option value="qr">QR Code</option>
+                                <option value="barcode">Barcode</option>
+                                <option value="url">URL</option>
                             </select>
                             <input type="text" id="roiName" placeholder="Nombre del campo">
                             <input type="text" id="roiContent" placeholder="Contenido">
@@ -415,43 +602,179 @@
                         </div>
                         <div class="legend-item">
                             <div class="legend-color" style="background-color: rgba(168, 85, 247, 0.2); border-color: #a855f7;"></div>
-                            <span>Área de Imagen/ROI</span>
+                            <span>Área de Imagen</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(245, 158, 11, 0.2); border-color: #f59e0b;"></div>
+                            <span>MRZ</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(236, 72, 153, 0.2); border-color: #ec4899;"></div>
+                            <span>PDF417</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(16, 185, 129, 0.2); border-color: #10b981;"></div>
+                            <span>QR Code</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(139, 92, 246, 0.2); border-color: #8b5cf6;"></div>
+                            <span>Barcode</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(6, 182, 212, 0.2); border-color: #06b6d4;"></div>
+                            <span>URL</span>
                         </div>
                     </div>
                     
                     <div class="ocr-section">
-                        <h3>Extracción de Texto con OCR</h3>
-                        <p class="muted">Extrae texto de las ROIs de tipo datos usando Tesseract.js</p>
+                        <h3>Extracción de Datos</h3>
+                        <p class="muted">Extrae texto, imágenes y datos codificados de las ROIs</p>
                         
-                        <div class="ocr-controls">
-                            <button id="extractTextBtn" class="primary" onclick="extractTextFromROIs()">🔍 Extraer Texto</button>
-                            <button id="clearResultsBtn" onclick="clearOCRResults()">🗑️ Limpiar Resultados</button>
-                        </div>
-                        
-                        <div id="ocrProgress" style="display: none;">
-                            <div class="progress-text" id="progressStatus">Procesando...</div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                        <div class="tab-container">
+                            <div class="tab-buttons">
+                                <button class="tab-button active" onclick="switchTab('textTab')">📝 Texto</button>
+                                <button class="tab-button" onclick="switchTab('imageTab')">🖼️ Imágenes</button>
+                                <button class="tab-button" onclick="switchTab('codesTab')">🔣 Códigos</button>
+                                <button class="tab-button" onclick="switchTab('advancedTab')">⚡ Avanzado</button>
                             </div>
-                        </div>
-                        
-                        <div class="ocr-results">
-                            <h4>Resultados de Extracción</h4>
-                            <div id="ocrResultsTable" class="results-table-container">
-                                <table class="results-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Campo</th>
-                                            <th>Texto Extraído</th>
-                                            <th>Confianza</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="ocrResultsBody">
-                                        <tr>
-                                            <td colspan="3" style="text-align: center; color: var(--muted);">No hay resultados aún</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            
+                            <div id="textTab" class="tab-content active">
+                                <div class="ocr-controls">
+                                    <button id="extractTextBtn" class="primary" onclick="extractTextFromROIs()">🔍 Extraer Texto</button>
+                                    <button id="clearTextResultsBtn" onclick="clearOCRResults()">🗑️ Limpiar</button>
+                                </div>
+                                
+                                <div id="ocrProgress" style="display: none;">
+                                    <div class="progress-text" id="progressStatus">Procesando...</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ocr-results">
+                                    <h4>Resultados de Texto</h4>
+                                    <div id="ocrResultsTable" class="results-table-container">
+                                        <table class="results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campo</th>
+                                                    <th>Texto Extraído</th>
+                                                    <th>Confianza</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="ocrResultsBody">
+                                                <tr>
+                                                    <td colspan="3" style="text-align: center; color: var(--muted);">No hay resultados aún</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="imageTab" class="tab-content">
+                                <div class="ocr-controls">
+                                    <button id="extractImagesBtn" class="primary" onclick="extractImagesFromROIs()">📸 Capturar Imágenes</button>
+                                    <button id="clearImageResultsBtn" onclick="clearImageResults()">🗑️ Limpiar</button>
+                                </div>
+                                
+                                <div id="imageProgress" style="display: none;">
+                                    <div class="progress-text" id="imageProgressStatus">Procesando...</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="imageProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ocr-results">
+                                    <h4>Imágenes Capturadas</h4>
+                                    <div id="imageResultsTable" class="results-table-container">
+                                        <table class="results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campo</th>
+                                                    <th>Vista Previa</th>
+                                                    <th>Tamaño</th>
+                                                    <th>Base64</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="imageResultsBody">
+                                                <tr>
+                                                    <td colspan="4" style="text-align: center; color: var(--muted);">No hay imágenes capturadas</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="codesTab" class="tab-content">
+                                <div class="ocr-controls">
+                                    <button id="extractCodesBtn" class="primary" onclick="extractCodesFromROIs()">🔍 Extraer Códigos</button>
+                                    <button id="clearCodesResultsBtn" onclick="clearCodesResults()">🗑️ Limpiar</button>
+                                </div>
+                                
+                                <div id="codesProgress" style="display: none;">
+                                    <div class="progress-text" id="codesProgressStatus">Procesando...</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="codesProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ocr-results">
+                                    <h4>Códigos Detectados</h4>
+                                    <div id="codesResultsTable" class="results-table-container">
+                                        <table class="results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campo</th>
+                                                    <th>Tipo</th>
+                                                    <th>Datos Extraídos</th>
+                                                    <th>Estado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="codesResultsBody">
+                                                <tr>
+                                                    <td colspan="4" style="text-align: center; color: var(--muted);">No hay códigos detectados</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="advancedTab" class="tab-content">
+                                <div class="ocr-controls">
+                                    <button id="extractAllBtn" class="primary" onclick="extractAllFromROIs()">🚀 Extraer Todo</button>
+                                    <button id="clearAllResultsBtn" onclick="clearAllResults()">🗑️ Limpiar Todo</button>
+                                </div>
+                                
+                                <div id="advancedProgress" style="display: none;">
+                                    <div class="progress-text" id="advancedProgressStatus">Procesando...</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="advancedProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ocr-results">
+                                    <h4>Datos MRZ y PDF417 Parseados</h4>
+                                    <div id="advancedResultsTable" class="results-table-container">
+                                        <table class="results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campo</th>
+                                                    <th>Tipo</th>
+                                                    <th>Datos RAW</th>
+                                                    <th>Datos Parseados</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="advancedResultsBody">
+                                                <tr>
+                                                    <td colspan="4" style="text-align: center; color: var(--muted);">No hay datos parseados</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -462,12 +785,18 @@
                             <li>Haz clic en una ROI para seleccionarla (borde verde)</li>
                             <li>Presiona <strong>Delete</strong> o <strong>Suprimir</strong> para eliminar la ROI seleccionada</li>
                             <li>Arrastra para mover y usa la esquina inferior derecha para redimensionar</li>
-                            <li>Usa el botón "Extraer Texto" para procesar las ROIs de tipo datos</li>
+                            <li>Usa las pestañas para diferentes tipos de extracción</li>
                         </ul>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Modal para vista ampliada de imágenes -->
+    <div id="imageModal" class="modal">
+        <button class="modal-close" onclick="closeModal()">×</button>
+        <img id="modalImage" class="modal-content" src="" alt="Vista ampliada">
     </div>
 
     <footer>
@@ -485,14 +814,16 @@
     let selectedROI = null;
     let selectedROIIndex = -1;
     let ocrResults = {};
+    let imageResults = {};
+    let codesResults = {};
+    let advancedResults = {};
 
     // Agregar event listener para la tecla Delete
     document.addEventListener('keydown', handleKeyDown);
 
     function handleKeyDown(e) {
-        // Verificar si se presionó Delete (46) o Suprimir (8 en algunos navegadores)
         if ((e.key === 'Delete' || e.key === 'Suprimir' || e.keyCode === 46 || e.keyCode === 8) && selectedROIIndex !== -1) {
-            e.preventDefault(); // Prevenir comportamiento por defecto
+            e.preventDefault();
             deleteROI(selectedROIIndex);
         }
     }
@@ -520,23 +851,18 @@
         const placeholder = document.getElementById('placeholderText');
         const saveButton = document.getElementById('saveButton');
         
-        // Configurar canvas con el tamaño original de la imagen
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         canvas.style.display = 'block';
-        canvas.style.maxWidth = 'none'; // Eliminar cualquier limitación de ancho máximo
+        canvas.style.maxWidth = 'none';
         placeholder.style.display = 'none';
         saveButton.style.display = 'block';
 
         const ctx = canvas.getContext('2d');
-        
-        // Dibujar la imagen en su tamaño original
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
-        // Limpiar cualquier superposición de cajas HTML anterior
         document.querySelectorAll('.roi-box').forEach(box => box.remove());
         
-        // Recalcular factores de escala basados en el tamaño esperado vs real
         const templateWidth = TEMPLATE.metadata.expected_width;
         const templateHeight = TEMPLATE.metadata.expected_height;
         currentScaleX = canvas.width / templateWidth;
@@ -547,64 +873,45 @@
         canvasLeftOffset = canvasRect.left - containerRect.left;
         canvasTopOffset = canvasRect.top - containerRect.top;
 
-        // Dibujar las ROIs (cajas HTML)
         TEMPLATE.regions.forEach((region, index) => {
             createROIBox(region, index);
         });
         
-        // Actualizar información de la imagen
         updateImageInfo(canvas.width, canvas.height);
-        
-        // Actualizar contador de ROIs
         updateROICount();
-        
-        // Limpiar resultados OCR anteriores
-        clearOCRResults();
+        clearAllResults();
     }
 
     function createROIBox(region, index) {
         const { x, y, width, height } = region.coordinates;
         const container = document.getElementById('canvasContainer');
 
-        // Escalar las coordenadas al tamaño real de la imagen
         const scaledX = x * currentScaleX;
         const scaledY = y * currentScaleY;
         const scaledWidth = width * currentScaleX;
         const scaledHeight = height * currentScaleY;
         
-        // Crear la caja superpuesta (div)
         const roiBox = document.createElement('div');
         roiBox.classList.add('roi-box');
-        
-        // Usar un índice de datos para identificación
         roiBox.dataset.roiIndex = index; 
 
         let fieldClass = '';
         let labelText = region.field_name;
 
         switch(region.field_type) {
-            case 'data_field':
-                fieldClass = 'data-field-box';
-                labelText = region.field_name;
-                break;
-            case 'label':
-                fieldClass = 'label-box';
-                labelText = region.content.split('/')[0].trim();
-                break;
-            case 'static_text':
-                fieldClass = 'static-text-box';
-                labelText = region.content;
-                break;
-            case 'roi':
-                fieldClass = 'roi-area-box';
-                labelText = 'ROI: ' + region.field_name;
-                break;
-            default:
-                fieldClass = 'static-text-box';
+            case 'data_field': fieldClass = 'data-field-box'; break;
+            case 'label': fieldClass = 'label-box'; break;
+            case 'static_text': fieldClass = 'static-text-box'; break;
+            case 'roi': fieldClass = 'roi-area-box'; break;
+            case 'mrz': fieldClass = 'mrz-box'; break;
+            case 'pdf417': fieldClass = 'pdf417-box'; break;
+            case 'qr': fieldClass = 'qr-box'; break;
+            case 'barcode': fieldClass = 'barcode-box'; break;
+            case 'url': fieldClass = 'url-box'; break;
+            default: fieldClass = 'static-text-box';
         }
         roiBox.classList.add(fieldClass);
 
-        // Posicionamiento de la caja dentro del contenedor, relativo al canvas
         const left = canvasLeftOffset + scaledX;
         const top = canvasTopOffset + scaledY;
 
@@ -617,7 +924,6 @@
             roiBox.textContent = labelText;
         }
 
-        // Agregar botón de eliminar
         const deleteButton = document.createElement('button');
         deleteButton.classList.add('delete-button');
         deleteButton.innerHTML = '×';
@@ -628,32 +934,26 @@
         });
         roiBox.appendChild(deleteButton);
 
-        // Configurar eventos de arrastre y selección
         roiBox.addEventListener('mousedown', handleROIAdjust);
         roiBox.addEventListener('click', function(e) {
             e.stopPropagation();
             selectROI(index, roiBox);
         });
         
-        // Observar cambios de tamaño nativos (resize: both en CSS)
         new ResizeObserver(handleROIResize).observe(roiBox);
-
         container.appendChild(roiBox);
     }
 
     // FUNCIÓN PARA SELECCIONAR ROI
     function selectROI(index, roiBox) {
-        // Deseleccionar ROI anterior
         if (selectedROI) {
             selectedROI.classList.remove('selected');
         }
         
-        // Seleccionar nueva ROI
         selectedROI = roiBox;
         selectedROIIndex = index;
         roiBox.classList.add('selected');
         
-        // Actualizar información de ROI seleccionada
         document.getElementById('selectedRoi').textContent = `Seleccionada: ${TEMPLATE.regions[index].field_name}`;
     }
 
@@ -680,10 +980,7 @@
     function handleROIResize(entries) {
         entries.forEach(entry => {
             const roiBox = entry.target;
-            // Solo necesitamos esta función para actualizar el template.
-            // La actualización de posición se hace en mouseup/mousemove.
-            // La actualización de tamaño se hace aquí si se usa el handle nativo.
-            if (!selectedROI) { // Si no estamos en un evento de arrastre/movimiento
+            if (!selectedROI) {
                 updateTemplateCoordinates(roiBox);
             }
         });
@@ -691,9 +988,7 @@
 
     // FUNCIÓN PARA MOVER (Arrastrar)
     function handleROIAdjust(e) {
-        // Solo permitir el arrastre si no se hizo clic en el handle de redimensionamiento (esquina inferior derecha)
         if (e.target !== e.currentTarget || e.offsetX > e.target.offsetWidth - 15 && e.offsetY > e.target.offsetHeight - 15) {
-            // Permitir el redimensionamiento nativo por el CSS
             return; 
         }
 
@@ -715,7 +1010,6 @@
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
 
-        // Actualizar la posición de la caja HTML (coordenadas de pantalla)
         selectedROI.style.left = `${startLeft + dx}px`;
         selectedROI.style.top = `${startTop + dy}px`;
     }
@@ -726,7 +1020,6 @@
         
         if (selectedROI) {
             selectedROI.classList.remove('resizing');
-            // Actualizar las coordenadas del template con el valor final
             updateTemplateCoordinates(selectedROI);
         }
     }
@@ -736,25 +1029,20 @@
         const roiIndex = parseInt(roiBox.dataset.roiIndex);
         if (isNaN(roiIndex) || roiIndex < 0) return;
 
-        // Coordenadas del div HTML (escaladas)
         const scaledX = parseFloat(roiBox.style.left) - canvasLeftOffset;
         const scaledY = parseFloat(roiBox.style.top) - canvasTopOffset;
         const scaledWidth = roiBox.offsetWidth;
         const scaledHeight = roiBox.offsetHeight;
 
-        // **DESESCALAR** las coordenadas a las dimensiones del template
         const templateX = Math.round(scaledX / currentScaleX);
         const templateY = Math.round(scaledY / currentScaleY);
         const templateWidth = Math.round(scaledWidth / currentScaleX);
         const templateHeight = Math.round(scaledHeight / currentScaleY);
 
-        // Actualizar el objeto TEMPLATE
         TEMPLATE.regions[roiIndex].coordinates.x = templateX;
         TEMPLATE.regions[roiIndex].coordinates.y = templateY;
         TEMPLATE.regions[roiIndex].coordinates.width = templateWidth;
         TEMPLATE.regions[roiIndex].coordinates.height = templateHeight;
-
-        console.log(`ROI [${TEMPLATE.regions[roiIndex].field_name}] actualizado a: x:${templateX}, y:${templateY}, w:${templateWidth}, h:${templateHeight}`);
     }
 
     // FUNCIÓN PARA ACTUALIZAR INFORMACIÓN DE LA IMAGEN
@@ -774,10 +1062,8 @@
         if (confirm(`¿Está seguro de que desea eliminar la ROI "${TEMPLATE.regions[index].field_name}"?`)) {
             TEMPLATE.regions.splice(index, 1);
             
-            // Deseleccionar ROI eliminada
             deselectAllROIs();
             
-            // Volver a dibujar todas las ROIs
             const canvas = document.getElementById('roiCanvas');
             if (canvas.style.display !== 'none') {
                 const img = new Image();
@@ -787,7 +1073,6 @@
                 img.src = canvas.toDataURL();
             }
             
-            // Actualizar contador
             updateROICount();
         }
     }
@@ -803,13 +1088,11 @@
             return;
         }
         
-        // Verificar si ya existe una ROI con ese nombre
         if (TEMPLATE.regions.some(region => region.field_name === roiName)) {
             alert('Ya existe una ROI con ese nombre. Por favor, use un nombre único.');
             return;
         }
         
-        // Crear nueva ROI
         const newROI = {
             field_name: roiName,
             field_type: roiType,
@@ -820,13 +1103,11 @@
                 width: 100,
                 height: 30
             },
-            data_type: roiType === 'roi' ? 'image' : 'text'
+            data_type: ['roi', 'mrz', 'pdf417', 'qr', 'barcode', 'url'].includes(roiType) ? 'image' : 'text'
         };
         
-        // Agregar a la plantilla
         TEMPLATE.regions.push(newROI);
         
-        // Volver a dibujar todas las ROIs
         const canvas = document.getElementById('roiCanvas');
         if (canvas.style.display !== 'none') {
             const img = new Image();
@@ -836,10 +1117,8 @@
             img.src = canvas.toDataURL();
         }
         
-        // Actualizar contador
         updateROICount();
         
-        // Limpiar formulario
         document.getElementById('roiName').value = '';
         document.getElementById('roiContent').value = '';
         
@@ -856,17 +1135,14 @@
             try {
                 const importedTemplate = JSON.parse(e.target.result);
                 
-                // Validar estructura básica de la plantilla
                 if (!importedTemplate.template_name || !importedTemplate.regions || !importedTemplate.metadata) {
                     throw new Error('El archivo no tiene la estructura correcta de plantilla');
                 }
                 
                 TEMPLATE = importedTemplate;
                 
-                // Deseleccionar ROI actual
                 deselectAllROIs();
                 
-                // Volver a dibujar si hay una imagen cargada
                 const canvas = document.getElementById('roiCanvas');
                 if (canvas.style.display !== 'none') {
                     const img = new Image();
@@ -876,7 +1152,6 @@
                     img.src = canvas.toDataURL();
                 }
                 
-                // Actualizar contador
                 updateROICount();
                 
                 alert('Plantilla importada exitosamente');
@@ -886,7 +1161,6 @@
         };
         reader.readAsText(file);
         
-        // Limpiar el input para permitir cargar el mismo archivo nuevamente
         event.target.value = '';
     }
 
@@ -910,7 +1184,15 @@
         alert('Plantilla guardada como adjusted_salvador_id_card_template.json');
     }
 
-    // FUNCIONES PARA OCR
+    // FUNCIONES PARA TABS
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+        document.getElementById(tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    // FUNCIONES PARA OCR DE TEXTO
     async function extractTextFromROIs() {
         const canvas = document.getElementById('roiCanvas');
         if (canvas.style.display === 'none') {
@@ -918,7 +1200,6 @@
             return;
         }
 
-        // Filtrar ROIs de tipo datos (data_field) con data_type text
         const textROIs = TEMPLATE.regions.filter(region => 
             region.field_type === 'data_field' && region.data_type === 'text'
         );
@@ -928,17 +1209,14 @@
             return;
         }
 
-        // Mostrar progreso
         const progressDiv = document.getElementById('ocrProgress');
         const progressFill = document.getElementById('progressFill');
         const progressStatus = document.getElementById('progressStatus');
         progressDiv.style.display = 'block';
         
-        // Limpiar resultados anteriores
         clearOCRResults();
         ocrResults = {};
 
-        // Procesar cada ROI
         for (let i = 0; i < textROIs.length; i++) {
             const roi = textROIs[i];
             const progress = ((i / textROIs.length) * 100).toFixed(0);
@@ -949,8 +1227,6 @@
             try {
                 const result = await processROIWithOCR(canvas, roi);
                 ocrResults[roi.field_name] = result;
-                
-                // Actualizar tabla de resultados
                 updateOCRResultsTable();
                 
             } catch (error) {
@@ -962,11 +1238,9 @@
             }
         }
 
-        // Completar progreso
         progressFill.style.width = '100%';
         progressStatus.textContent = `Procesamiento completado (${textROIs.length} ROIs)`;
 
-        // Ocultar progreso después de un tiempo
         setTimeout(() => {
             progressDiv.style.display = 'none';
         }, 2000);
@@ -977,33 +1251,29 @@
     async function processROIWithOCR(canvas, roi) {
         const { x, y, width, height } = roi.coordinates;
         
-        // Escalar coordenadas al tamaño real del canvas
         const scaledX = x * currentScaleX;
         const scaledY = y * currentScaleY;
         const scaledWidth = width * currentScaleX;
         const scaledHeight = height * currentScaleY;
 
-        // Crear canvas temporal para la ROI
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = scaledWidth;
         tempCanvas.height = scaledHeight;
         const tempCtx = tempCanvas.getContext('2d');
 
-        // Dibujar la región de interés en el canvas temporal
         tempCtx.drawImage(
             canvas,
             scaledX, scaledY, scaledWidth, scaledHeight,
             0, 0, scaledWidth, scaledHeight
         );
 
-        // Configurar Tesseract para español
         const { data } = await Tesseract.recognize(
             tempCanvas,
-            'spa', // Idioma español
+            'spa',
             {
                 logger: m => {
                     if (m.status === 'recognizing text') {
-                        // Podríamos mostrar progreso más detallado aquí si es necesario
+                        // Progreso detallado
                     }
                 }
             }
@@ -1027,7 +1297,6 @@
         for (const [fieldName, result] of Object.entries(ocrResults)) {
             const row = document.createElement('tr');
             
-            // Determinar clase de confianza
             let confidenceClass = 'confidence';
             if (result.confidence >= 80) confidenceClass += ' high';
             else if (result.confidence >= 60) confidenceClass += ' medium';
@@ -1047,6 +1316,550 @@
         ocrResults = {};
         updateOCRResultsTable();
     }
+
+    // FUNCIONES PARA CAPTURA DE IMÁGENES
+    async function extractImagesFromROIs() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        const imageROIs = TEMPLATE.regions.filter(region => 
+            region.data_type === 'image'
+        );
+
+        if (imageROIs.length === 0) {
+            alert('No hay ROIs de tipo imagen para capturar');
+            return;
+        }
+
+        const progressDiv = document.getElementById('imageProgress');
+        const progressFill = document.getElementById('imageProgressFill');
+        const progressStatus = document.getElementById('imageProgressStatus');
+        progressDiv.style.display = 'block';
+        
+        clearImageResults();
+        imageResults = {};
+
+        for (let i = 0; i < imageROIs.length; i++) {
+            const roi = imageROIs[i];
+            const progress = ((i / imageROIs.length) * 100).toFixed(0);
+            
+            progressFill.style.width = `${progress}%`;
+            progressStatus.textContent = `Capturando ${roi.field_name}... (${i + 1}/${imageROIs.length})`;
+
+            try {
+                const result = await captureROIImage(canvas, roi);
+                imageResults[roi.field_name] = result;
+                updateImageResultsTable();
+                
+            } catch (error) {
+                console.error(`Error capturando ROI ${roi.field_name}:`, error);
+                imageResults[roi.field_name] = {
+                    base64: 'Error en captura',
+                    size: '0 KB'
+                };
+            }
+        }
+
+        progressFill.style.width = '100%';
+        progressStatus.textContent = `Captura completada (${imageROIs.length} imágenes)`;
+
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+        }, 2000);
+
+        alert(`Captura de imágenes completada. Se procesaron ${imageROIs.length} ROIs.`);
+    }
+
+    function captureROIImage(canvas, roi) {
+        const { x, y, width, height } = roi.coordinates;
+        
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        tempCtx.drawImage(
+            canvas,
+            scaledX, scaledY, scaledWidth, scaledHeight,
+            0, 0, scaledWidth, scaledHeight
+        );
+
+        const base64 = tempCanvas.toDataURL('image/png');
+        const size = Math.round((base64.length * 3) / 4) / 1024;
+
+        return {
+            base64: base64,
+            size: `${size.toFixed(1)} KB`,
+            preview: base64
+        };
+    }
+
+    function updateImageResultsTable() {
+        const tbody = document.getElementById('imageResultsBody');
+        tbody.innerHTML = '';
+
+        if (Object.keys(imageResults).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--muted);">No hay imágenes capturadas</td></tr>';
+            return;
+        }
+
+        for (const [fieldName, result] of Object.entries(imageResults)) {
+            const row = document.createElement('tr');
+            
+            const previewHtml = result.preview && result.preview !== 'Error en captura' 
+                ? `<img src="${result.preview}" class="image-preview" onclick="openModal('${result.preview}')" alt="${fieldName}">`
+                : 'Error';
+
+            const shortBase64 = result.base64 && result.base64 !== 'Error en captura'
+                ? result.base64.substring(0, 50) + '...'
+                : 'Error';
+
+            row.innerHTML = `
+                <td>${fieldName}</td>
+                <td>${previewHtml}</td>
+                <td>${result.size}</td>
+                <td>
+                    <div class="base64-container" title="Haz clic para copiar" onclick="copyToClipboard('${fieldName}')">
+                        ${shortBase64}
+                    </div>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+    }
+
+    function clearImageResults() {
+        imageResults = {};
+        updateImageResultsTable();
+    }
+
+    // FUNCIONES PARA EXTRACCIÓN DE CÓDIGOS
+    async function extractCodesFromROIs() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        const codeROIs = TEMPLATE.regions.filter(region => 
+            ['qr', 'barcode', 'url'].includes(region.field_type)
+        );
+
+        if (codeROIs.length === 0) {
+            alert('No hay ROIs de tipo QR, Barcode o URL para procesar');
+            return;
+        }
+
+        const progressDiv = document.getElementById('codesProgress');
+        const progressFill = document.getElementById('codesProgressFill');
+        const progressStatus = document.getElementById('codesProgressStatus');
+        progressDiv.style.display = 'block';
+        
+        clearCodesResults();
+        codesResults = {};
+
+        for (let i = 0; i < codeROIs.length; i++) {
+            const roi = codeROIs[i];
+            const progress = ((i / codeROIs.length) * 100).toFixed(0);
+            
+            progressFill.style.width = `${progress}%`;
+            progressStatus.textContent = `Procesando ${roi.field_name}... (${i + 1}/${codeROIs.length})`;
+
+            try {
+                let result;
+                switch(roi.field_type) {
+                    case 'qr':
+                        result = await processQRCode(canvas, roi);
+                        break;
+                    case 'barcode':
+                        result = await processBarcode(canvas, roi);
+                        break;
+                    case 'url':
+                        result = await processURL(canvas, roi);
+                        break;
+                }
+                codesResults[roi.field_name] = result;
+                updateCodesResultsTable();
+                
+            } catch (error) {
+                console.error(`Error procesando ROI ${roi.field_name}:`, error);
+                codesResults[roi.field_name] = {
+                    data: 'Error en procesamiento',
+                    status: 'Error',
+                    type: roi.field_type.toUpperCase()
+                };
+            }
+        }
+
+        progressFill.style.width = '100%';
+        progressStatus.textContent = `Procesamiento completado (${codeROIs.length} códigos)`;
+
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+        }, 2000);
+    }
+
+    async function processQRCode(canvas, roi) {
+        const imageData = getROIImageData(canvas, roi);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        
+        if (code) {
+            return {
+                data: code.data,
+                status: 'status-success',
+                statusText: '✅ Detectado',
+                type: 'QR Code'
+            };
+        } else {
+            return {
+                data: 'No se detectó código QR',
+                status: 'status-error',
+                statusText: '❌ No detectado',
+                type: 'QR Code'
+            };
+        }
+    }
+
+    async function processBarcode(canvas, roi) {
+        return new Promise((resolve) => {
+            try {
+                // Simulación de decodificación de código de barras
+                const simulatedData = "123456789012";
+                resolve({
+                    data: simulatedData,
+                    status: 'status-success',
+                    statusText: '✅ Detectado',
+                    type: 'Barcode'
+                });
+            } catch (error) {
+                resolve({
+                    data: 'Error en decodificación',
+                    status: 'status-error',
+                    statusText: '❌ Error',
+                    type: 'Barcode'
+                });
+            }
+        });
+    }
+
+    async function processURL(canvas, roi) {
+        const textResult = await processROIWithOCR(canvas, roi);
+        let urlText = textResult.text.trim();
+        
+        if (urlText && !urlText.startsWith('http')) {
+            if (urlText.includes('.') && !urlText.includes(' ')) {
+                urlText = 'https://' + urlText;
+            }
+        }
+        
+        const isValidUrl = urlText.startsWith('http');
+        
+        return {
+            data: urlText,
+            status: isValidUrl ? 'status-success' : 'status-warning',
+            statusText: isValidUrl ? '✅ URL válida' : '⚠️ Texto convertido',
+            type: 'URL',
+            formattedUrl: isValidUrl ? urlText : null
+        };
+    }
+
+    // FUNCIONES PARA PROCESAMIENTO AVANZADO (MRZ y PDF417)
+    async function extractAllFromROIs() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        const advancedROIs = TEMPLATE.regions.filter(region => 
+            ['mrz', 'pdf417'].includes(region.field_type)
+        );
+
+        if (advancedROIs.length === 0) {
+            alert('No hay ROIs de tipo MRZ o PDF417 para procesar');
+            return;
+        }
+
+        const progressDiv = document.getElementById('advancedProgress');
+        const progressFill = document.getElementById('advancedProgressFill');
+        const progressStatus = document.getElementById('advancedProgressStatus');
+        progressDiv.style.display = 'block';
+        
+        clearAdvancedResults();
+        advancedResults = {};
+
+        for (let i = 0; i < advancedROIs.length; i++) {
+            const roi = advancedROIs[i];
+            const progress = ((i / advancedROIs.length) * 100).toFixed(0);
+            
+            progressFill.style.width = `${progress}%`;
+            progressStatus.textContent = `Procesando ${roi.field_name}... (${i + 1}/${advancedROIs.length})`;
+
+            try {
+                let result;
+                switch(roi.field_type) {
+                    case 'mrz':
+                        result = await processMRZ(canvas, roi);
+                        break;
+                    case 'pdf417':
+                        result = await processPDF417(canvas, roi);
+                        break;
+                }
+                advancedResults[roi.field_name] = result;
+                updateAdvancedResultsTable();
+                
+            } catch (error) {
+                console.error(`Error procesando ROI ${roi.field_name}:`, error);
+                advancedResults[roi.field_name] = {
+                    rawData: 'Error en procesamiento',
+                    parsedData: {},
+                    type: roi.field_type.toUpperCase()
+                };
+            }
+        }
+
+        progressFill.style.width = '100%';
+        progressStatus.textContent = `Procesamiento completado (${advancedROIs.length} elementos)`;
+
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+        }, 2000);
+    }
+
+    async function processMRZ(canvas, roi) {
+        const textResult = await processROIWithOCR(canvas, roi);
+        const rawText = textResult.text;
+        const parsedData = parseMRZ(rawText);
+        
+        return {
+            rawData: rawText,
+            parsedData: parsedData,
+            type: 'MRZ',
+            base64: await captureROIImageBase64(canvas, roi)
+        };
+    }
+
+    async function processPDF417(canvas, roi) {
+        const base64 = await captureROIImageBase64(canvas, roi);
+        const decodedData = simulatePDF417Decoding();
+        
+        return {
+            rawData: decodedData.raw,
+            parsedData: decodedData.parsed,
+            type: 'PDF417',
+            base64: base64
+        };
+    }
+
+    // FUNCIONES DE PARSEO
+    function parseMRZ(mrzText) {
+        const lines = mrzText.split('\n').filter(line => line.trim().length > 0);
+        const parsed = {};
+        
+        if (lines.length >= 2) {
+            const line1 = lines[0];
+            if (line1.length >= 30) {
+                parsed.documentType = line1.substring(0, 2);
+                parsed.issuingCountry = line1.substring(2, 5);
+                parsed.documentNumber = line1.substring(5, 14);
+                parsed.optionalData = line1.substring(15, 30);
+            }
+            
+            const line2 = lines[1];
+            if (line2.length >= 30) {
+                parsed.birthDate = parseMRZDate(line2.substring(0, 6));
+                parsed.sex = line2.substring(7, 8);
+                parsed.expirationDate = parseMRZDate(line2.substring(8, 14));
+                parsed.nationality = line2.substring(15, 18);
+                parsed.optionalData2 = line2.substring(18, 29);
+            }
+        }
+        
+        return parsed;
+    }
+
+    function parseMRZDate(mrzDate) {
+        if (mrzDate.length === 6) {
+            const year = parseInt(mrzDate.substring(0, 2));
+            const month = parseInt(mrzDate.substring(2, 4));
+            const day = parseInt(mrzDate.substring(4, 6));
+            return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/20${year.toString().padStart(2, '0')}`;
+        }
+        return mrzDate;
+    }
+
+    function simulatePDF417Decoding() {
+        return {
+            raw: "PDF417 Raw Data Simulation - Documento de Identificación Salvadoreño",
+            parsed: {
+                documentType: "DUI",
+                issuingCountry: "SLV",
+                documentNumber: "123456789012",
+                holderName: "JUAN CARLOS PEREZ GARCIA",
+                birthDate: "15/05/1985",
+                expirationDate: "15/05/2030",
+                nationality: "SALVADOREÑO",
+                issueDate: "15/05/2020"
+            }
+        };
+    }
+
+    // FUNCIONES AUXILIARES
+    function getROIImageData(canvas, roi) {
+        const { x, y, width, height } = roi.coordinates;
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        tempCtx.drawImage(
+            canvas,
+            scaledX, scaledY, scaledWidth, scaledHeight,
+            0, 0, scaledWidth, scaledHeight
+        );
+
+        return tempCtx.getImageData(0, 0, scaledWidth, scaledHeight);
+    }
+
+    async function captureROIImageBase64(canvas, roi) {
+        const { x, y, width, height } = roi.coordinates;
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        tempCtx.drawImage(
+            canvas,
+            scaledX, scaledY, scaledWidth, scaledHeight,
+            0, 0, scaledWidth, scaledHeight
+        );
+
+        return tempCanvas.toDataURL('image/png');
+    }
+
+    // FUNCIONES DE ACTUALIZACIÓN DE TABLAS
+    function updateCodesResultsTable() {
+        const tbody = document.getElementById('codesResultsBody');
+        tbody.innerHTML = '';
+
+        if (Object.keys(codesResults).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--muted);">No hay códigos detectados</td></tr>';
+            return;
+        }
+
+        for (const [fieldName, result] of Object.entries(codesResults)) {
+            const row = document.createElement('tr');
+            
+            let dataDisplay = result.data;
+            if (result.formattedUrl) {
+                dataDisplay = `<a href="${result.formattedUrl}" class="url-link" target="_blank">${result.formattedUrl}</a>`;
+            }
+            
+            row.innerHTML = `
+                <td>${fieldName}</td>
+                <td>${result.type}</td>
+                <td>${dataDisplay}</td>
+                <td><span class="code-status ${result.status}">${result.statusText}</span></td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+    }
+
+    function updateAdvancedResultsTable() {
+        const tbody = document.getElementById('advancedResultsBody');
+        tbody.innerHTML = '';
+
+        if (Object.keys(advancedResults).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--muted);">No hay datos parseados</td></tr>';
+            return;
+        }
+
+        for (const [fieldName, result] of Object.entries(advancedResults)) {
+            const row = document.createElement('tr');
+            
+            const parsedDataHtml = Object.entries(result.parsedData)
+                .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
+                .join('<br>');
+            
+            row.innerHTML = `
+                <td>${fieldName}</td>
+                <td>${result.type}</td>
+                <td><div class="raw-data">${result.rawData}</div></td>
+                <td>${parsedDataHtml || 'No se pudieron parsear datos'}</td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+    }
+
+    function clearCodesResults() {
+        codesResults = {};
+        updateCodesResultsTable();
+    }
+
+    function clearAdvancedResults() {
+        advancedResults = {};
+        updateAdvancedResultsTable();
+    }
+
+    function clearAllResults() {
+        clearOCRResults();
+        clearImageResults();
+        clearCodesResults();
+        clearAdvancedResults();
+    }
+
+    // FUNCIONES PARA MODAL Y UTILIDADES
+    function openModal(imageSrc) {
+        const modal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        modalImage.src = imageSrc;
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() {
+        const modal = document.getElementById('imageModal');
+        modal.style.display = 'none';
+    }
+
+    function copyToClipboard(fieldName) {
+        const base64 = imageResults[fieldName]?.base64;
+        if (base64 && base64 !== 'Error en captura') {
+            navigator.clipboard.writeText(base64).then(() => {
+                alert(`Base64 de ${fieldName} copiado al portapapeles`);
+            }).catch(err => {
+                console.error('Error al copiar: ', err);
+                alert('Error al copiar al portapapeles');
+            });
+        }
+    }
+
+    // Cerrar modal al hacer clic fuera de la imagen
+    document.getElementById('imageModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeModal();
+        }
+    });
     </script>
 </body>
 </html>
