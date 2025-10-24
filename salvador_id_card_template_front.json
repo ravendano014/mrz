@@ -1,0 +1,289 @@
+{
+  "template_name": "salvador_id_card_front",
+  "document_type": "Documento Único de Identidad",
+  "regions": [
+    {
+      "field_name": "country",
+      "field_type": "static_text",
+      "content": "REPÚBLICA DE EL SALVADOR",
+      "coordinates": {
+        "x": 167,
+        "y": 34,
+        "width": 210,
+        "height": 19
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "document_title",
+      "field_type": "static_text",
+      "content": "Documento Único de Identidad / ID",
+      "coordinates": {
+        "x": 166,
+        "y": 54,
+        "width": 211,
+        "height": 17
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "nationality_label",
+      "field_type": "data_field",
+      "content": "NACIMIENTO",
+      "coordinates": {
+        "x": 236,
+        "y": 189,
+        "width": 150,
+        "height": 16
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "dui_number",
+      "field_type": "data_field",
+      "content": "00000000-0",
+      "coordinates": {
+        "x": 16,
+        "y": 377,
+        "width": 140,
+        "height": 25
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "photo_area",
+      "field_type": "roi",
+      "content": "Fotografía",
+      "coordinates": {
+        "x": 16,
+        "y": 112,
+        "width": 139,
+        "height": 235
+      },
+      "data_type": "image"
+    },
+    {
+      "field_name": "surname_label",
+      "field_type": "label",
+      "content": "Apellidos / Surname",
+      "coordinates": {
+        "x": 166,
+        "y": 78,
+        "width": 150,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "surname_value",
+      "field_type": "data_field",
+      "content": "LINARES FLORES",
+      "coordinates": {
+        "x": 166,
+        "y": 94,
+        "width": 200,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "given_names_label",
+      "field_type": "label",
+      "content": "Nombre / Given Names",
+      "coordinates": {
+        "x": 167,
+        "y": 123,
+        "width": 150,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "given_names_value",
+      "field_type": "data_field",
+      "content": "JOSE MIGUEL",
+      "coordinates": {
+        "x": 168,
+        "y": 136,
+        "width": 200,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "known_by_label",
+      "field_type": "label",
+      "content": "Conocido por / Known by",
+      "coordinates": {
+        "x": 167,
+        "y": 151,
+        "width": 150,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "gender_label",
+      "field_type": "label",
+      "content": "Género / Gender",
+      "coordinates": {
+        "x": 164,
+        "y": 177,
+        "width": 69,
+        "height": 14
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "nationality_label",
+      "field_type": "label",
+      "content": "Salvadoreño por / Salvadorean by",
+      "coordinates": {
+        "x": 235,
+        "y": 176,
+        "width": 150,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "gender_value",
+      "field_type": "data_field",
+      "content": "M",
+      "coordinates": {
+        "x": 165,
+        "y": 190,
+        "width": 20,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "birth_place_label",
+      "field_type": "label",
+      "content": "Lugar y Fecha de Nacimiento / Place and Date of Birth",
+      "coordinates": {
+        "x": 164,
+        "y": 203,
+        "width": 250,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "birth_place_value",
+      "field_type": "data_field",
+      "content": "ACAJUTLA, SONSONATE 20/05/1994",
+      "coordinates": {
+        "x": 164,
+        "y": 218,
+        "width": 250,
+        "height": 18
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "issue_place_label",
+      "field_type": "label",
+      "content": "Lugar y Fecha de Expedición / Place and Date of Issuance",
+      "coordinates": {
+        "x": 167,
+        "y": 247,
+        "width": 250,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "issue_place_value",
+      "field_type": "data_field",
+      "content": "SONSONATE, SONSONATE 16/01/2023",
+      "coordinates": {
+        "x": 166,
+        "y": 262,
+        "width": 250,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "expiration_label",
+      "field_type": "label",
+      "content": "Fecha de Expiración / Date of Expiration",
+      "coordinates": {
+        "x": 165,
+        "y": 289,
+        "width": 200,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "expiration_value",
+      "field_type": "data_field",
+      "content": "06/07/2028",
+      "coordinates": {
+        "x": 164,
+        "y": 306,
+        "width": 100,
+        "height": 15
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "id_number_label",
+      "field_type": "label",
+      "content": "Número Único de Identidad / Unique ID number",
+      "coordinates": {
+        "x": 16,
+        "y": 348,
+        "width": 141,
+        "height": 28
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "signature",
+      "field_type": "roi",
+      "content": "",
+      "coordinates": {
+        "x": 161,
+        "y": 327,
+        "width": 117,
+        "height": 49
+      },
+      "data_type": "image"
+    },
+    {
+      "field_name": "signature_label",
+      "field_type": "label",
+      "content": "Firma o Huella del Titular Holder´s Signature",
+      "coordinates": {
+        "x": 165,
+        "y": 380,
+        "width": 99,
+        "height": 28
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "institution_name",
+      "field_type": "static_text",
+      "content": "Registro Nacional de las Personas Naturales",
+      "coordinates": {
+        "x": 273,
+        "y": 377,
+        "width": 91,
+        "height": 34
+      },
+      "data_type": "text"
+    }
+  ],
+  "metadata": {
+    "expected_width": 500,
+    "expected_height": 420,
+    "orientation": "portrait",
+    "language": "es",
+    "country": "El Salvador"
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "template_name": "salvador_id_card_back",
+  "document_type": "Documento Único de Identidad",
+  "regions": [
+    {
+      "field_name": "profession",
+      "field_type": "data_field",
+      "content": "MARINO MERCANTE",
+      "coordinates": {
+        "x": 14,
+        "y": 223,
+        "width": 140,
+        "height": 25
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "city",
+      "field_type": "data_field",
+      "content": "ACAJUTLA",
+      "coordinates": {
+        "x": 14,
+        "y": 253,
+        "width": 140,
+        "height": 25
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "PDF417",
+      "field_type": "pdf417",
+      "content": "PDF417",
+      "coordinates": {
+        "x": 121,
+        "y": 10,
+        "width": 362,
+        "height": 132
+      },
+      "data_type": "pdf417"
+    },
+    {
+      "field_name": "state",
+      "field_type": "data_field",
+      "content": "SONSONATE",
+      "coordinates": {
+        "x": 17,
+        "y": 153,
+        "width": 65,
+        "height": 26
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "blood_label",
+      "field_type": "label",
+      "content": "Tipo de Sangre / Blood Type",
+      "coordinates": {
+        "x": 179,
+        "y": 143,
+        "width": 140,
+        "height": 23
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "marital_status",
+      "field_type": "data_field",
+      "content": "SOLTERO(A)",
+      "coordinates": {
+        "x": 177,
+        "y": 184,
+        "width": 109,
+        "height": 36
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "MRZ",
+      "field_type": "mrz",
+      "content": "MRZ",
+      "coordinates": {
+        "x": 24,
+        "y": 261,
+        "width": 447,
+        "height": 110
+      },
+      "data_type": "mrz"
+    },
+    {
+      "field_name": "state_label",
+      "field_type": "label",
+      "content": "Departamento  / State",
+      "coordinates": {
+        "x": 15,
+        "y": 127,
+        "width": 99,
+        "height": 28
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "image",
+      "field_type": "roi",
+      "content": "Photo",
+      "coordinates": {
+        "x": 25,
+        "y": 20,
+        "width": 66,
+        "height": 104
+      },
+      "data_type": "image"
+    }
+  ],
+  "metadata": {
+    "expected_width": 500,
+    "expected_height": 420,
+    "orientation": "portrait",
+    "language": "es",
+    "country": "El Salvador"
+  }
+}
