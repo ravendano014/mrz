@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Editor de ROIs - DUI El Salvador</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
     :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb; }
     *{box-sizing:border-box}
@@ -260,6 +261,84 @@
         font-size: 0.8rem;
         color: var(--muted);
     }
+    
+    /* Estilos para la sección de OCR */
+    .ocr-section {
+        margin-top: 1rem;
+        border-top: 1px solid #1f2937;
+        padding-top: 1rem;
+    }
+    
+    .ocr-controls {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    
+    .ocr-results {
+        margin-top: 1rem;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 4px;
+        background: #1f2937;
+        border-radius: 2px;
+        margin: 0.5rem 0;
+        overflow: hidden;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background: var(--accent);
+        transition: width 0.3s ease;
+    }
+    
+    .progress-text {
+        font-size: 0.8rem;
+        color: var(--muted);
+        text-align: center;
+    }
+    
+    .result-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        border-bottom: 1px solid #1f2937;
+    }
+    
+    .result-item:last-child {
+        border-bottom: none;
+    }
+    
+    .result-field {
+        font-weight: 600;
+        color: #cbd5e1;
+    }
+    
+    .result-value {
+        color: var(--text);
+    }
+    
+    .confidence {
+        font-size: 0.7rem;
+        color: var(--muted);
+        margin-left: 0.5rem;
+    }
+    
+    .confidence.high {
+        color: #22c55e;
+    }
+    
+    .confidence.medium {
+        color: #eab308;
+    }
+    
+    .confidence.low {
+        color: #ef4444;
+    }
     </style>
 </head>
 <body>
@@ -340,14 +419,50 @@
                         </div>
                     </div>
                     
+                    <div class="ocr-section">
+                        <h3>Extracción de Texto con OCR</h3>
+                        <p class="muted">Extrae texto de las ROIs de tipo datos usando Tesseract.js</p>
+                        
+                        <div class="ocr-controls">
+                            <button id="extractTextBtn" class="primary" onclick="extractTextFromROIs()">🔍 Extraer Texto</button>
+                            <button id="clearResultsBtn" onclick="clearOCRResults()">🗑️ Limpiar Resultados</button>
+                        </div>
+                        
+                        <div id="ocrProgress" style="display: none;">
+                            <div class="progress-text" id="progressStatus">Procesando...</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="ocr-results">
+                            <h4>Resultados de Extracción</h4>
+                            <div id="ocrResultsTable" class="results-table-container">
+                                <table class="results-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Campo</th>
+                                            <th>Texto Extraído</th>
+                                            <th>Confianza</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ocrResultsBody">
+                                        <tr>
+                                            <td colspan="3" style="text-align: center; color: var(--muted);">No hay resultados aún</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="instructions">
                         <p><strong>Instrucciones:</strong></p>
                         <ul>
                             <li>Haz clic en una ROI para seleccionarla (borde verde)</li>
                             <li>Presiona <strong>Delete</strong> o <strong>Suprimir</strong> para eliminar la ROI seleccionada</li>
                             <li>Arrastra para mover y usa la esquina inferior derecha para redimensionar</li>
-                            <li>También puedes usar el botón × en cada ROI para eliminarla</li>
-                            <li>La imagen se muestra en su tamaño original con scroll si es necesario</li>
+                            <li>Usa el botón "Extraer Texto" para procesar las ROIs de tipo datos</li>
                         </ul>
                     </div>
                 </div>
@@ -369,6 +484,7 @@
     let canvasLeftOffset = 0;
     let selectedROI = null;
     let selectedROIIndex = -1;
+    let ocrResults = {};
 
     // Agregar event listener para la tecla Delete
     document.addEventListener('keydown', handleKeyDown);
@@ -441,6 +557,9 @@
         
         // Actualizar contador de ROIs
         updateROICount();
+        
+        // Limpiar resultados OCR anteriores
+        clearOCRResults();
     }
 
     function createROIBox(region, index) {
@@ -789,6 +908,144 @@
         link.download = 'adjusted_salvador_id_card_template.json';
         link.click();
         alert('Plantilla guardada como adjusted_salvador_id_card_template.json');
+    }
+
+    // FUNCIONES PARA OCR
+    async function extractTextFromROIs() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        // Filtrar ROIs de tipo datos (data_field) con data_type text
+        const textROIs = TEMPLATE.regions.filter(region => 
+            region.field_type === 'data_field' && region.data_type === 'text'
+        );
+
+        if (textROIs.length === 0) {
+            alert('No hay ROIs de tipo datos (data_field) con data_type text para procesar');
+            return;
+        }
+
+        // Mostrar progreso
+        const progressDiv = document.getElementById('ocrProgress');
+        const progressFill = document.getElementById('progressFill');
+        const progressStatus = document.getElementById('progressStatus');
+        progressDiv.style.display = 'block';
+        
+        // Limpiar resultados anteriores
+        clearOCRResults();
+        ocrResults = {};
+
+        // Procesar cada ROI
+        for (let i = 0; i < textROIs.length; i++) {
+            const roi = textROIs[i];
+            const progress = ((i / textROIs.length) * 100).toFixed(0);
+            
+            progressFill.style.width = `${progress}%`;
+            progressStatus.textContent = `Procesando ${roi.field_name}... (${i + 1}/${textROIs.length})`;
+
+            try {
+                const result = await processROIWithOCR(canvas, roi);
+                ocrResults[roi.field_name] = result;
+                
+                // Actualizar tabla de resultados
+                updateOCRResultsTable();
+                
+            } catch (error) {
+                console.error(`Error procesando ROI ${roi.field_name}:`, error);
+                ocrResults[roi.field_name] = {
+                    text: 'Error en procesamiento',
+                    confidence: 0
+                };
+            }
+        }
+
+        // Completar progreso
+        progressFill.style.width = '100%';
+        progressStatus.textContent = `Procesamiento completado (${textROIs.length} ROIs)`;
+
+        // Ocultar progreso después de un tiempo
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+        }, 2000);
+
+        alert(`Extracción de texto completada. Se procesaron ${textROIs.length} ROIs.`);
+    }
+
+    async function processROIWithOCR(canvas, roi) {
+        const { x, y, width, height } = roi.coordinates;
+        
+        // Escalar coordenadas al tamaño real del canvas
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+
+        // Crear canvas temporal para la ROI
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        // Dibujar la región de interés en el canvas temporal
+        tempCtx.drawImage(
+            canvas,
+            scaledX, scaledY, scaledWidth, scaledHeight,
+            0, 0, scaledWidth, scaledHeight
+        );
+
+        // Configurar Tesseract para español
+        const { data } = await Tesseract.recognize(
+            tempCanvas,
+            'spa', // Idioma español
+            {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        // Podríamos mostrar progreso más detallado aquí si es necesario
+                    }
+                }
+            }
+        );
+
+        return {
+            text: data.text.trim(),
+            confidence: data.confidence
+        };
+    }
+
+    function updateOCRResultsTable() {
+        const tbody = document.getElementById('ocrResultsBody');
+        tbody.innerHTML = '';
+
+        if (Object.keys(ocrResults).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--muted);">No hay resultados aún</td></tr>';
+            return;
+        }
+
+        for (const [fieldName, result] of Object.entries(ocrResults)) {
+            const row = document.createElement('tr');
+            
+            // Determinar clase de confianza
+            let confidenceClass = 'confidence';
+            if (result.confidence >= 80) confidenceClass += ' high';
+            else if (result.confidence >= 60) confidenceClass += ' medium';
+            else confidenceClass += ' low';
+
+            row.innerHTML = `
+                <td>${fieldName}</td>
+                <td>${result.text || 'No se detectó texto'}</td>
+                <td><span class="${confidenceClass}">${result.confidence.toFixed(1)}%</span></td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+    }
+
+    function clearOCRResults() {
+        ocrResults = {};
+        updateOCRResultsTable();
     }
     </script>
 </body>
