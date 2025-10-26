@@ -38,7 +38,7 @@
 
 <span style="color:green;">Barcode & OCR</span> [Barcode & OCR](https://ravendano014.github.io/mrz/CAFOCR.html)
 
-<span style="color:green;">HetMapOCR</span> [Barcode & OCR](https://ravendano014.github.io/mrz/DocHeatMap.html)
+<span style="color:green;">HeatMap OCR</span> [HeatMap & OCR](https://ravendano014.github.io/mrz/DocHeatMap.html)
 
 
 
