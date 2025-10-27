@@ -1,4 +1,7 @@
 <span style="color:green;">Document ROI Template</span> [Doc Multi ROI Extractor](https://ravendano014.github.io/mrz/DocTemplate.html)
+Uses: 
+  DUIFrente.JPG with salvador_id_card_template_front.json
+  DUIDorso.JPG with salvador_id_card_template_back.json
 
 <span style="color:green;">MRZ</span> [MRZ Online Cam Reader](https://ravendano014.github.io/mrz/)
 
