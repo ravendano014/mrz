@@ -1,145 +1,104 @@
 {
-  "template_name": "salvador_id_card_back",
-  "document_type": "Documento Único de Identidad",
+  "template_name": "salvador_id_card_template_back",
   "regions": [
     {
-      "field_name": "profession",
-      "field_type": "data_field",
-      "content": "MARINO MERCANTE",
-      "coordinates": {
-        "x": 14,
-        "y": 223,
-        "width": 140,
-        "height": 25
-      },
-      "data_type": "text"
-    },
-    {
-      "field_name": "city",
-      "field_type": "data_field",
-      "content": "ACAJUTLA",
-      "coordinates": {
-        "x": 16,
-        "y": 186,
-        "width": 140,
-        "height": 25
-      },
-      "data_type": "text"
-    },
-    {
       "field_name": "PDF417",
-      "field_type": "pdf417",
-      "content": "PDF417",
-      "coordinates": {
-        "x": 121,
-        "y": 10,
-        "width": 362,
-        "height": 132
-      },
-      "data_type": "pdf417"
+      "field_type": "roi",
+      "data_type": "pdf417",
+      "rel": {
+        "x": 0.24773022049286642,
+        "y": 0.033402922755741124,
+        "w": 0.7146562905317769,
+        "h": 0.29227557411273486
+      }
     },
     {
-      "field_name": "state",
+      "field_name": "State",
       "field_type": "data_field",
-      "content": "SONSONATE",
-      "coordinates": {
-        "x": 17,
-        "y": 153,
-        "width": 65,
-        "height": 26
-      },
-      "data_type": "text"
+      "data_type": "text",
+      "rel": {
+        "x": 0.03372243839169909,
+        "y": 0.3736951983298539,
+        "w": 0.2230869001297017,
+        "h": 0.031315240083507306
+      }
     },
     {
-      "field_name": "blood_label",
-      "field_type": "label",
-      "content": "Tipo de Sangre / Blood Type",
-      "coordinates": {
-        "x": 179,
-        "y": 143,
-        "width": 140,
-        "height": 23
-      },
-      "data_type": "text"
-    },
-    {
-      "field_name": "marital_status",
+      "field_name": "City",
       "field_type": "data_field",
-      "content": "SOLTERO(A)",
-      "coordinates": {
-        "x": 177,
-        "y": 184,
-        "width": 109,
-        "height": 36
-      },
-      "data_type": "text"
+      "data_type": "text",
+      "rel": {
+        "x": 0.03631647211413749,
+        "y": 0.4551148225469729,
+        "w": 0.22178988326848248,
+        "h": 0.031315240083507306
+      }
     },
     {
-      "field_name": "nit_value",
+      "field_name": "Profession",
       "field_type": "data_field",
-      "content": "0000-000000-000-0",
-      "coordinates": {
-        "x": 338,
-        "y": 149,
-        "width": 109,
-        "height": 36
-      },
-      "data_type": "text"
-    },
-    {
-      "field_name": "special_value",
-      "field_type": "data_field",
-      "content": "",
-      "coordinates": {
-        "x": 340,
-        "y": 213,
-        "width": 99,
-        "height": 28
-      },
-      "data_type": "text"
+      "data_type": "text",
+      "rel": {
+        "x": 0.0324254215304799,
+        "y": 0.5386221294363257,
+        "w": 0.23086900129701687,
+        "h": 0.03966597077244259
+      }
     },
     {
       "field_name": "MRZ",
-      "field_type": "mrz",
-      "content": "MRZ",
-      "coordinates": {
-        "x": 24,
-        "y": 261,
-        "width": 447,
-        "height": 110
-      },
-      "data_type": "mrz"
-    },
-    {
-      "field_name": "state_label",
-      "field_type": "label",
-      "content": "Departamento  / State",
-      "coordinates": {
-        "x": 16,
-        "y": 126,
-        "width": 99,
-        "height": 28
-      },
-      "data_type": "text"
-    },
-    {
-      "field_name": "image",
       "field_type": "roi",
-      "content": "Photo",
-      "coordinates": {
-        "x": 25,
-        "y": 20,
-        "width": 66,
-        "height": 104
-      },
-      "data_type": "image"
+      "data_type": "mrz",
+      "rel": {
+        "x": 0.04928664072632944,
+        "y": 0.6409185803757829,
+        "w": 0.8910505836575876,
+        "h": 0.24425887265135698
+      }
+    },
+    {
+      "field_name": "Blood_Type",
+      "field_type": "data_field",
+      "data_type": "text",
+      "rel": {
+        "x": 0.3670557717250324,
+        "y": 0.36116910229645094,
+        "w": 0.22178988326848248,
+        "h": 0.04175365344467641
+      }
+    },
+    {
+      "field_name": "Marital_Status",
+      "field_type": "data_field",
+      "data_type": "text",
+      "rel": {
+        "x": 0.364461738002594,
+        "y": 0.44676409185803756,
+        "w": 0.14656290531776914,
+        "h": 0.04175365344467641
+      }
+    },
+    {
+      "field_name": "NIT",
+      "field_type": "data_field",
+      "data_type": "text",
+      "rel": {
+        "x": 0.6913099870298314,
+        "y": 0.36116910229645094,
+        "w": 0.25680933852140075,
+        "h": 0.033402922755741124
+      }
+    },
+    {
+      "field_name": "Special_Eeatures",
+      "field_type": "data_field",
+      "data_type": "text",
+      "rel": {
+        "x": 0.6900129701686122,
+        "y": 0.5198329853862212,
+        "w": 0.2607003891050584,
+        "h": 0.031315240083507306
+      }
     }
-  ],
-  "metadata": {
-    "expected_width": 500,
-    "expected_height": 420,
-    "orientation": "portrait",
-    "language": "es",
-    "country": "El Salvador"
-  }
+  ]
 }
