@@ -114,7 +114,7 @@
     {
       "field_name": "Foto",
       "field_type": "data_field",
-      "data_type": "text",
+      "data_type": "image",
       "rel": {
         "x": 0.040207522697795074,
         "y": 0.27104722792607805,
