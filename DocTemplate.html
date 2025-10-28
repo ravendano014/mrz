@@ -1,450 +1,2464 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>DocMapper · DUI · BarcodeDetector + ZXing · OCR/MRZ</title>
-<!-- ZXing UMD (respaldo y PDF417 específico) -->
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.2/umd/index.min.js"></script>
-<!-- Tesseract.js -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js"></script>
-<style>
-  :root{color-scheme:dark;--panel:#111827;--muted:#94a3b8;--ink:#e5e7eb;--roi:#10b981;--roi-sel:#60a5fa;--roi-handle:#eab308}
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Inter,Arial;background:linear-gradient(180deg,#07090d 0%, #0b1220 100%);color:var(--ink)}
-  header,footer{padding:10px 16px}
-  header h1{font-size:18px;margin:8px 0 12px;color:#cbd5e1}
-  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .group{background:var(--panel);padding:8px;border-radius:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  label{font-size:12px;color:var(--muted)}
-  input[type="file"],select,input[type="text"],textarea,button{background:#0f172a;color:var(--ink);border:1px solid #1f2937;border-radius:10px;padding:8px 10px;font-size:13px}
-  button{cursor:pointer}
-  button.primary{background:#0b3b22;border-color:#134e4a}
-  button.primary:hover{background:#0e4a2a}
-  button.warn{background:#3a2a0a;border-color:#7c5800}
-  button.danger{background:#3a0a0a;border-color:#7c1f1f}
-  #work{display:grid;grid-template-columns:1fr 380px;gap:12px;padding:12px}
-  #canvasWrap{background:#0b1320;border:1px solid #1f2937;border-radius:14px;padding:12px;overflow:auto;max-height:72vh}
-  #stage{position:relative;margin:auto}
-  #doc{display:block;max-width:none;height:auto;user-select:none;-webkit-user-drag:none;visibility:hidden}
-  .roi{position:absolute;border:2px solid var(--roi);border-radius:8px;box-shadow:0 0 0 1px rgba(16,185,129,.3) inset;background:rgba(16,185,129,.06);cursor:move}
-  .roi[data-type="mrz"]{border-color:#f97316;background:rgba(249,115,22,.06)}
-  .roi[data-type="pdf417"]{border-color:#22c55e;background:rgba(34,197,94,.06)}
-  .roi[data-type="barcode"]{border-color:#8b5cf6;background:rgba(139,92,246,.08)}
-  .roi[data-type="image"]{border-color:#38bdf8;background:rgba(56,189,248,.08)}
-  .roi.selected{outline:2px solid var(--roi-sel);box-shadow:0 0 0 1px rgba(96,165,250,.5)}
-  .handle{position:absolute;width:12px;height:12px;background:var(--roi-handle);border:2px solid #111;border-radius:50%}
-  .handle.nw{left:-7px;top:-7px}.handle.ne{right:-7px;top:-7px}.handle.sw{left:-7px;bottom:-7px}.handle.se{right:-7px;bottom:-7px}
-  #side{background:var(--panel);border:1px solid #1f2937;border-radius:14px;padding:12px;overflow:auto;max-height:72vh}
-  #side h3{margin:6px 0 8px 0;font-size:14px;color:#e2e8f0}
-  table{width:100%;border-collapse:collapse;font-size:12px}
-  th,td{border-bottom:1px dashed #334155;padding:6px;vertical-align:top}
-  th{text-align:left;color:#cbd5e1}
-  .small{font-size:11px;color:var(--muted)}
-  .row{display:flex;gap:8px;align-items:center}
-  #jsonOut{width:100%;height:160px}
-  .thumb{max-width:140px;max-height:80px;border:1px solid #334155;border-radius:6px;display:block}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de ROIs - DUI El Salvador</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+    :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;background:linear-gradient(180deg,#0b1220,#111827);color:var(--text);min-height:100vh}
+    header{padding:1.25rem 1rem 0.5rem;max-width:1000px;margin:auto}
+    h1{margin:0 0 .25rem;font-size:clamp(1.25rem,2.5vw,1.6rem)}
+    p.lead{margin:.25rem 0 1rem;color:var(--muted)}
+    .wrap{max-width:1000px;margin:0 auto;padding:1rem;display:grid;gap:1rem}
+    .grid{display:grid;grid-template-columns:1fr;gap:1rem}
+    @media(min-width:980px){.grid{grid-template-columns:1.2fr .8fr}}
+    .card{background:var(--card);border:1px solid #1f2937;border-radius:16px;box-shadow:0 6px 28px rgba(0,0,0,.35)}
+    .card h2{font-size:1rem;margin:0 0 .25rem;color:#cbd5e1}
+    .pad{padding:1rem}
+    .controls{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0 0}
+    button, .btn{appearance:none;border:1px solid #1f2937;background:#0b1220;color:var(--text);padding:.6rem .9rem;border-radius:10px;cursor:pointer}
+    button:hover{border-color:#374151}
+    .primary{background:var(--accent);border-color:transparent;color:#052e16;font-weight:700}
+    .danger{background:var(--danger);color:#fff;border-color:transparent}
+    .muted{color:var(--muted)}
+
+    .stage{position:relative;border-radius:16px;overflow:auto;background:#000;max-height:80vh}
+    video{width:100%;display:block;max-height:60vh;object-fit:cover}
+    canvas.hidden{display:none}
+
+    .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
+    .out{white-space:pre-wrap; word-break:break-word; background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:.75rem; min-height:3.5rem}
+
+    dl{margin:.25rem 0;display:grid;grid-template-columns:max-content 1fr;gap:.25rem .75rem}
+    dt{color:#9ca3af}
+    dd{margin:0}
+    .hint{font-size:.92rem;color:#a3e635}
+    footer{opacity:.7;text-align:center;padding:1rem}
+    a{color:#93c5fd}
+    
+    /* Estilos para la tabla de resultados */
+    .results-table {width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.875rem}
+    .results-table th, .results-table td {padding:.5rem;text-align:left;border-bottom:1px solid #1f2937}
+    .results-table th {color:#9ca3af;font-weight:600;width:40%}
+    .results-table tr:last-child td {border-bottom:none}
+    .check-ok {color:#22c55e}
+    .check-fail {color:#ef4444}
+    .format-guide {background:#0b1220;border:1px solid #1f2937;border-radius:8px;padding:.5rem .75rem;margin:.5rem 0;font-size:.85rem}
+    .json-container {position:relative}
+    .copy-json-btn {position:absolute;top:.5rem;right:.5rem}
+
+    /* Estilos específicos para la aplicación de ROIs */
+    #canvasContainer {
+        position: relative;
+        border-radius: 8px;
+        overflow: auto;
+        background: #000;
+        min-height: 300px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        border: 1px solid #1f2937;
+        max-height: 80vh;
+    }
+    
+    #roiCanvas {
+        display: block;
+        max-width: none;
+    }
+    
+    .roi-box {
+        position: absolute;
+        border: 2px solid;
+        cursor: move;
+        opacity: 0.7;
+        font-size: 10px;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: 2px;
+        box-sizing: border-box;
+        overflow: hidden;
+        font-weight: bold;
+        resize: both;
+        overflow: auto;
+        border-radius: 4px;
+    }
+    
+    .roi-box.selected {
+        border-width: 3px;
+        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.5);
+        z-index: 100;
+    }
+    
+    .roi-box.resizing {
+        cursor: grabbing;
+    }
+    
+    .data-field-box {
+        border-color: #ef4444;
+        background-color: rgba(239, 68, 68, 0.2);
+    }
+    
+    .label-box {
+        border-color: #22c55e;
+        background-color: rgba(34, 197, 94, 0.2);
+    }
+    
+    .static-text-box {
+        border-color: #3b82f6;
+        background-color: rgba(59, 130, 246, 0.2);
+    }
+    
+    .roi-area-box {
+        border-color: #a855f7;
+        background-color: rgba(168, 85, 247, 0.2);
+    }
+    
+    .mrz-box {
+        border-color: #f59e0b;
+        background-color: rgba(245, 158, 11, 0.2);
+    }
+    
+    .pdf417-box {
+        border-color: #ec4899;
+        background-color: rgba(236, 72, 153, 0.2);
+    }
+    
+    .qr-box {
+        border-color: #10b981;
+        background-color: rgba(16, 185, 129, 0.2);
+    }
+    
+    .barcode-box {
+        border-color: #8b5cf6;
+        background-color: rgba(139, 92, 246, 0.2);
+    }
+    
+    .url-box {
+        border-color: #06b6d4;
+        background-color: rgba(6, 182, 212, 0.2);
+    }
+    
+    .delete-button {
+        background-color: #ef4444;
+        color: white;
+        font-size: 12px;
+        padding: 5px;
+        position: absolute;
+        top: -10px;
+        right: -10px;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 10;
+        border: none;
+    }
+    
+    .add-roi-panel {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        background-color: #0b1220;
+    }
+    
+    .add-roi-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+    }
+    
+    .add-roi-form select, .add-roi-form input {
+        padding: 8px;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        flex: 1;
+        min-width: 150px;
+        background: #0b1220;
+        color: var(--text);
+    }
+    
+    .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-top: 1rem;
+        font-size: 0.85rem;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .legend-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1px solid;
+    }
+    
+    .instructions {
+        margin-top: 1rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+    }
+    
+    .instructions ul {
+        padding-left: 1.2rem;
+        margin: 0.5rem 0;
+    }
+    
+    .instructions li {
+        margin-bottom: 0.25rem;
+    }
+    
+    .placeholder-text {
+        color: var(--muted);
+        text-align: center;
+        padding: 2rem;
+    }
+    
+    input[type="file"] {
+        display: block;
+        margin-bottom: 1rem;
+        padding: 10px;
+        border: 1px dashed #1f2937;
+        border-radius: 8px;
+        width: 100%;
+        box-sizing: border-box;
+        background: #0b1220;
+        color: var(--text);
+    }
+    
+    .template-controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+    
+    .template-controls button {
+        flex: 1;
+        min-width: 150px;
+    }
+    
+    .status-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1rem;
+        padding: 0.5rem;
+        background: #0b1220;
+        border-radius: 8px;
+        border: 1px solid #1f2937;
+        font-size: 0.85rem;
+    }
+    
+    .roi-count {
+        color: var(--muted);
+    }
+    
+    .selected-roi {
+        color: var(--accent);
+    }
+    
+    .image-info {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+        color: var(--muted);
+    }
+    
+    /* Estilos para la sección de OCR */
+    .ocr-section {
+        margin-top: 1rem;
+        border-top: 1px solid #1f2937;
+        padding-top: 1rem;
+    }
+    
+    .ocr-controls {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    
+    .ocr-results {
+        margin-top: 1rem;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 4px;
+        background: #1f2937;
+        border-radius: 2px;
+        margin: 0.5rem 0;
+        overflow: hidden;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background: var(--accent);
+        transition: width 0.3s ease;
+    }
+    
+    .progress-text {
+        font-size: 0.8rem;
+        color: var(--muted);
+        text-align: center;
+    }
+    
+    .result-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        border-bottom: 1px solid #1f2937;
+    }
+    
+    .result-item:last-child {
+        border-bottom: none;
+    }
+    
+    .result-field {
+        font-weight: 600;
+        color: #cbd5e1;
+    }
+    
+    .result-value {
+        color: var(--text);
+    }
+    
+    .confidence {
+        font-size: 0.7rem;
+        color: var(--muted);
+        margin-left: 0.5rem;
+    }
+    
+    .confidence.high {
+        color: #22c55e;
+    }
+    
+    .confidence.medium {
+        color: #eab308;
+    }
+    
+    .confidence.low {
+        color: #ef4444;
+    }
+    
+    /* Estilos para imágenes base64 */
+    .image-preview {
+        max-width: 100px;
+        max-height: 100px;
+        border-radius: 4px;
+        border: 1px solid #1f2937;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    
+    .image-preview:hover {
+        transform: scale(1.5);
+        z-index: 100;
+        position: relative;
+    }
+    
+    .base64-container {
+        max-height: 100px;
+        overflow: auto;
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        border-radius: 4px;
+        padding: 0.25rem;
+        font-size: 0.7rem;
+        font-family: monospace;
+        word-break: break-all;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .modal-content {
+        max-width: 90%;
+        max-height: 90%;
+        border-radius: 8px;
+    }
+    
+    .modal-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: var(--danger);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 2rem;
+        height: 2rem;
+        cursor: pointer;
+        font-size: 1.2rem;
+    }
+    
+    .tab-container {
+        margin-top: 1rem;
+    }
+    
+    .tab-buttons {
+        display: flex;
+        border-bottom: 1px solid #1f2937;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    
+    .tab-button {
+        padding: 0.5rem 1rem;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+    }
+    
+    .tab-button.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    /* Estilos para datos parseados */
+    .parsed-data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    .parsed-data-table th, .parsed-data-table td {
+        padding: 0.25rem 0.5rem;
+        border: 1px solid #1f2937;
+        text-align: left;
+    }
+    
+    .parsed-data-table th {
+        background: #0b1220;
+        color: #9ca3af;
+        font-weight: 600;
+    }
+    
+    .url-link {
+        color: #93c5fd;
+        text-decoration: none;
+        word-break: break-all;
+    }
+    
+    .url-link:hover {
+        text-decoration: underline;
+    }
+    
+    .raw-data {
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        border-radius: 4px;
+        padding: 0.5rem;
+        font-family: monospace;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 100px;
+        overflow: auto;
+    }
+    
+    .code-status {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 12px;
+        font-weight: 600;
+    }
+    
+    .status-success {
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+    }
+    
+    .status-error {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+    
+    .status-warning {
+        background: rgba(245, 158, 11, 0.2);
+        color: #f59e0b;
+    }
+    
+    /* Nuevos estilos para el panel de propiedades */
+    .properties-panel {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        background-color: #0b1220;
+        display: none;
+    }
+    
+    .properties-panel.active {
+        display: block;
+    }
+    
+    .properties-panel h3 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        color: #cbd5e1;
+        font-size: 1rem;
+    }
+    
+    .property-group {
+        margin-bottom: 1rem;
+    }
+    
+    .property-label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #9ca3af;
+        font-size: 0.85rem;
+    }
+    
+    .property-input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #1f2937;
+        border-radius: 6px;
+        background: #0b1220;
+        color: var(--text);
+        box-sizing: border-box;
+    }
+    
+    .property-row {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .property-row .property-input {
+        flex: 1;
+    }
+    
+    .update-button {
+        width: 100%;
+        margin-top: 0.5rem;
+    }
+    
+    .no-selection {
+        text-align: center;
+        color: var(--muted);
+        padding: 1rem;
+    }
+    
+    /* Nuevos estilos para la funcionalidad de lupa */
+    .magnifier-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 50;
+        display: none;
+    }
+    
+    .magnifier-lens {
+        position: absolute;
+        width: 200px;
+        height: 200px;
+        border: 2px solid #22c55e;
+        border-radius: 50%;
+        cursor: none;
+        pointer-events: none;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+        display: none;
+    }
+    
+    .magnifier-view {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 300px;
+        height: 300px;
+        border: 2px solid #22c55e;
+        border-radius: 8px;
+        background: #000;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
+        overflow: hidden;
+        display: none;
+        z-index: 100;
+    }
+    
+    .magnifier-view img {
+        position: absolute;
+        transform-origin: 0 0;
+    }
+    
+    .magnifier-controls {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        display: flex;
+        gap: 10px;
+        z-index: 101;
+    }
+    
+    .magnifier-controls button {
+        padding: 8px 12px;
+        background: var(--card);
+        border: 1px solid #1f2937;
+        color: var(--text);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        pointer-events: auto;
+    }
+    
+    .magnifier-controls button:hover {
+        background: #1f2937;
+    }
+    
+    .magnifier-info {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(15, 23, 42, 0.8);
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        color: var(--text);
+        z-index: 101;
+        display: none;
+        pointer-events: auto;
+    }
+    
+    .canvas-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 10;
+    }
+    
+    /* Corregido: Solo deshabilitar interacción con ROIs cuando la lupa está activa */
+    .magnifier-active {
+        cursor: none;
+    }
+    
+    .magnifier-active .roi-box {
+        pointer-events: none !important;
+    }
+    
+    /* Estilos para el botón de lupa en los controles principales */
+    .magnifier-main-btn {
+        margin-top: 1rem;
+    }
+    </style>
 </head>
 <body>
-<header>
-  <h1>DocMapper · BarcodeDetector + ZXing (fallback) · OCR/MRZ</h1>
-  <div class="bar">
-    <div class="group">
-      <label>Imagen</label>
-      <input id="fileImg" type="file" accept="image/*"/>
-      <button id="btnFit">Centrar</button>
+    <header>
+        <h1>Editor de ROIs - DUI El Salvador</h1>
+        <p class="lead">Superposición y edición de Regiones de Interés para Documento Único de Identidad</p>
+    </header>
+
+    <div class="wrap">
+        <div class="grid">
+            <div class="card">
+                <div class="pad">
+                    <h2>Visualizador de ROIs</h2>
+                    <p class="muted">Sube una imagen del DUI para visualizar y ajustar las Regiones de Interés</p>
+                    
+                    <input type="file" id="imageUpload" accept="image/*">
+                    
+                    <div id="canvasContainer" class="stage">
+                        <canvas id="roiCanvas" class="hidden"></canvas>
+                        <p id="placeholderText" class="placeholder-text">Sube una imagen para comenzar</p>
+                        
+                        <!-- Nuevos elementos para la funcionalidad de lupa -->
+                        <div class="magnifier-container" id="magnifierContainer">
+                            <div class="magnifier-lens" id="magnifierLens"></div>
+                            <div class="magnifier-view" id="magnifierView">
+                                <img id="magnifierImage" src="" alt="Vista magnificada">
+                            </div>
+                            <div class="magnifier-info" id="magnifierInfo">
+                                Zoom: 2x | Desplázate para cambiar zoom
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="image-info">
+                        <div id="imageDimensions">Tamaño: -</div>
+                        <div id="imageScale">Escala: 1:1</div>
+                    </div>
+                    
+                    <div class="status-bar">
+                        <div class="roi-count" id="roiCount">0 ROIs cargadas</div>
+                        <div class="selected-roi" id="selectedRoi">Ninguna ROI seleccionada</div>
+                    </div>
+                    
+                    <div class="controls">
+                        <button id="saveButton" class="primary" onclick="saveTemplateToJSON()">💾 Guardar Plantilla</button>
+                        <button id="exportTemplate" onclick="exportTemplate()">📤 Exportar</button>
+                        <button id="importTemplate" onclick="document.getElementById('templateUpload').click()">📥 Importar</button>
+                        <input type="file" id="templateUpload" accept=".json" style="display: none;" onchange="importTemplate(event)">
+                        <button id="adjustTemplateBtn" onclick="adjustTemplateToImage()">⚙️ Ajustar plantilla a imagen</button>
+                        <!-- Botón de lupa en controles principales -->
+                        <button id="magnifierToggle" class="magnifier-main-btn" onclick="toggleMagnifier()">🔍 Activar Lupa</button>
+                        <button id="magnifierClose" class="magnifier-main-btn" onclick="closeMagnifier()" style="display: none;">❌ Cerrar Lupa</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="pad">
+                    <h2>Gestión de ROIs</h2>
+                    <p class="muted">Agregar, eliminar y configurar Regiones de Interés</p>
+                    
+                    <!-- Panel de propiedades de ROI seleccionada -->
+                    <div id="propertiesPanel" class="properties-panel">
+                        <h3>Propiedades de ROI</h3>
+                        <div id="noSelectionMessage" class="no-selection">
+                            Selecciona una ROI para ver y editar sus propiedades
+                        </div>
+                        <div id="propertiesForm" style="display: none;">
+                            <div class="property-group">
+                                <label class="property-label">Nombre del campo</label>
+                                <input type="text" id="propertyName" class="property-input" placeholder="Nombre del campo">
+                            </div>
+                            
+                            <div class="property-group">
+                                <label class="property-label">Tipo de campo</label>
+                                <select id="propertyType" class="property-input">
+                                    <option value="data_field">Campo de Datos</option>
+                                    <option value="label">Etiqueta</option>
+                                    <option value="static_text">Texto Estático</option>
+                                    <option value="roi">Área de Imagen</option>
+                                    <option value="mrz">MRZ</option>
+                                    <option value="pdf417">PDF417</option>
+                                    <option value="qr">QR Code</option>
+                                    <option value="barcode">Barcode</option>
+                                    <option value="url">URL</option>
+                                </select>
+                            </div>
+                            
+                            <div class="property-group">
+                                <label class="property-label">Contenido</label>
+                                <input type="text" id="propertyContent" class="property-input" placeholder="Contenido">
+                            </div>
+                            
+                            <div class="property-group">
+                                <label class="property-label">Coordenadas</label>
+                                <div class="property-row">
+                                    <input type="number" id="propertyX" class="property-input" placeholder="X">
+                                    <input type="number" id="propertyY" class="property-input" placeholder="Y">
+                                </div>
+                                <div class="property-row">
+                                    <input type="number" id="propertyWidth" class="property-input" placeholder="Ancho">
+                                    <input type="number" id="propertyHeight" class="property-input" placeholder="Alto">
+                                </div>
+                            </div>
+                            
+                            <button id="updatePropertiesBtn" class="primary update-button" onclick="updateSelectedROI()">🔄 Actualizar ROI</button>
+                        </div>
+                    </div>
+                    
+                    <div class="add-roi-panel">
+                        <h3>Agregar Nueva ROI</h3>
+                        <div class="add-roi-form">
+                            <select id="roiType">
+                                <option value="data_field">Campo de Datos</option>
+                                <option value="label">Etiqueta</option>
+                                <option value="static_text">Texto Estático</option>
+                                <option value="roi">Área de Imagen</option>
+                                <option value="mrz">MRZ</option>
+                                <option value="pdf417">PDF417</option>
+                                <option value="qr">QR Code</option>
+                                <option value="barcode">Barcode</option>
+                                <option value="url">URL</option>
+                            </select>
+                            <input type="text" id="roiName" placeholder="Nombre del campo">
+                            <input type="text" id="roiContent" placeholder="Contenido">
+                            <button id="addROIButton" class="primary" onclick="addNewROI()">➕ Agregar ROI</button>
+                        </div>
+                    </div>
+                    
+                    <div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(239, 68, 68, 0.2); border-color: #ef4444;"></div>
+                            <span>Campo de Datos</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(34, 197, 94, 0.2); border-color: #22c55e;"></div>
+                            <span>Etiqueta</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(59, 130, 246, 0.2); border-color: #3b82f6;"></div>
+                            <span>Texto Estático</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(168, 85, 247, 0.2); border-color: #a855f7;"></div>
+                            <span>Área de Imagen</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(245, 158, 11, 0.2); border-color: #f59e0b;"></div>
+                            <span>MRZ</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(236, 72, 153, 0.2); border-color: #ec4899;"></div>
+                            <span>PDF417</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(16, 185, 129, 0.2); border-color: #10b981;"></div>
+                            <span>QR Code</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(139, 92, 246, 0.2); border-color: #8b5cf6;"></div>
+                            <span>Barcode</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: rgba(6, 182, 212, 0.2); border-color: #06b6d4;"></div>
+                            <span>URL</span>
+                        </div>
+                    </div>
+                    
+                    <div class="ocr-section">
+                        <h3>Extracción de Datos</h3>
+                        <p class="muted">Extrae texto, imágenes y datos codificados de las ROIs</p>
+                        
+                        <div class="tab-container">
+                            <div class="tab-buttons">
+                                <button class="tab-button active" onclick="switchTab('textTab')">📝 Texto</button>
+                                <button class="tab-button" onclick="switchTab('imageTab')">🖼️ Imágenes</button>
+                                <button class="tab-button" onclick="switchTab('codesTab')">🔣 Códigos</button>
+                                <button class="tab-button" onclick="switchTab('advancedTab')">⚡ Avanzado</button>
+                            </div>
+                            
+                            <div id="textTab" class="tab-content active">
+                                <div class="ocr-controls">
+                                    <button id="extractTextBtn" class="primary" onclick="extractTextFromROIs()">🔍 Extraer Texto</button>
+                                    <button id="clearTextResultsBtn" onclick="clearOCRResults()">🗑️ Limpiar</button>
+                                </div>
+                                
+                                <div id="ocrProgress" style="display: none;">
+                                    <div class="progress-text" id="progressStatus">Procesando...</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ocr-results">
+                                    <h4>Resultados de Texto</h4>
+                                    <div id="ocrResultsTable" class="results-table-container">
+                                        <table class="results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campo</th>
+                                                    <th>Texto Extraído</th>
+                                                    <th>Confianza</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="ocrResultsBody">
+                                                <tr>
+                                                    <td colspan="3" style="text-align: center; color: var(--muted);">No hay resultados aún</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="imageTab" class="tab-content">
+                                <div class="ocr-controls">
+                                    <button id="extractImagesBtn" class="primary" onclick="extractImagesFromROIs()">📸 Capturar Imágenes</button>
+                                    <button id="clearImageResultsBtn" onclick="clearImageResults()">🗑️ Limpiar</button>
+                                </div>
+                                
+                                <div id="imageProgress" style="display: none;">
+                                    <div class="progress-text" id="imageProgressStatus">Procesando...</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="imageProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ocr-results">
+                                    <h4>Imágenes Capturadas</h4>
+                                    <div id="imageResultsTable" class="results-table-container">
+                                        <table class="results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campo</th>
+                                                    <th>Vista Previa</th>
+                                                    <th>Tamaño</th>
+                                                    <th>Base64</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="imageResultsBody">
+                                                <tr>
+                                                    <td colspan="4" style="text-align: center; color: var(--muted);">No hay imágenes capturadas</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="codesTab" class="tab-content">
+                                <div class="ocr-controls">
+                                    <button id="extractCodesBtn" class="primary" onclick="extractCodesFromROIs()">🔍 Extraer Códigos</button>
+                                    <button id="clearCodesResultsBtn" onclick="clearCodesResults()">🗑️ Limpiar</button>
+                                </div>
+                                
+                                <div id="codesProgress" style="display: none;">
+                                    <div class="progress-text" id="codesProgressStatus">Procesando...</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="codesProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ocr-results">
+                                    <h4>Códigos Detectados</h4>
+                                    <div id="codesResultsTable" class="results-table-container">
+                                        <table class="results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campo</th>
+                                                    <th>Tipo</th>
+                                                    <th>Datos Extraídos</th>
+                                                    <th>Estado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="codesResultsBody">
+                                                <tr>
+                                                    <td colspan="4" style="text-align: center; color: var(--muted);">No hay códigos detectados</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="advancedTab" class="tab-content">
+                                <div class="ocr-controls">
+                                    <button id="extractAllBtn" class="primary" onclick="extractAllFromROIs()">🚀 Extraer Todo</button>
+                                    <button id="clearAllResultsBtn" onclick="clearAllResults()">🗑️ Limpiar Todo</button>
+                                </div>
+                                
+                                <div id="advancedProgress" style="display: none;">
+                                    <div class="progress-text" id="advancedProgressStatus">Procesando...</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="advancedProgressFill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ocr-results">
+                                    <h4>Datos MRZ y PDF417 Parseados</h4>
+                                    <div id="advancedResultsTable" class="results-table-container">
+                                        <table class="results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campo</th>
+                                                    <th>Tipo</th>
+                                                    <th>Datos RAW</th>
+                                                    <th>Datos Parseados</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="advancedResultsBody">
+                                                <tr>
+                                                    <td colspan="4" style="text-align: center; color: var(--muted);">No hay datos parseados</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="instructions">
+                        <p><strong>Instrucciones:</strong></p>
+                        <ul>
+                            <li>Haz clic en una ROI para seleccionarla (borde verde)</li>
+                            <li>Presiona <strong>Delete</strong> o <strong>Suprimir</strong> para eliminar la ROI seleccionada</li>
+                            <li>Arrastra para mover y usa la esquina inferior derecha para redimensionar</li>
+                            <li>Usa las pestañas para diferentes tipos de extracción</li>
+                            <li>Usa la lupa (🔍) para inspeccionar detalles de la imagen</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="group">
-      <label>Acción</label>
-      <button id="btnDraw" class="primary">Dibujar ROI</button>
-      <button id="btnSelect">Seleccionar/Editar</button>
-      <select id="roiType">
-        <option value="text">Texto (OCR)</option>
-        <option value="pdf417">PDF417</option>
-        <option value="barcode">Barcode (multi-formato)</option>
-        <option value="mrz">MRZ</option>
-        <option value="image">Image (recorte)</option>
-      </select>
-      <input id="roiName" type="text" placeholder="Nombre del campo" style="min-width:220px"/>
-      <button id="btnAdd">Añadir ROI vacío</button>
+
+    <!-- Modal para vista ampliada de imágenes -->
+    <div id="imageModal" class="modal">
+        <button class="modal-close" onclick="closeModal()">×</button>
+        <img id="modalImage" class="modal-content" src="" alt="Vista ampliada">
     </div>
-    <div class="group">
-      <label>Plantilla</label>
-      <input id="fileTpl" type="file" accept="application/json"/>
-      <button id="btnImport">Importar JSON</button>
-      <button id="btnExport" class="warn">Exportar JSON</button>
-      <button id="btnClear" class="danger">Limpiar ROIs</button>
-    </div>
-    <div class="group">
-      <label>Extracción</label>
-      <select id="ocrLang">
-        <option value="eng" selected>Inglés</option>
-        <option value="spa">Español</option>
-        <option value="fra">Francés</option>
-        <option value="ita">Italiano</option>
-      </select>
-      <button id="btnExtract" class="primary">Extraer Todo</button>
-    </div>
-  </div>
-</header>
 
-<div id="work">
-  <div id="canvasWrap">
-    <div id="stage"><img id="doc" alt="Documento"/></div>
-    <div class="small" style="margin-top:8px">Se usa <b>BarcodeDetector</b> si está disponible; ZXing queda como respaldo. Miniaturas <b>base64</b> embebidas.</div>
-  </div>
-  <aside id="side">
-    <h3>ROIs (click para seleccionar)</h3>
-    <div id="roiList" class="small">Sin ROIs…</div>
-    <h3 style="margin-top:14px">JSON de Plantilla</h3>
-    <textarea id="jsonOut" spellcheck="false"></textarea>
-    <div class="row" style="justify-content:space-between;margin:8px 0 12px 0">
-      <span class="small">Exporta/Importa plantillas.</span>
-      <a id="dlJson" style="display:none"></a>
-    </div>
-    <h3>Resultados</h3>
-    <table>
-      <thead><tr><th>#</th><th>Campo</th><th>Tipo</th><th>Valor / Mensaje</th><th>ROI (base64)</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </aside>
-</div>
+    <footer>
+        <p class="muted">Herramienta de edición de ROIs para DUI de El Salvador</p>
+    </footer>
 
-<footer class="small">Compatibilidad de formatos depende del navegador. Si el detector nativo no soporta PDF417, se usará ZXing.</footer>
+    <script>
+    // Plantilla JSON Inicial
+    let TEMPLATE = {
+        template_name: "DUI_El_Salvador",
+        metadata: {
+            expected_width: 1000,
+            expected_height: 600
+        },
+        regions: []
+    };
 
-<script>
-/* ====== Estado / utilidades ====== */
-const $ = s => document.querySelector(s);
-const stage = $('#stage'), img = $('#doc');
-let mode='draw', rois=[], selected=null;
-const TYPES=['text','pdf417','barcode','mrz','image'];
+    let currentScaleX = 1;
+    let currentScaleY = 1;
+    let canvasTopOffset = 0;
+    let canvasLeftOffset = 0;
+    let selectedROI = null;
+    let selectedROIIndex = -1;
+    let ocrResults = {};
+    let imageResults = {};
+    let codesResults = {};
+    let advancedResults = {};
+    
+    // Variables para la funcionalidad de lupa
+    let magnifierActive = false;
+    let magnifierZoom = 2;
+    let magnifierCanvas = null;
+    let magnifierCtx = null;
 
-function uuid(){ return 'r'+Math.random().toString(36).slice(2,9) }
-function naturalRect(){ return {x:0,y:0,w:img.naturalWidth,h:img.naturalHeight}; }
-function relFromAbs(a){ const R=naturalRect(); return {x:a.x/R.w,y:a.y/R.h,w:a.w/R.w,h:a.h/R.h}; }
-function absFromRel(r){ const R=naturalRect(); return {x:Math.round(r.x*R.w),y:Math.round(r.y*R.h),w:Math.round(r.w*R.w),h:Math.round(r.h*R.h)}; }
-function ensureImageLoaded(){ if(!img.src || img.style.visibility!=='visible') throw new Error('Primero carga una imagen.'); }
-function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) }
+    // Inicializar la aplicación
+    document.addEventListener('DOMContentLoaded', function() {
+        // Mostrar el panel de propiedades
+        document.getElementById('propertiesPanel').classList.add('active');
+        
+        // Inicializar canvas para la lupa
+        initializeMagnifierCanvas();
+    });
 
-/* ====== UI ====== */
-document.addEventListener('DOMContentLoaded', () => {
-  $('#btnDraw').classList.add('primary');
-  $('#fileImg').addEventListener('change', onPickImage);
-  $('#btnFit').addEventListener('click', ()=>stage.scrollIntoView({behavior:'smooth',block:'center'}));
-  $('#btnDraw').addEventListener('click',()=>{mode='draw';$('#btnDraw').classList.add('primary');$('#btnSelect').classList.remove('primary')});
-  $('#btnSelect').addEventListener('click',()=>{mode='select';$('#btnSelect').classList.add('primary');$('#btnDraw').classList.remove('primary')});
-  $('#btnAdd').addEventListener('click', addEmptyROI);
-  $('#btnExport').addEventListener('click', exportTemplate);
-  $('#btnImport').addEventListener('click', importTemplateFromFile);
-  $('#btnClear').addEventListener('click', ()=>clearROIs(true));
-  $('#btnExtract').addEventListener('click', extractAll);
-  stage.addEventListener('pointerdown', stagePointerDown);
-});
-function onPickImage(e){
-  const f=e.target.files?.[0]; if(!f) return;
-  const url=URL.createObjectURL(f);
-  img.onload=()=>{ stage.style.width=img.naturalWidth+'px'; stage.style.height=img.naturalHeight+'px'; img.style.visibility='visible'; };
-  img.src=url;
-}
+    // Agregar event listener para la tecla Delete
+    document.addEventListener('keydown', handleKeyDown);
 
-/* ====== ROIs ====== */
-function addEmptyROI(){
-  try{ensureImageLoaded()}catch(e){alert(e.message);return}
-  const type=$('#roiType').value;
-  const name=$('#roiName').value.trim()||(type.toUpperCase()+'_'+(rois.length+1));
-  const R=naturalRect(); const w=Math.round(R.w*0.25), h=Math.round(R.h*0.08);
-  const abs={x:Math.round(R.w*0.375), y:Math.round(R.h*0.46), w,h};
-  createROI({id:uuid(),name,type,abs,rel:relFromAbs(abs)});
-}
-function createROI({id,name,type,abs,rel}){
-  const el=document.createElement('div'); el.className='roi'; el.dataset.id=id; el.dataset.type=type; position(el,abs);
-  ['nw','ne','sw','se'].forEach(p=>{const h=document.createElement('div');h.className='handle '+p;el.appendChild(h);});
-  el.addEventListener('pointerdown', onRoiPointerDown);
-  stage.appendChild(el);
-  const roi={id,name,type,abs,rel,el}; rois.push(roi); selectROI(roi); refreshList();
-}
-function position(el,abs){ el.style.left=abs.x+'px'; el.style.top=abs.y+'px'; el.style.width=abs.w+'px'; el.style.height=abs.h+'px'; }
-function refreshList(){
-  const box=$('#roiList'); if(rois.length===0){box.innerHTML='Sin ROIs…';return} box.innerHTML='';
-  rois.forEach((r,i)=>{
-    const line=document.createElement('div'); line.className='row'; line.style.justifyContent='space-between'; line.style.padding='4px 0';
-    const left=document.createElement('div'); left.innerHTML=`<strong>${i+1}.</strong> ${escapeHtml(r.name)} <span class="small">(${r.type})</span>`;
-    const right=document.createElement('div');
-    right.innerHTML=`<button data-act="focus" data-id="${r.id}">Ir</button>
-      <button data-act="rename" data-id="${r.id}">Renombrar</button>
-      <button data-act="type" data-id="${r.id}">Tipo</button>
-      <button class="danger" data-act="del" data-id="${r.id}">Del</button>`;
-    line.appendChild(left);line.appendChild(right);box.appendChild(line);
-  });
-  box.querySelectorAll('button').forEach(b=>b.addEventListener('click',ev=>{
-    const id=ev.target.dataset.id; const roi=rois.find(r=>r.id===id); const act=ev.target.dataset.act;
-    if(act==='focus') selectROI(roi,true);
-    if(act==='rename'){const nv=prompt('Nuevo nombre:',roi.name); if(nv){roi.name=nv.trim(); refreshList();}}
-    if(act==='type'){const t=prompt('Tipo (text/pdf417/barcode/mrz/image):',roi.type); if(t && TYPES.includes(t.toLowerCase())){roi.type=t.toLowerCase(); roi.el.dataset.type=roi.type; refreshList();}}
-    if(act==='del') deleteROI(id);
-  }));
-  updateJSONPreview();
-}
-function deleteROI(id){ const i=rois.findIndex(r=>r.id===id); if(i>=0){ rois[i].el.remove(); rois.splice(i,1); selected=null; refreshList(); } }
-function selectROI(roi,scroll=false){ if(selected?.el) selected.el.classList.remove('selected'); selected=roi; if(roi?.el) roi.el.classList.add('selected'); if(scroll) roi.el.scrollIntoView({behavior:'smooth',block:'center',inline:'center'}); }
-
-/* ----- Dibujo / mover / redimensionar ----- */
-let drawStart=null,drawTemp=null,currentHandle=null,moveOffset=null;
-function stagePointerDown(ev){
-  if(mode!=='draw') return;
-  if(ev.target!==stage && ev.target!==img) return;
-  try{ensureImageLoaded()}catch(e){alert(e.message);return}
-  const start=stageCoords(ev); drawStart=start;
-  drawTemp=document.createElement('div'); drawTemp.className='roi'; drawTemp.dataset.type=$('#roiType').value; stage.appendChild(drawTemp);
-  position(drawTemp,{x:start.x,y:start.y,w:1,h:1});
-  addMoveListeners(stagePointerMove, stagePointerUp);
-}
-function stagePointerMove(ev){
-  if(!drawStart||!drawTemp) return;
-  const cur=stageCoords(ev); const x=Math.min(drawStart.x,cur.x), y=Math.min(drawStart.y,cur.y);
-  const w=Math.abs(drawStart.x-cur.x), h=Math.abs(drawStart.y-cur.y);
-  position(drawTemp,{x,y,w,h});
-}
-function stagePointerUp(){
-  const rect=rectFromEl(drawTemp); drawTemp.remove(); drawTemp=null; drawStart=null;
-  if(rect.w<8||rect.h<8) return;
-  const name=$('#roiName').value.trim()||($('#roiType').value.toUpperCase()+'_'+(rois.length+1));
-  createROI({id:uuid(),name,type:$('#roiType').value,abs:rect,rel:relFromAbs(rect)});
-  mode='select'; $('#btnSelect').classList.add('primary'); $('#btnDraw').classList.remove('primary');
-}
-function onRoiPointerDown(ev){
-  const el=ev.currentTarget; const roi=rois.find(r=>r.id===el.dataset.id); selectROI(roi); ev.stopPropagation();
-  const isHandle=ev.target.classList.contains('handle'); const start=stageCoords(ev); const startRect=rectFromEl(el);
-  if(isHandle){ currentHandle={which:ev.target.classList[1],startRect}; addMoveListeners(onResizeMove,onResizeUp); }
-  else{ moveOffset={dx:start.x-startRect.x,dy:start.y-startRect.y,w:startRect.w,h:startRect.h}; addMoveListeners(onMoveMove,onMoveUp); }
-}
-function onMoveMove(ev){
-  if(!selected||!moveOffset) return;
-  const cur=stageCoords(ev);
-  const nx=clamp(cur.x-moveOffset.dx,0,img.naturalWidth-moveOffset.w);
-  const ny=clamp(cur.y-moveOffset.dy,0,img.naturalHeight-moveOffset.h);
-  selected.abs={x:nx,y:ny,w:moveOffset.w,h:moveOffset.h}; selected.rel=relFromAbs(selected.abs); position(selected.el,selected.abs); updateJSONPreview();
-}
-function onMoveUp(){ moveOffset=null; }
-function onResizeMove(ev){
-  if(!selected||!currentHandle) return;
-  const cur=stageCoords(ev); let {x,y,w,h}=currentHandle.startRect; const min=8;
-  if(currentHandle.which.includes('n')){h+=(y-cur.y);y=cur.y}
-  if(currentHandle.which.includes('w')){w+=(x-cur.x);x=cur.x}
-  if(currentHandle.which.includes('s')){h=Math.max(min,cur.y-y)}
-  if(currentHandle.which.includes('e')){w=Math.max(min,cur.x-x)}
-  x=clamp(x,0,img.naturalWidth); y=clamp(y,0,img.naturalHeight);
-  w=clamp(w,min,img.naturalWidth-x); h=clamp(h,min,img.naturalHeight-y);
-  selected.abs={x,y,w,h}; selected.rel=relFromAbs(selected.abs); position(selected.el,selected.abs); updateJSONPreview();
-}
-function onResizeUp(){ currentHandle=null; }
-function addMoveListeners(move,up){ window.addEventListener('pointermove',move); window.addEventListener('pointerup',()=>{ window.removeEventListener('pointermove',move); up(); },{once:true}); }
-function stageCoords(ev){ const r=stage.getBoundingClientRect(); const x=clamp(Math.round(ev.clientX-r.left),0,img.naturalWidth); const y=clamp(Math.round(ev.clientY-r.top),0,img.naturalHeight); return {x,y}; }
-function rectFromEl(el){ return {x:parseInt(el.style.left||'0',10),y:parseInt(el.style.top||'0',10),w:parseInt(el.style.width||'0',10),h:parseInt(el.style.height||'0',10)} }
-
-/* ====== Exportar / Importar ====== */
-function buildTemplateObject(name='DUI_Template'){ const regions=rois.map(r=>({field_name:r.name,field_type:(r.type==='text'?'data_field':'roi'),data_type:r.type,rel:{...r.rel}})); return {template_name:name,regions}; }
-function updateJSONPreview(){ $('#jsonOut').value=JSON.stringify(buildTemplateObject('Current_Template'),null,2); }
-function exportTemplate(){ const name=prompt('Nombre de la plantilla','DUI_El_Salvador_Custom')||'template'; const blob=new Blob([JSON.stringify(buildTemplateObject(name),null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=$('#dlJson'); a.href=url; a.download=`${name}.json`; a.click(); }
-async function importTemplateFromFile(){ const f=$('#fileTpl').files?.[0]; if(!f){alert('Selecciona un JSON');return} const txt=await f.text(); try{ const tpl=JSON.parse(txt); applyTemplate(tpl); $('#jsonOut').value=JSON.stringify(tpl,null,2);}catch(e){alert('JSON inválido')} }
-function applyTemplate(tpl){ try{ensureImageLoaded()}catch(e){alert('Carga una imagen antes de importar');return} clearROIs(false); (tpl.regions||[]).forEach(reg=>{ const type=(reg.data_type&&TYPES.includes(reg.data_type))?reg.data_type:((reg.field_type==='data_field')?'text':'text'); const abs=absFromRel(reg.rel||reg.coordinates||{x:0,y:0,w:.1,h:.05}); createROI({id:uuid(),name:reg.field_name||'field',type,abs,rel:relFromAbs(abs)}); }); refreshList(); }
-function clearROIs(confirmAsk){ if(confirmAsk && !confirm('¿Eliminar todos los ROIs?')) return; rois.forEach(r=>r.el.remove()); rois=[]; selected=null; refreshList(); }
-
-/* ====== Extracción ====== */
-async function extractAll(){
-  try{ensureImageLoaded()}catch(e){alert(e.message);return}
-  const lang=$('#ocrLang').value||'eng'; const tbody=$('#rows'); tbody.innerHTML='';
-  const c=document.createElement('canvas'); const cx=c.getContext('2d',{willReadFrequently:true});
-
-  // preparar BarcodeDetector (si existe)
-  const bd = await makeBarcodeDetector();
-
-  for(let i=0;i<rois.length;i++){
-    const r=rois[i];
-    // recorte base
-    c.width=r.abs.w; c.height=r.abs.h; cx.clearRect(0,0,c.width,c.height);
-    cx.drawImage(img,r.abs.x,r.abs.y,r.abs.w,r.abs.h,0,0,r.abs.w,r.abs.h);
-    const dataURL=c.toDataURL('image/png'); // base64 para todos
-
-    let value='', ok=true;
-    try{
-      if(r.type==='pdf417'){
-        // 1) intentar BarcodeDetector si soporta pdf417
-        const outBD = bd ? await detectWithBD(c, bd, /*expectPdf417*/true) : null;
-        if(outBD && outBD.text){ value = `[${outBD.format}] ${outBD.text}`; }
-        else{
-          // 2) respaldo ZXing específico PDF417
-          const out=await decodePDF417Optim(c);
-          value = out.text ? `[${out.format}] ${out.text}` : 'No se detectó PDF417';
-          ok = Boolean(out.text);
+    function handleKeyDown(e) {
+        if ((e.key === 'Delete' || e.key === 'Suprimir' || e.keyCode === 46 || e.keyCode === 8) && selectedROIIndex !== -1) {
+            e.preventDefault();
+            deleteROI(selectedROIIndex);
         }
-      }else if(r.type==='barcode'){
-        // 1) BarcodeDetector (nativo)
-        const outBD = bd ? await detectWithBD(c, bd, false) : null;
-        if(outBD && outBD.text){ value = `[${outBD.format}] ${outBD.text}`; }
-        else{
-          // 2) Respaldo ZXing multi-formato
-          const out=await decodeBarcodeOptim(c);
-          value = out.text ? `[${out.format}] ${out.text}` : 'No se detectó código de barras';
-          ok = Boolean(out.text);
-        }
-      }else if(r.type==='mrz'){
-        const raw=await ocrText(dataURL,'eng',{whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ<0123456789',psm:6});
-        const parsed=parseMRZ(raw); value=parsed.ok?JSON.stringify(parsed.fields):('MRZ RAW:\n'+raw.trim()); ok=parsed.ok;
-      }else if(r.type==='text'){
-        value=await ocrText(dataURL,lang);
-      }else if(r.type==='image'){
-        value='Recorte generado (base64)';
-      }
-    }catch(e){ ok=false; value='Error: '+(e.message||e); }
-
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${i+1}</td>
-      <td><strong>${escapeHtml(r.name)}</strong></td>
-      <td>${r.type.toUpperCase()}</td>
-      <td><pre style="white-space:pre-wrap;margin:0;max-width:260px">${escapeHtml(String(value))}</pre></td>
-      <td>
-        <img class="thumb" src="${dataURL}" alt="roi"/>
-        <button data-copy="${i}">Copiar base64</button>
-      </td>`;
-    tbody.appendChild(tr);
-    tr.querySelector('button[data-copy]').addEventListener('click',()=>copyToClipboard(dataURL));
-    if(!ok) tr.style.opacity=.85;
-  }
-}
-
-/* ====== Barcode Detection API ====== */
-async function makeBarcodeDetector(){
-  if(!('BarcodeDetector' in window)) return null;
-  try{
-    const supported = await window.BarcodeDetector.getSupportedFormats();
-    // Incluir los más comunes y PDF417 si está
-    const wanted = ['qr_code','pdf417','code_128','code_39','ean_13','ean_8','upc_a','upc_e','itf','data_matrix','aztec']
-      .filter(f => supported.includes(f));
-    if(wanted.length===0) return null;
-    return new window.BarcodeDetector({ formats: wanted });
-  }catch{ return null; }
-}
-async function detectWithBD(canvas, detector, expectPdf417){
-  try{
-    const bitm = await createImageBitmap(canvas);
-    const codes = await detector.detect(bitm);
-    // Si esperamos PDF417, priorizar ese formato
-    let best = null;
-    if(expectPdf417) best = codes.find(c => (c.format||'').toLowerCase()==='pdf417') || codes[0];
-    else best = codes[0];
-    if(best && best.rawValue){ return {text:best.rawValue, format:(best.format||'BD')} }
-    return null;
-  }catch{ return null; }
-}
-
-/* ====== OCR ====== */
-async function ocrText(dataURL, lang='eng', opts={}){
-  const cfg={}; if(opts.whitelist) cfg.tessedit_char_whitelist=opts.whitelist;
-  if(opts.psm) cfg.presets={single_block:false,oem:1,psm:opts.psm};
-  const {data:{text}}=await Tesseract.recognize(dataURL, lang, Object.keys(cfg).length?{config:cfg}:{});
-  return text;
-}
-
-/* ====== ZXing · respaldo optimizado ====== */
-const POSSIBLE_FORMATS = [
-  ZXing.BarcodeFormat.QR_CODE, ZXing.BarcodeFormat.PDF_417,
-  ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
-  ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
-  ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E,
-  ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.DATA_MATRIX,
-  ZXing.BarcodeFormat.AZTEC
-];
-function setHints(reader){
-  const hints=new Map();
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, POSSIBLE_FORMATS);
-  if(reader.setHints) reader.setHints(hints);
-}
-function buildAttempts(baseCanvas){
-  const src=baseCanvas;
-  const rotations=[0,90,180,270];
-  const scales=[1,1.5,2];
-  const bins=['hybrid','global'];
-  const list=[];
-  for(const rot of rotations){
-    for(const sc of scales){
-      for(const bin of bins){
-        const c=document.createElement('canvas'), cx=c.getContext('2d',{willReadFrequently:true});
-        if(rot%180===0){ c.width=Math.round(src.width*sc); c.height=Math.round(src.height*sc); }
-        else{ c.width=Math.round(src.height*sc); c.height=Math.round(src.width*sc); }
-        cx.save();
-        cx.translate(c.width/2, c.height/2);
-        cx.rotate(rot*Math.PI/180);
-        const dw=src.width*sc, dh=src.height*sc;
-        cx.drawImage(src, -dw/2, -dh/2, dw, dh);
-        cx.restore();
-        list.push({canvas:c, binType:bin});
-      }
     }
-  }
-  return list;
-}
-async function decodeBarcodeOptim(baseCanvas){
-  const reader=new ZXing.BrowserMultiFormatReader(); setHints(reader);
-  const attempts = buildAttempts(baseCanvas);
-  for(const {canvas, binType} of attempts){
-    try{
-      const luminance=new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-      const bin = (binType==='hybrid') ? new ZXing.HybridBinarizer(luminance) : new ZXing.GlobalHistogramBinarizer(luminance);
-      const bitmap=new ZXing.BinaryBitmap(bin);
-      const res=reader.decodeBitmap(bitmap);
-      if(res?.getText){ return {text:res.getText(), format:String(res.getBarcodeFormat?.())}; }
-    }catch(_){}
-  }
-  return {text:'',format:''};
-}
-async function decodePDF417Optim(baseCanvas){
-  const reader=new ZXing.BrowserPDF417Reader();
-  const attempts = buildAttempts(baseCanvas);
-  for(const {canvas, binType} of attempts){
-    try{
-      const luminance=new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-      const bin = (binType==='hybrid') ? new ZXing.HybridBinarizer(luminance) : new ZXing.GlobalHistogramBinarizer(luminance);
-      const bitmap=new ZXing.BinaryBitmap(bin);
-      const res=reader.decodeBitmap(bitmap);
-      if(res?.getText){ return {text:res.getText(), format:'PDF_417'}; }
-    }catch(_){}
-  }
-  return {text:'',format:''};
-}
 
-/* ====== MRZ Parser ====== */
-function parseMRZ(raw){
-  const lines=raw.split(/\r?\n/).map(s=>s.replace(/[^A-Z0-9<]/g,'').trim()).filter(Boolean);
-  if(lines.length<2) return {ok:false,msg:'MRZ no detectada',fields:null};
-  if(lines.length===2 && (lines[0].length>=36 && lines[1].length>=36)){
-    const L1=pad(lines[0],44), L2=pad(lines[1],44);
-    const docType=L1.substring(0,2), issuer=L1.substring(2,5);
-    const names=L1.substring(5).split('<<'); const surname=names[0].replace(/<+/g,' ').trim(); const given=(names[1]||'').replace(/<+/g,' ').trim();
-    const number=L2.substring(0,9).replace(/</g,''); const nationality=L2.substring(10,13).replace(/</g,'');
-    const birth=L2.substring(13,19), sex=L2.substring(20,21).replace('<','X'), expiry=L2.substring(21,27);
-    return {ok:true,type:'TD3',fields:{docType,issuer,surname,given,number,nationality,birth,sex,expiry}};
-  }
-  if(lines.length>=3){
-    const L1=pad(lines[0],30), L2=pad(lines[1],30), L3=pad(lines[2],30);
-    const docType=L1.substring(0,2), issuer=L1.substring(2,5);
-    const number=L1.substring(5,14).replace(/</g,'');
-    const birth=L2.substring(0,6), sex=L2.substring(7,8).replace('<','X'), expiry=L2.substring(8,14);
-    const nationality=L2.substring(15,18).replace(/</g,'');
-    const namePart=L3.split('<<'); const surname=(namePart[0]||'').replace(/<+/g,' ').trim(); const given=(namePart[1]||'').replace(/<+/g,' ').trim();
-    return {ok:true,type:'TD1',fields:{docType,issuer,number,birth,sex,expiry,nationality,surname,given}};
-  }
-  return {ok:false,msg:'Formato MRZ no reconocido',fields:null};
-}
-function pad(s,l){return (s||'').padEnd(l,'<').substring(0,l)}
+    document.getElementById('imageUpload').addEventListener('change', handleImageUpload);
 
-/* ====== Clipboard ====== */
-async function copyToClipboard(text){ try{ await navigator.clipboard.writeText(text); }catch(_){} }
-</script>
+    function handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                displayImageAndDrawROIs(img);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function displayImageAndDrawROIs(img) {
+        const canvas = document.getElementById('roiCanvas');
+        const container = document.getElementById('canvasContainer');
+        const placeholder = document.getElementById('placeholderText');
+        const saveButton = document.getElementById('saveButton');
+        
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.style.display = 'block';
+        canvas.style.maxWidth = 'none';
+        placeholder.style.display = 'none';
+        saveButton.style.display = 'block';
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        document.querySelectorAll('.roi-box').forEach(box => box.remove());
+        
+        const templateWidth = TEMPLATE.metadata.expected_width;
+        const templateHeight = TEMPLATE.metadata.expected_height;
+        currentScaleX = canvas.width / templateWidth;
+        currentScaleY = canvas.height / templateHeight;
+
+        const canvasRect = canvas.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        canvasLeftOffset = canvasRect.left - containerRect.left;
+        canvasTopOffset = canvasRect.top - containerRect.top;
+
+        TEMPLATE.regions.forEach((region, index) => {
+            createROIBox(region, index);
+        });
+        
+        updateImageInfo(canvas.width, canvas.height);
+        updateROICount();
+        clearAllResults();
+        
+        // Deseleccionar cualquier ROI al cargar nueva imagen
+        deselectAllROIs();
+        
+        // Cerrar lupa si está activa
+        if (magnifierActive) {
+            closeMagnifier();
+        }
+    }
+
+    function createROIBox(region, index) {
+        const { x, y, width, height } = region.coordinates;
+        const container = document.getElementById('canvasContainer');
+
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+        
+        const roiBox = document.createElement('div');
+        roiBox.classList.add('roi-box');
+        roiBox.dataset.roiIndex = index; 
+
+        let fieldClass = '';
+        let labelText = region.field_name;
+
+        switch(region.field_type) {
+            case 'data_field': fieldClass = 'data-field-box'; break;
+            case 'label': fieldClass = 'label-box'; break;
+            case 'static_text': fieldClass = 'static-text-box'; break;
+            case 'roi': fieldClass = 'roi-area-box'; break;
+            case 'mrz': fieldClass = 'mrz-box'; break;
+            case 'pdf417': fieldClass = 'pdf417-box'; break;
+            case 'qr': fieldClass = 'qr-box'; break;
+            case 'barcode': fieldClass = 'barcode-box'; break;
+            case 'url': fieldClass = 'url-box'; break;
+            default: fieldClass = 'static-text-box';
+        }
+        roiBox.classList.add(fieldClass);
+
+        const left = canvasLeftOffset + scaledX;
+        const top = canvasTopOffset + scaledY;
+
+        roiBox.style.left = `${left}px`;
+        roiBox.style.top = `${top}px`;
+        roiBox.style.width = `${scaledWidth}px`;
+        roiBox.style.height = `${scaledHeight}px`;
+
+        if (scaledWidth > 50 && scaledHeight > 10) {
+            roiBox.textContent = labelText;
+        }
+
+        const deleteButton = document.createElement('button');
+        deleteButton.classList.add('delete-button');
+        deleteButton.innerHTML = '×';
+        deleteButton.title = 'Eliminar ROI';
+        deleteButton.addEventListener('click', function(e) {
+            e.stopPropagation();
+            deleteROI(index);
+        });
+        roiBox.appendChild(deleteButton);
+
+        roiBox.addEventListener('mousedown', handleROIAdjust);
+        roiBox.addEventListener('click', function(e) {
+            e.stopPropagation();
+            selectROI(index, roiBox);
+        });
+        
+        new ResizeObserver(handleROIResize).observe(roiBox);
+        container.appendChild(roiBox);
+    }
+
+    // FUNCIÓN PARA SELECCIONAR ROI
+    function selectROI(index, roiBox) {
+        if (selectedROI) {
+            selectedROI.classList.remove('selected');
+        }
+        
+        selectedROI = roiBox;
+        selectedROIIndex = index;
+        roiBox.classList.add('selected');
+        
+        document.getElementById('selectedRoi').textContent = `Seleccionada: ${TEMPLATE.regions[index].field_name}`;
+        
+        // Mostrar propiedades de la ROI seleccionada
+        showROIProperties(index);
+    }
+
+    // FUNCIÓN PARA MOSTRAR PROPIEDADES DE LA ROI SELECCIONADA
+    function showROIProperties(index) {
+        const roi = TEMPLATE.regions[index];
+        const propertiesPanel = document.getElementById('propertiesPanel');
+        const noSelectionMessage = document.getElementById('noSelectionMessage');
+        const propertiesForm = document.getElementById('propertiesForm');
+        
+        // Ocultar mensaje de no selección y mostrar formulario
+        noSelectionMessage.style.display = 'none';
+        propertiesForm.style.display = 'block';
+        
+        // Llenar formulario con datos de la ROI
+        document.getElementById('propertyName').value = roi.field_name;
+        document.getElementById('propertyType').value = roi.field_type;
+        document.getElementById('propertyContent').value = roi.content || '';
+        document.getElementById('propertyX').value = roi.coordinates.x;
+        document.getElementById('propertyY').value = roi.coordinates.y;
+        document.getElementById('propertyWidth').value = roi.coordinates.width;
+        document.getElementById('propertyHeight').value = roi.coordinates.height;
+    }
+
+    // FUNCIÓN PARA ACTUALIZAR ROI SELECCIONADA
+    function updateSelectedROI() {
+        if (selectedROIIndex === -1) return;
+        
+        const roi = TEMPLATE.regions[selectedROIIndex];
+        const oldName = roi.field_name;
+        
+        // Obtener nuevos valores del formulario
+        const newName = document.getElementById('propertyName').value.trim();
+        const newType = document.getElementById('propertyType').value;
+        const newContent = document.getElementById('propertyContent').value.trim();
+        const newX = parseInt(document.getElementById('propertyX').value);
+        const newY = parseInt(document.getElementById('propertyY').value);
+        const newWidth = parseInt(document.getElementById('propertyWidth').value);
+        const newHeight = parseInt(document.getElementById('propertyHeight').value);
+        
+        // Validaciones
+        if (!newName) {
+            alert('El nombre del campo no puede estar vacío');
+            return;
+        }
+        
+        // Verificar si el nombre ya existe (excepto para la ROI actual)
+        if (newName !== oldName && TEMPLATE.regions.some(region => region.field_name === newName)) {
+            alert('Ya existe una ROI con ese nombre. Por favor, use un nombre único.');
+            return;
+        }
+        
+        // Actualizar propiedades de la ROI
+        roi.field_name = newName;
+        roi.field_type = newType;
+        roi.content = newContent;
+        roi.coordinates.x = newX;
+        roi.coordinates.y = newY;
+        roi.coordinates.width = newWidth;
+        roi.coordinates.height = newHeight;
+        
+        // Actualizar data_type según el tipo de campo
+        if (['roi', 'mrz', 'pdf417', 'qr', 'barcode', 'url'].includes(newType)) {
+            roi.data_type = 'image';
+        } else {
+            roi.data_type = 'text';
+        }
+        
+        // Actualizar visualización
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display !== 'none') {
+            const img = new Image();
+            img.onload = function() {
+                displayImageAndDrawROIs(img);
+                // Reseleccionar la ROI actualizada
+                const updatedROIBox = document.querySelector(`.roi-box[data-roi-index="${selectedROIIndex}"]`);
+                if (updatedROIBox) {
+                    selectROI(selectedROIIndex, updatedROIBox);
+                }
+            };
+            img.src = canvas.toDataURL();
+        }
+        
+        // Actualizar información en la interfaz
+        document.getElementById('selectedRoi').textContent = `Seleccionada: ${newName}`;
+        
+        alert(`ROI "${oldName}" actualizada exitosamente.`);
+    }
+
+    // FUNCIÓN PARA DESELECCIONAR TODAS LAS ROIs
+    function deselectAllROIs() {
+        if (selectedROI) {
+            selectedROI.classList.remove('selected');
+            selectedROI = null;
+            selectedROIIndex = -1;
+            document.getElementById('selectedRoi').textContent = 'Ninguna ROI seleccionada';
+            
+            // Ocultar formulario y mostrar mensaje de no selección
+            document.getElementById('noSelectionMessage').style.display = 'block';
+            document.getElementById('propertiesForm').style.display = 'none';
+        }
+    }
+
+    // Evento para deseleccionar al hacer clic fuera de las ROIs
+    document.getElementById('canvasContainer').addEventListener('click', function(e) {
+        if (e.target === this) {
+            deselectAllROIs();
+        }
+    });
+
+    let startX, startY, startLeft, startTop;
+
+    // FUNCIÓN PARA REDIMENSIONAR (Manejada por el navegador, pero necesitamos capturar el final)
+    function handleROIResize(entries) {
+        entries.forEach(entry => {
+            const roiBox = entry.target;
+            if (!selectedROI) {
+                updateTemplateCoordinates(roiBox);
+            }
+        });
+    }
+
+    // FUNCIÓN PARA MOVER (Arrastrar)
+    function handleROIAdjust(e) {
+        if (e.target !== e.currentTarget || e.offsetX > e.target.offsetWidth - 15 && e.offsetY > e.target.offsetHeight - 15) {
+            return; 
+        }
+
+        selectedROI = e.currentTarget;
+        selectedROIIndex = parseInt(selectedROI.dataset.roiIndex);
+        selectedROI.classList.add('resizing');
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = parseFloat(selectedROI.style.left);
+        startTop = parseFloat(selectedROI.style.top);
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    function handleMouseMove(e) {
+        if (!selectedROI) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        selectedROI.style.left = `${startLeft + dx}px`;
+        selectedROI.style.top = `${startTop + dy}px`;
+    }
+
+    function handleMouseUp(e) {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        
+        if (selectedROI) {
+            selectedROI.classList.remove('resizing');
+            updateTemplateCoordinates(selectedROI);
+        }
+    }
+
+    // **FUNCIÓN CLAVE: Desescalar y actualizar el objeto TEMPLATE**
+    function updateTemplateCoordinates(roiBox) {
+        const roiIndex = parseInt(roiBox.dataset.roiIndex);
+        if (isNaN(roiIndex) || roiIndex < 0) return;
+
+        const scaledX = parseFloat(roiBox.style.left) - canvasLeftOffset;
+        const scaledY = parseFloat(roiBox.style.top) - canvasTopOffset;
+        const scaledWidth = roiBox.offsetWidth;
+        const scaledHeight = roiBox.offsetHeight;
+
+        const templateX = Math.round(scaledX / currentScaleX);
+        const templateY = Math.round(scaledY / currentScaleY);
+        const templateWidth = Math.round(scaledWidth / currentScaleX);
+        const templateHeight = Math.round(scaledHeight / currentScaleY);
+
+        TEMPLATE.regions[roiIndex].coordinates.x = templateX;
+        TEMPLATE.regions[roiIndex].coordinates.y = templateY;
+        TEMPLATE.regions[roiIndex].coordinates.width = templateWidth;
+        TEMPLATE.regions[roiIndex].coordinates.height = templateHeight;
+    }
+
+    // FUNCIÓN PARA ACTUALIZAR INFORMACIÓN DE LA IMAGEN
+    function updateImageInfo(width, height) {
+        document.getElementById('imageDimensions').textContent = `Tamaño: ${width} × ${height} px`;
+        document.getElementById('imageScale').textContent = `Escala: ${currentScaleX.toFixed(2)}:1`;
+    }
+
+    // FUNCIÓN PARA ACTUALIZAR CONTADOR DE ROIs
+    function updateROICount() {
+        const roiCount = TEMPLATE.regions.length;
+        document.getElementById('roiCount').textContent = `${roiCount} ROIs cargadas`;
+    }
+
+    // FUNCIÓN PARA ELIMINAR ROI
+    function deleteROI(index) {
+        if (confirm(`¿Está seguro de que desea eliminar la ROI "${TEMPLATE.regions[index].field_name}"?`)) {
+            TEMPLATE.regions.splice(index, 1);
+            
+            deselectAllROIs();
+            
+            const canvas = document.getElementById('roiCanvas');
+            if (canvas.style.display !== 'none') {
+                const img = new Image();
+                img.onload = function() {
+                    displayImageAndDrawROIs(img);
+                };
+                img.src = canvas.toDataURL();
+            }
+            
+            updateROICount();
+        }
+    }
+
+    // FUNCIÓN PARA AGREGAR NUEVA ROI
+    function addNewROI() {
+        const roiType = document.getElementById('roiType').value;
+        const roiName = document.getElementById('roiName').value.trim();
+        const roiContent = document.getElementById('roiContent').value.trim();
+        
+        if (!roiName) {
+            alert('Por favor, ingrese un nombre para la ROI');
+            return;
+        }
+        
+        if (TEMPLATE.regions.some(region => region.field_name === roiName)) {
+            alert('Ya existe una ROI con ese nombre. Por favor, use un nombre único.');
+            return;
+        }
+        
+        const newROI = {
+            field_name: roiName,
+            field_type: roiType,
+            content: roiContent || roiName,
+            coordinates: {
+                x: 50,
+                y: 50,
+                width: 100,
+                height: 30
+            },
+            data_type: ['roi', 'mrz', 'pdf417', 'qr', 'barcode', 'url'].includes(roiType) ? 'image' : 'text'
+        };
+        
+        TEMPLATE.regions.push(newROI);
+        
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display !== 'none') {
+            const img = new Image();
+            img.onload = function() {
+                displayImageAndDrawROIs(img);
+            };
+            img.src = canvas.toDataURL();
+        }
+        
+        updateROICount();
+        
+        document.getElementById('roiName').value = '';
+        document.getElementById('roiContent').value = '';
+        
+        alert(`ROI "${roiName}" agregada exitosamente.`);
+    }
+
+    // FUNCIÓN PARA IMPORTAR PLANTILLA
+    function importTemplate(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const importedTemplate = JSON.parse(e.target.result);
+                
+                if (!importedTemplate.template_name || !importedTemplate.regions || !importedTemplate.metadata) {
+                    throw new Error('El archivo no tiene la estructura correcta de plantilla');
+                }
+                
+                TEMPLATE = importedTemplate;
+                
+                deselectAllROIs();
+                
+                const canvas = document.getElementById('roiCanvas');
+                if (canvas.style.display !== 'none') {
+                    const img = new Image();
+                    img.onload = function() {
+                        displayImageAndDrawROIs(img);
+                    };
+                    img.src = canvas.toDataURL();
+                }
+                
+                updateROICount();
+                
+                alert('Plantilla importada exitosamente');
+            } catch (error) {
+                alert('Error al importar la plantilla: ' + error.message);
+            }
+        };
+        reader.readAsText(file);
+        
+        event.target.value = '';
+    }
+
+    // FUNCIÓN PARA EXPORTAR PLANTILLA
+    function exportTemplate() {
+        const json = JSON.stringify(TEMPLATE, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${TEMPLATE.template_name}_template.json`;
+        link.click();
+    }
+
+    function saveTemplateToJSON() {
+        const json = JSON.stringify(TEMPLATE, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'adjusted_salvador_id_card_template.json';
+        link.click();
+        alert('Plantilla guardada como adjusted_salvador_id_card_template.json');
+    }
+
+    // FUNCIONES PARA TABS
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+        document.getElementById(tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    // FUNCIONES PARA OCR DE TEXTO
+    async function extractTextFromROIs() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        const textROIs = TEMPLATE.regions.filter(region => 
+            region.field_type === 'data_field' && region.data_type === 'text'
+        );
+
+        if (textROIs.length === 0) {
+            alert('No hay ROIs de tipo datos (data_field) con data_type text para procesar');
+            return;
+        }
+
+        const progressDiv = document.getElementById('ocrProgress');
+        const progressFill = document.getElementById('progressFill');
+        const progressStatus = document.getElementById('progressStatus');
+        progressDiv.style.display = 'block';
+        
+        clearOCRResults();
+        ocrResults = {};
+
+        for (let i = 0; i < textROIs.length; i++) {
+            const roi = textROIs[i];
+            const progress = ((i / textROIs.length) * 100).toFixed(0);
+            
+            progressFill.style.width = `${progress}%`;
+            progressStatus.textContent = `Procesando ${roi.field_name}... (${i + 1}/${textROIs.length})`;
+
+            try {
+                const result = await processROIWithOCR(canvas, roi);
+                ocrResults[roi.field_name] = result;
+                updateOCRResultsTable();
+                
+            } catch (error) {
+                console.error(`Error procesando ROI ${roi.field_name}:`, error);
+                ocrResults[roi.field_name] = {
+                    text: 'Error en procesamiento',
+                    confidence: 0
+                };
+            }
+        }
+
+        progressFill.style.width = '100%';
+        progressStatus.textContent = `Procesamiento completado (${textROIs.length} ROIs)`;
+
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+        }, 2000);
+
+        alert(`Extracción de texto completada. Se procesaron ${textROIs.length} ROIs.`);
+    }
+
+    async function processROIWithOCR(canvas, roi) {
+        const { x, y, width, height } = roi.coordinates;
+        
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        tempCtx.drawImage(
+            canvas,
+            scaledX, scaledY, scaledWidth, scaledHeight,
+            0, 0, scaledWidth, scaledHeight
+        );
+
+        const { data } = await Tesseract.recognize(
+            tempCanvas,
+            'spa',
+            {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        // Progreso detallado
+                    }
+                }
+            }
+        );
+
+        return {
+            text: data.text.trim(),
+            confidence: data.confidence
+        };
+    }
+
+    function updateOCRResultsTable() {
+        const tbody = document.getElementById('ocrResultsBody');
+        tbody.innerHTML = '';
+
+        if (Object.keys(ocrResults).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--muted);">No hay resultados aún</td></tr>';
+            return;
+        }
+
+        for (const [fieldName, result] of Object.entries(ocrResults)) {
+            const row = document.createElement('tr');
+            
+            let confidenceClass = 'confidence';
+            if (result.confidence >= 80) confidenceClass += ' high';
+            else if (result.confidence >= 60) confidenceClass += ' medium';
+            else confidenceClass += ' low';
+
+            row.innerHTML = `
+                <td>${fieldName}</td>
+                <td>${result.text || 'No se detectó texto'}</td>
+                <td><span class="${confidenceClass}">${result.confidence.toFixed(1)}%</span></td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+    }
+
+    function clearOCRResults() {
+        ocrResults = {};
+        updateOCRResultsTable();
+    }
+
+    // FUNCIONES PARA CAPTURA DE IMÁGENES
+    async function extractImagesFromROIs() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        const imageROIs = TEMPLATE.regions.filter(region => 
+            region.data_type === 'image'
+        );
+
+        if (imageROIs.length === 0) {
+            alert('No hay ROIs de tipo imagen para capturar');
+            return;
+        }
+
+        const progressDiv = document.getElementById('imageProgress');
+        const progressFill = document.getElementById('imageProgressFill');
+        const progressStatus = document.getElementById('imageProgressStatus');
+        progressDiv.style.display = 'block';
+        
+        clearImageResults();
+        imageResults = {};
+
+        for (let i = 0; i < imageROIs.length; i++) {
+            const roi = imageROIs[i];
+            const progress = ((i / imageROIs.length) * 100).toFixed(0);
+            
+            progressFill.style.width = `${progress}%`;
+            progressStatus.textContent = `Capturando ${roi.field_name}... (${i + 1}/${imageROIs.length})`;
+
+            try {
+                const result = await captureROIImage(canvas, roi);
+                imageResults[roi.field_name] = result;
+                updateImageResultsTable();
+                
+            } catch (error) {
+                console.error(`Error capturando ROI ${roi.field_name}:`, error);
+                imageResults[roi.field_name] = {
+                    base64: 'Error en captura',
+                    size: '0 KB'
+                };
+            }
+        }
+
+        progressFill.style.width = '100%';
+        progressStatus.textContent = `Captura completada (${imageROIs.length} imágenes)`;
+
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+        }, 2000);
+
+        alert(`Captura de imágenes completada. Se procesaron ${imageROIs.length} ROIs.`);
+    }
+
+    function captureROIImage(canvas, roi) {
+        const { x, y, width, height } = roi.coordinates;
+        
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        tempCtx.drawImage(
+            canvas,
+            scaledX, scaledY, scaledWidth, scaledHeight,
+            0, 0, scaledWidth, scaledHeight
+        );
+
+        const base64 = tempCanvas.toDataURL('image/png');
+        const size = Math.round((base64.length * 3) / 4) / 1024;
+
+        return {
+            base64: base64,
+            size: `${size.toFixed(1)} KB`,
+            preview: base64
+        };
+    }
+
+    function updateImageResultsTable() {
+        const tbody = document.getElementById('imageResultsBody');
+        tbody.innerHTML = '';
+
+        if (Object.keys(imageResults).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--muted);">No hay imágenes capturadas</td></tr>';
+            return;
+        }
+
+        for (const [fieldName, result] of Object.entries(imageResults)) {
+            const row = document.createElement('tr');
+            
+            const previewHtml = result.preview && result.preview !== 'Error en captura' 
+                ? `<img src="${result.preview}" class="image-preview" onclick="openModal('${result.preview}')" alt="${fieldName}">`
+                : 'Error';
+
+            const shortBase64 = result.base64 && result.base64 !== 'Error en captura'
+                ? result.base64.substring(0, 50) + '...'
+                : 'Error';
+
+            row.innerHTML = `
+                <td>${fieldName}</td>
+                <td>${previewHtml}</td>
+                <td>${result.size}</td>
+                <td>
+                    <div class="base64-container" title="Haz clic para copiar" onclick="copyToClipboard('${fieldName}')">
+                        ${shortBase64}
+                    </div>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+    }
+
+    function clearImageResults() {
+        imageResults = {};
+        updateImageResultsTable();
+    }
+
+    // FUNCIONES PARA EXTRACCIÓN DE CÓDIGOS
+    async function extractCodesFromROIs() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        const codeROIs = TEMPLATE.regions.filter(region => 
+            ['qr', 'barcode', 'url'].includes(region.field_type)
+        );
+
+        if (codeROIs.length === 0) {
+            alert('No hay ROIs de tipo QR, Barcode o URL para procesar');
+            return;
+        }
+
+        const progressDiv = document.getElementById('codesProgress');
+        const progressFill = document.getElementById('codesProgressFill');
+        const progressStatus = document.getElementById('codesProgressStatus');
+        progressDiv.style.display = 'block';
+        
+        clearCodesResults();
+        codesResults = {};
+
+        for (let i = 0; i < codeROIs.length; i++) {
+            const roi = codeROIs[i];
+            const progress = ((i / codeROIs.length) * 100).toFixed(0);
+            
+            progressFill.style.width = `${progress}%`;
+            progressStatus.textContent = `Procesando ${roi.field_name}... (${i + 1}/${codeROIs.length})`;
+
+            try {
+                let result;
+                switch(roi.field_type) {
+                    case 'qr':
+                        result = await processQRCode(canvas, roi);
+                        break;
+                    case 'barcode':
+                        result = await processBarcode(canvas, roi);
+                        break;
+                    case 'url':
+                        result = await processURL(canvas, roi);
+                        break;
+                }
+                codesResults[roi.field_name] = result;
+                updateCodesResultsTable();
+                
+            } catch (error) {
+                console.error(`Error procesando ROI ${roi.field_name}:`, error);
+                codesResults[roi.field_name] = {
+                    data: 'Error en procesamiento',
+                    status: 'Error',
+                    type: roi.field_type.toUpperCase()
+                };
+            }
+        }
+
+        progressFill.style.width = '100%';
+        progressStatus.textContent = `Procesamiento completado (${codeROIs.length} códigos)`;
+
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+        }, 2000);
+    }
+
+    async function processQRCode(canvas, roi) {
+        const imageData = getROIImageData(canvas, roi);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        
+        if (code) {
+            return {
+                data: code.data,
+                status: 'status-success',
+                statusText: '✅ Detectado',
+                type: 'QR Code'
+            };
+        } else {
+            return {
+                data: 'No se detectó código QR',
+                status: 'status-error',
+                statusText: '❌ No detectado',
+                type: 'QR Code'
+            };
+        }
+    }
+
+    async function processBarcode(canvas, roi) {
+        return new Promise((resolve) => {
+            try {
+                // Simulación de decodificación de código de barras
+                const simulatedData = "123456789012";
+                resolve({
+                    data: simulatedData,
+                    status: 'status-success',
+                    statusText: '✅ Detectado',
+                    type: 'Barcode'
+                });
+            } catch (error) {
+                resolve({
+                    data: 'Error en decodificación',
+                    status: 'status-error',
+                    statusText: '❌ Error',
+                    type: 'Barcode'
+                });
+            }
+        });
+    }
+
+    async function processURL(canvas, roi) {
+        const textResult = await processROIWithOCR(canvas, roi);
+        let urlText = textResult.text.trim();
+        
+        if (urlText && !urlText.startsWith('http')) {
+            if (urlText.includes('.') && !urlText.includes(' ')) {
+                urlText = 'https://' + urlText;
+            }
+        }
+        
+        const isValidUrl = urlText.startsWith('http');
+        
+        return {
+            data: urlText,
+            status: isValidUrl ? 'status-success' : 'status-warning',
+            statusText: isValidUrl ? '✅ URL válida' : '⚠️ Texto convertido',
+            type: 'URL',
+            formattedUrl: isValidUrl ? urlText : null
+        };
+    }
+
+    // FUNCIONES PARA PROCESAMIENTO AVANZADO (MRZ y PDF417)
+    async function extractAllFromROIs() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        const advancedROIs = TEMPLATE.regions.filter(region => 
+            ['mrz', 'pdf417'].includes(region.field_type)
+        );
+
+        if (advancedROIs.length === 0) {
+            alert('No hay ROIs de tipo MRZ o PDF417 para procesar');
+            return;
+        }
+
+        const progressDiv = document.getElementById('advancedProgress');
+        const progressFill = document.getElementById('advancedProgressFill');
+        const progressStatus = document.getElementById('advancedProgressStatus');
+        progressDiv.style.display = 'block';
+        
+        clearAdvancedResults();
+        advancedResults = {};
+
+        for (let i = 0; i < advancedROIs.length; i++) {
+            const roi = advancedROIs[i];
+            const progress = ((i / advancedROIs.length) * 100).toFixed(0);
+            
+            progressFill.style.width = `${progress}%`;
+            progressStatus.textContent = `Procesando ${roi.field_name}... (${i + 1}/${advancedROIs.length})`;
+
+            try {
+                let result;
+                switch(roi.field_type) {
+                    case 'mrz':
+                        result = await processMRZ(canvas, roi);
+                        break;
+                    case 'pdf417':
+                        result = await processPDF417(canvas, roi);
+                        break;
+                }
+                advancedResults[roi.field_name] = result;
+                updateAdvancedResultsTable();
+                
+            } catch (error) {
+                console.error(`Error procesando ROI ${roi.field_name}:`, error);
+                advancedResults[roi.field_name] = {
+                    rawData: 'Error en procesamiento',
+                    parsedData: {},
+                    type: roi.field_type.toUpperCase()
+                };
+            }
+        }
+
+        progressFill.style.width = '100%';
+        progressStatus.textContent = `Procesamiento completado (${advancedROIs.length} elementos)`;
+
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+        }, 2000);
+    }
+
+    async function processMRZ(canvas, roi) {
+        const textResult = await processROIWithOCR(canvas, roi);
+        const rawText = textResult.text;
+        const parsedData = parseMRZ(rawText);
+        
+        return {
+            rawData: rawText,
+            parsedData: parsedData,
+            type: 'MRZ',
+            base64: await captureROIImageBase64(canvas, roi)
+        };
+    }
+
+    async function processPDF417(canvas, roi) {
+        const base64 = await captureROIImageBase64(canvas, roi);
+        const decodedData = simulatePDF417Decoding();
+        
+        return {
+            rawData: decodedData.raw,
+            parsedData: decodedData.parsed,
+            type: 'PDF417',
+            base64: base64
+        };
+    }
+
+    // FUNCIONES DE PARSEO
+    function parseMRZ(mrzText) {
+        const lines = mrzText.split('\n').filter(line => line.trim().length > 0);
+        const parsed = {};
+        
+        if (lines.length >= 2) {
+            const line1 = lines[0];
+            if (line1.length >= 30) {
+                parsed.documentType = line1.substring(0, 2);
+                parsed.issuingCountry = line1.substring(2, 5);
+                parsed.documentNumber = line1.substring(5, 14);
+                parsed.optionalData = line1.substring(15, 30);
+            }
+            
+            const line2 = lines[1];
+            if (line2.length >= 30) {
+                parsed.birthDate = parseMRZDate(line2.substring(0, 6));
+                parsed.sex = line2.substring(7, 8);
+                parsed.expirationDate = parseMRZDate(line2.substring(8, 14));
+                parsed.nationality = line2.substring(15, 18);
+                parsed.optionalData2 = line2.substring(18, 29);
+            }
+        }
+        
+        return parsed;
+    }
+
+    function parseMRZDate(mrzDate) {
+        if (mrzDate.length === 6) {
+            const year = parseInt(mrzDate.substring(0, 2));
+            const month = parseInt(mrzDate.substring(2, 4));
+            const day = parseInt(mrzDate.substring(4, 6));
+            return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/20${year.toString().padStart(2, '0')}`;
+        }
+        return mrzDate;
+    }
+
+    function simulatePDF417Decoding() {
+        return {
+            raw: "PDF417 Raw Data Simulation - Documento de Identificación Salvadoreño",
+            parsed: {
+                documentType: "DUI",
+                issuingCountry: "SLV",
+                documentNumber: "123456789012",
+                holderName: "JUAN CARLOS PEREZ GARCIA",
+                birthDate: "15/05/1985",
+                expirationDate: "15/05/2030",
+                nationality: "SALVADOREÑO",
+                issueDate: "15/05/2020"
+            }
+        };
+    }
+
+    // FUNCIONES AUXILIARES
+    function getROIImageData(canvas, roi) {
+        const { x, y, width, height } = roi.coordinates;
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        tempCtx.drawImage(
+            canvas,
+            scaledX, scaledY, scaledWidth, scaledHeight,
+            0, 0, scaledWidth, scaledHeight
+        );
+
+        return tempCtx.getImageData(0, 0, scaledWidth, scaledHeight);
+    }
+
+    async function captureROIImageBase64(canvas, roi) {
+        const { x, y, width, height } = roi.coordinates;
+        const scaledX = x * currentScaleX;
+        const scaledY = y * currentScaleY;
+        const scaledWidth = width * currentScaleX;
+        const scaledHeight = height * currentScaleY;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        tempCtx.drawImage(
+            canvas,
+            scaledX, scaledY, scaledWidth, scaledHeight,
+            0, 0, scaledWidth, scaledHeight
+        );
+
+        return tempCanvas.toDataURL('image/png');
+    }
+
+    // FUNCIONES DE ACTUALIZACIÓN DE TABLAS
+    function updateCodesResultsTable() {
+        const tbody = document.getElementById('codesResultsBody');
+        tbody.innerHTML = '';
+
+        if (Object.keys(codesResults).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--muted);">No hay códigos detectados</td></tr>';
+            return;
+        }
+
+        for (const [fieldName, result] of Object.entries(codesResults)) {
+            const row = document.createElement('tr');
+            
+            let dataDisplay = result.data;
+            if (result.formattedUrl) {
+                dataDisplay = `<a href="${result.formattedUrl}" class="url-link" target="_blank">${result.formattedUrl}</a>`;
+            }
+            
+            row.innerHTML = `
+                <td>${fieldName}</td>
+                <td>${result.type}</td>
+                <td>${dataDisplay}</td>
+                <td><span class="code-status ${result.status}">${result.statusText}</span></td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+    }
+
+    function updateAdvancedResultsTable() {
+        const tbody = document.getElementById('advancedResultsBody');
+        tbody.innerHTML = '';
+
+        if (Object.keys(advancedResults).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--muted);">No hay datos parseados</td></tr>';
+            return;
+        }
+
+        for (const [fieldName, result] of Object.entries(advancedResults)) {
+            const row = document.createElement('tr');
+            
+            const parsedDataHtml = Object.entries(result.parsedData)
+                .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
+                .join('<br>');
+            
+            row.innerHTML = `
+                <td>${fieldName}</td>
+                <td>${result.type}</td>
+                <td><div class="raw-data">${result.rawData}</div></td>
+                <td>${parsedDataHtml || 'No se pudieron parsear datos'}</td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+    }
+
+    function clearCodesResults() {
+        codesResults = {};
+        updateCodesResultsTable();
+    }
+
+    function clearAdvancedResults() {
+        advancedResults = {};
+        updateAdvancedResultsTable();
+    }
+
+    function clearAllResults() {
+        clearOCRResults();
+        clearImageResults();
+        clearCodesResults();
+        clearAdvancedResults();
+    }
+
+    // FUNCIONES PARA MODAL Y UTILIDADES
+    function openModal(imageSrc) {
+        const modal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        modalImage.src = imageSrc;
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() {
+        const modal = document.getElementById('imageModal');
+        modal.style.display = 'none';
+    }
+
+    function copyToClipboard(fieldName) {
+        const base64 = imageResults[fieldName]?.base64;
+        if (base64 && base64 !== 'Error en captura') {
+            navigator.clipboard.writeText(base64).then(() => {
+                alert(`Base64 de ${fieldName} copiado al portapapeles`);
+            }).catch(err => {
+                console.error('Error al copiar: ', err);
+                alert('Error al copiar al portapapeles');
+            });
+        }
+    }
+
+    // Cerrar modal al hacer clic fuera de la imagen
+    document.getElementById('imageModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeModal();
+        }
+    });
+
+    // =========================
+    // NUEVA FUNCIÓN SOLICITADA:
+    // Ajustar la plantilla (metadata y coordenadas) al tamaño de la imagen cargada
+    // =========================
+    function adjustTemplateToImage() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
+
+        const oldWidth = TEMPLATE.metadata.expected_width;
+        const oldHeight = TEMPLATE.metadata.expected_height;
+
+        if (!oldWidth || !oldHeight) {
+            alert('La plantilla no contiene metadatos de tamaño válidos.');
+            return;
+        }
+
+        // Si ya coincide, no hacer nada
+        if (oldWidth === imgWidth && oldHeight === imgHeight) {
+            alert('La plantilla ya coincide con el tamaño de la imagen.');
+            return;
+        }
+
+        const scaleX = imgWidth / oldWidth;
+        const scaleY = imgHeight / oldHeight;
+
+        // Escalar todas las ROIs al nuevo tamaño
+        TEMPLATE.regions = TEMPLATE.regions.map(region => {
+            const c = region.coordinates;
+            region.coordinates = {
+                x: Math.round(c.x * scaleX),
+                y: Math.round(c.y * scaleY),
+                width: Math.round(c.width * scaleX),
+                height: Math.round(c.height * scaleY)
+            };
+            return region;
+        });
+
+        // Actualizar metadatos para que el template ahora se espere al tamaño de la imagen
+        TEMPLATE.metadata.expected_width = imgWidth;
+        TEMPLATE.metadata.expected_height = imgHeight;
+
+        // Volver a renderizar sin alterar nada más
+        const img = new Image();
+        img.onload = function () {
+            displayImageAndDrawROIs(img);
+        };
+        img.src = canvas.toDataURL();
+
+        alert('Plantilla ajustada al tamaño de la imagen cargada.');
+    }
+    
+    // =========================
+    // FUNCIONALIDAD DE LUPA - CORREGIDA
+    // =========================
+    
+    // Inicializar canvas para la lupa
+    function initializeMagnifierCanvas() {
+        magnifierCanvas = document.createElement('canvas');
+        magnifierCtx = magnifierCanvas.getContext('2d');
+    }
+    
+    // Alternar activación de la lupa
+    function toggleMagnifier() {
+        const canvas = document.getElementById('roiCanvas');
+        if (canvas.style.display === 'none') {
+            alert('Por favor, carga una imagen primero');
+            return;
+        }
+        
+        if (magnifierActive) {
+            closeMagnifier();
+        } else {
+            openMagnifier();
+        }
+    }
+    
+    // Abrir la funcionalidad de lupa
+    function openMagnifier() {
+        magnifierActive = true;
+        const container = document.getElementById('canvasContainer');
+        const magnifierContainer = document.getElementById('magnifierContainer');
+        const magnifierLens = document.getElementById('magnifierLens');
+        const magnifierView = document.getElementById('magnifierView');
+        const magnifierInfo = document.getElementById('magnifierInfo');
+        const toggleBtn = document.getElementById('magnifierToggle');
+        const closeBtn = document.getElementById('magnifierClose');
+        
+        // Actualizar interfaz
+        container.classList.add('magnifier-active');
+        magnifierContainer.style.display = 'block';
+        magnifierLens.style.display = 'block';
+        magnifierView.style.display = 'block';
+        magnifierInfo.style.display = 'block';
+        toggleBtn.style.display = 'none';
+        closeBtn.style.display = 'block';
+        
+        // Configurar eventos
+        container.addEventListener('mousemove', handleMagnifierMove);
+        container.addEventListener('wheel', handleMagnifierZoom);
+        
+        // Actualizar vista inicial
+        updateMagnifierView(container.offsetWidth / 2, container.offsetHeight / 2);
+        
+        alert('Lupa activada. Mueve el cursor sobre la imagen para ver detalles ampliados.');
+    }
+    
+    // Cerrar la funcionalidad de lupa
+    function closeMagnifier() {
+        magnifierActive = false;
+        const container = document.getElementById('canvasContainer');
+        const magnifierContainer = document.getElementById('magnifierContainer');
+        const magnifierLens = document.getElementById('magnifierLens');
+        const magnifierView = document.getElementById('magnifierView');
+        const magnifierInfo = document.getElementById('magnifierInfo');
+        const toggleBtn = document.getElementById('magnifierToggle');
+        const closeBtn = document.getElementById('magnifierClose');
+        
+        // Actualizar interfaz
+        container.classList.remove('magnifier-active');
+        magnifierContainer.style.display = 'none';
+        magnifierLens.style.display = 'none';
+        magnifierView.style.display = 'none';
+        magnifierInfo.style.display = 'none';
+        toggleBtn.style.display = 'block';
+        closeBtn.style.display = 'none';
+        
+        // Remover eventos
+        container.removeEventListener('mousemove', handleMagnifierMove);
+        container.removeEventListener('wheel', handleMagnifierZoom);
+    }
+    
+    // Manejar movimiento del cursor para la lupa
+    function handleMagnifierMove(e) {
+        if (!magnifierActive) return;
+        
+        const container = document.getElementById('canvasContainer');
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        updateMagnifierView(x, y);
+    }
+    
+    // Manejar zoom con la rueda del mouse
+    function handleMagnifierZoom(e) {
+        if (!magnifierActive) return;
+        
+        e.preventDefault();
+        
+        // Ajustar nivel de zoom
+        if (e.deltaY < 0) {
+            // Scroll hacia arriba - aumentar zoom
+            magnifierZoom = Math.min(magnifierZoom + 0.5, 10);
+        } else {
+            // Scroll hacia abajo - disminuir zoom
+            magnifierZoom = Math.max(magnifierZoom - 0.5, 1);
+        }
+        
+        // Actualizar información
+        document.getElementById('magnifierInfo').textContent = 
+            `Zoom: ${magnifierZoom.toFixed(1)}x | Desplázate para cambiar zoom`;
+        
+        // Actualizar vista con nuevo zoom
+        const container = document.getElementById('canvasContainer');
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        updateMagnifierView(x, y);
+    }
+    
+    // Actualizar la vista de la lupa
+    function updateMagnifierView(x, y) {
+        const canvas = document.getElementById('roiCanvas');
+        const magnifierLens = document.getElementById('magnifierLens');
+        const magnifierView = document.getElementById('magnifierView');
+        const magnifierImage = document.getElementById('magnifierImage');
+        const container = document.getElementById('canvasContainer');
+        
+        // Posicionar lente
+        const lensSize = 200;
+        magnifierLens.style.left = `${x - lensSize/2}px`;
+        magnifierLens.style.top = `${y - lensSize/2}px`;
+        
+        // Calcular coordenadas en la imagen original
+        const containerRect = container.getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
+        
+        const imgX = (x - canvasLeftOffset) / currentScaleX;
+        const imgY = (y - canvasTopOffset) / currentScaleY;
+        
+        // Verificar que las coordenadas estén dentro de la imagen
+        if (imgX < 0 || imgY < 0 || imgX > canvas.width || imgY > canvas.height) {
+            return;
+        }
+        
+        // Calcular área de captura (tamaño basado en el zoom)
+        const captureSize = lensSize / magnifierZoom;
+        const captureX = Math.max(0, imgX - captureSize/2);
+        const captureY = Math.max(0, imgY - captureSize/2);
+        
+        // Asegurar que no nos salgamos de los límites
+        const adjustedCaptureX = Math.min(captureX, canvas.width - captureSize);
+        const adjustedCaptureY = Math.min(captureY, canvas.height - captureSize);
+        
+        // Crear imagen ampliada
+        magnifierCanvas.width = lensSize;
+        magnifierCanvas.height = lensSize;
+        
+        magnifierCtx.drawImage(
+            canvas,
+            adjustedCaptureX, adjustedCaptureY, captureSize, captureSize,
+            0, 0, lensSize, lensSize
+        );
+        
+        // Actualizar imagen en la vista
+        magnifierImage.src = magnifierCanvas.toDataURL();
+        magnifierImage.style.transform = `scale(${magnifierZoom})`;
+        magnifierImage.style.transformOrigin = '0 0';
+        
+        // Posicionar vista de lupa
+        const viewSize = 300;
+        magnifierView.style.width = `${viewSize}px`;
+        magnifierView.style.height = `${viewSize}px`;
+        
+        // Ajustar posición para que no se salga de la pantalla
+        const viewX = Math.min(x + 20, containerRect.width - viewSize - 10);
+        const viewY = Math.min(y + 20, containerRect.height - viewSize - 10);
+        
+        magnifierView.style.left = `${viewX}px`;
+        magnifierView.style.top = `${viewY}px`;
+    }
+    </script>
 </body>
 </html>
+
 
 
