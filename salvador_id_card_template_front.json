@@ -1,137 +1,117 @@
 {
-  "template_name": "salvador_id_card_template_front",
+  "template_name": "DUI_El_Salvador",
+  "metadata": {
+    "expected_width": 1000,
+    "expected_height": 600
+  },
   "regions": [
     {
-      "field_name": "Surname",
+      "field_name": "Test",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.3359273670557717,
-        "y": 0.22587268993839835,
-        "w": 0.35797665369649806,
-        "h": 0.03490759753593429
-      }
+      "content": "Test",
+      "coordinates": {
+        "x": 329,
+        "y": 132,
+        "width": 410,
+        "height": 32
+      },
+      "data_type": "text"
     },
     {
-      "field_name": "Given_Names",
-      "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.33722438391699094,
-        "y": 0.324435318275154,
-        "w": 0.35797665369649806,
-        "h": 0.03490759753593429
-      }
-    },
-    {
-      "field_name": "Gender",
-      "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.3333333333333333,
-        "y": 0.45585215605749485,
-        "w": 0.02204928664072633,
-        "h": 0.03490759753593429
-      }
-    },
-    {
-      "field_name": "Salvadorean_By",
-      "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.4708171206225681,
-        "y": 0.45585215605749485,
-        "w": 0.251621271076524,
-        "h": 0.03285420944558522
-      }
-    },
-    {
-      "field_name": "Place_Of_Birth",
-      "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.3320363164721141,
-        "y": 0.5195071868583162,
-        "w": 0.2607003891050584,
-        "h": 0.03696098562628337
-      }
-    },
-    {
-      "field_name": "Date_Of_Birth",
-      "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.6044098573281452,
-        "y": 0.5195071868583162,
-        "w": 0.12710765239948119,
-        "h": 0.039014373716632446
-      }
-    },
-    {
-      "field_name": "Place_Of_Issuance",
-      "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.32944228274967574,
-        "y": 0.62217659137577,
-        "w": 0.2892347600518807,
-        "h": 0.03696098562628337
-      }
-    },
-    {
-      "field_name": "Date_Of_Issuance",
-      "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.6186770428015564,
-        "y": 0.62217659137577,
-        "w": 0.13359273670557717,
-        "h": 0.04722792607802875
-      }
-    },
-    {
-      "field_name": "Date_Of_Expiration",
-      "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.32555123216601817,
-        "y": 0.7186858316221766,
-        "w": 0.14137483787289234,
-        "h": 0.043121149897330596
-      }
+      "field_name": "Foto",
+      "field_type": "roi",
+      "content": "Foto",
+      "coordinates": {
+        "x": 36,
+        "y": 150,
+        "width": 279,
+        "height": 346
+      },
+      "data_type": "image"
     },
     {
       "field_name": "DUI",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.029831387808041506,
-        "y": 0.8952772073921971,
-        "w": 0.23994811932555124,
-        "h": 0.06776180698151951
-      }
+      "content": "DUI",
+      "coordinates": {
+        "x": 25,
+        "y": 534,
+        "width": 281,
+        "height": 38
+      },
+      "data_type": "text"
     },
     {
-      "field_name": "Foto",
+      "field_name": "Nombres",
       "field_type": "data_field",
-      "data_type": "image",
-      "rel": {
-        "x": 0.040207522697795074,
-        "y": 0.27104722792607805,
-        "w": 0.2814526588845655,
-        "h": 0.5626283367556468
-      }
+      "content": "Nombres",
+      "coordinates": {
+        "x": 330,
+        "y": 189,
+        "width": 409,
+        "height": 30
+      },
+      "data_type": "text"
     },
     {
-      "field_name": "Known_By",
+      "field_name": "Genero",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.3359273670557717,
-        "y": 0.38809034907597534,
-        "w": 0.3631647211413748,
-        "h": 0.03490759753593429
-      }
+      "content": "Genero",
+      "coordinates": {
+        "x": 326,
+        "y": 266,
+        "width": 100,
+        "height": 30
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "Nacimiento",
+      "field_type": "data_field",
+      "content": "Nacimiento",
+      "coordinates": {
+        "x": 466,
+        "y": 268,
+        "width": 208,
+        "height": 28
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "Lugar",
+      "field_type": "data_field",
+      "content": "Lugar",
+      "coordinates": {
+        "x": 325,
+        "y": 308,
+        "width": 427,
+        "height": 30
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "Expedicion",
+      "field_type": "data_field",
+      "content": "Expedicion",
+      "coordinates": {
+        "x": 325,
+        "y": 365,
+        "width": 435,
+        "height": 34
+      },
+      "data_type": "text"
+    },
+    {
+      "field_name": "Expiracion",
+      "field_type": "data_field",
+      "content": "Expiracion",
+      "coordinates": {
+        "x": 328,
+        "y": 429,
+        "width": 143,
+        "height": 33
+      },
+      "data_type": "text"
     }
   ]
 }
