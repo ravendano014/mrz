@@ -1,104 +1,117 @@
 {
-  "template_name": "salvador_id_card_template_back",
+  "template_name": "DUI_El_Salvador",
+  "metadata": {
+    "expected_width": 1000,
+    "expected_height": 600
+  },
   "regions": [
     {
       "field_name": "PDF417",
-      "field_type": "roi",
-      "data_type": "pdf417",
-      "rel": {
-        "x": 0.24773022049286642,
-        "y": 0.033402922755741124,
-        "w": 0.7146562905317769,
-        "h": 0.29227557411273486
-      }
+      "field_type": "pdf417",
+      "content": "PDF417",
+      "coordinates": {
+        "x": 239,
+        "y": 15,
+        "width": 732,
+        "height": 180
+      },
+      "data_type": "image"
     },
     {
-      "field_name": "State",
+      "field_name": "mrz",
+      "field_type": "mrz",
+      "content": "mrz",
+      "coordinates": {
+        "x": 40,
+        "y": 381,
+        "width": 903,
+        "height": 155
+      },
+      "data_type": "image"
+    },
+    {
+      "field_name": "Departamento",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.03372243839169909,
-        "y": 0.3736951983298539,
-        "w": 0.2230869001297017,
-        "h": 0.031315240083507306
-      }
+      "content": "Departamento",
+      "coordinates": {
+        "x": 32,
+        "y": 220,
+        "width": 176,
+        "height": 30
+      },
+      "data_type": "text"
     },
     {
-      "field_name": "City",
+      "field_name": "Municipio",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.03631647211413749,
-        "y": 0.4551148225469729,
-        "w": 0.22178988326848248,
-        "h": 0.031315240083507306
-      }
+      "content": "Municipio",
+      "coordinates": {
+        "x": 33,
+        "y": 267,
+        "width": 174,
+        "height": 30
+      },
+      "data_type": "text"
     },
     {
-      "field_name": "Profession",
+      "field_name": "Profesion",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.0324254215304799,
-        "y": 0.5386221294363257,
-        "w": 0.23086900129701687,
-        "h": 0.03966597077244259
-      }
+      "content": "Profesion",
+      "coordinates": {
+        "x": 32,
+        "y": 316,
+        "width": 236,
+        "height": 29
+      },
+      "data_type": "text"
     },
     {
-      "field_name": "MRZ",
-      "field_type": "roi",
-      "data_type": "mrz",
-      "rel": {
-        "x": 0.04928664072632944,
-        "y": 0.6409185803757829,
-        "w": 0.8910505836575876,
-        "h": 0.24425887265135698
-      }
-    },
-    {
-      "field_name": "Blood_Type",
+      "field_name": "Tipo_De_Sangre",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.3670557717250324,
-        "y": 0.36116910229645094,
-        "w": 0.22178988326848248,
-        "h": 0.04175365344467641
-      }
+      "content": "Tipo_De_Sangre",
+      "coordinates": {
+        "x": 361,
+        "y": 215,
+        "width": 100,
+        "height": 30
+      },
+      "data_type": "text"
     },
     {
-      "field_name": "Marital_Status",
+      "field_name": "Estado_Familiar",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.364461738002594,
-        "y": 0.44676409185803756,
-        "w": 0.14656290531776914,
-        "h": 0.04175365344467641
-      }
+      "content": "Estado_Familiar",
+      "coordinates": {
+        "x": 361,
+        "y": 262,
+        "width": 213,
+        "height": 29
+      },
+      "data_type": "text"
     },
     {
       "field_name": "NIT",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.6913099870298314,
-        "y": 0.36116910229645094,
-        "w": 0.25680933852140075,
-        "h": 0.033402922755741124
-      }
+      "content": "NIT",
+      "coordinates": {
+        "x": 678,
+        "y": 212,
+        "width": 100,
+        "height": 30
+      },
+      "data_type": "text"
     },
     {
-      "field_name": "Special_Eeatures",
+      "field_name": "Caracteristicas_Especiales",
       "field_type": "data_field",
-      "data_type": "text",
-      "rel": {
-        "x": 0.6900129701686122,
-        "y": 0.5198329853862212,
-        "w": 0.2607003891050584,
-        "h": 0.031315240083507306
-      }
+      "content": "Caracteristicas_Especiales",
+      "coordinates": {
+        "x": 680,
+        "y": 307,
+        "width": 100,
+        "height": 30
+      },
+      "data_type": "text"
     }
   ]
 }
