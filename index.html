@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lector MRZ con Tesseract.js — Cámara + Parser</title>
+  <title>Lector MRZ con Tesseract.js — Cámara + Parser + Autodetección</title>
   <style>
     :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb; }
     *{box-sizing:border-box}
@@ -23,6 +23,8 @@
     .primary{background:var(--accent);border-color:transparent;color:#052e16;font-weight:700}
     .danger{background:var(--danger);color:#fff;border-color:transparent}
     .muted{color:var(--muted)}
+    .success{color:#22c55e}
+    .warning{color:#f59e0b}
 
     .stage{position:relative;border-radius:16px;overflow:hidden;background:#000}
     video{width:100%;display:block;max-height:60vh;object-fit:cover}
@@ -53,6 +55,14 @@
     .format-guide {background:#0b1220;border:1px solid #1f2937;border-radius:8px;padding:.5rem .75rem;margin:.5rem 0;font-size:.85rem}
     .json-container {position:relative}
     .copy-json-btn {position:absolute;top:.5rem;right:.5rem}
+    
+    /* Indicador de autodetección */
+    .auto-detected {border-color:#22c55e; box-shadow:0 0 0 2px rgba(34,197,94,.3)}
+    .flash {animation: flash 0.5s ease-in-out;}
+    @keyframes flash {
+      0% { background-color: rgba(34,197,94,0.1); }
+      100% { background-color: transparent; }
+    }
   </style>
 </head>
 <body>
@@ -65,7 +75,7 @@
     <section class="grid">
       <div class="card pad">
         <h2>Vista de cámara</h2>
-        <p class="hint">Alinea la MRZ dentro del recuadro verde. Puedes iniciar/detener la cámara y tomar una captura para extraer el texto.</p>
+        <p class="hint">Alinea la MRZ dentro del recuadro verde. Puedes iniciar/detener la cámara y tomar una captura para extraer el texto. <span class="success">La detección y parseo son automáticos.</span></p>
         <div id="stage" class="stage">
           <video id="video" playsinline muted></video>
           <div class="frame" aria-label="Área objetivo para MRZ"></div>
@@ -130,7 +140,7 @@
         <li>Haz clic en <strong>Iniciar cámara</strong> y permite el acceso.</li>
         <li>Coloca el documento de forma que la MRZ quede <em>dentro</em> del <strong>recuadro verde</strong>.</li>
         <li>Pulsa <strong>Capturar y extraer MRZ</strong>. El sistema recorta esa zona y ejecuta OCR con Tesseract.js.</li>
-        <li>Presiona <strong>Parsear MRZ</strong> para ver los <strong>campos decodificados</strong> (incluye validación de dígitos de control).</li>
+        <li><strong>La detección y parseo son automáticos</strong> cuando se identifica un MRZ válido.</li>
       </ol>
     </section>
   </main>
@@ -159,6 +169,7 @@
     const copyJsonBtn = $('#copy-json');
 
     let stream = null;
+    let autoDetectionEnabled = true;
 
     function setBusy(isBusy, msg = '') {
       statusEl.textContent = isBusy ? (msg || 'Procesando…') : (msg || 'Listo.');
@@ -232,21 +243,57 @@
         .replace(/\s+/g, '\n')
         .split(/\n+/)
         .map(l => (l.match(allowed)||[]).join(''))
-        .filter(l => l.length >= 25);
+        .filter(l => l.length >= 20); // Reducido el umbral para mayor flexibilidad
 
       const take = (n, len) => {
-        for(let i=0;i+ n-1 < lines.length;i++){
+        for(let i=0; i + n - 1 < lines.length; i++){
           const group = lines.slice(i, i+n);
-          if(group.every(l => Math.abs(l.length - len) <= 2)) return group;
+          // Permitir mayor variación en la longitud
+          if(group.every(l => Math.abs(l.length - len) <= 4)) return group;
         }
         return null;
       };
+      
+      // Intentar detectar los formatos más comunes
       let group = take(3,30) || take(2,44) || take(2,36);
       if(group){
         return group.map((l)=> l.padEnd(group[0].length,'<')).join('\n');
       }
+      
+      // Si no se encuentra un grupo exacto, devolver las líneas más largas
       const top = lines.sort((a,b)=>b.length-a.length).slice(0,3);
       return top.join('\n');
+    }
+
+    // Función mejorada para verificar si el texto normalizado es un MRZ válido
+    function isValidMRZ(text) {
+      const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) return false;
+      
+      // Verificar longitudes típicas de MRZ
+      const lengths = lines.map(l => l.length);
+      const hasTypicalLength = lengths.some(len => 
+        (len >= 28 && len <= 32) || // TD1
+        (len >= 35 && len <= 37) || // TD2
+        (len >= 43 && len <= 45)    // TD3
+      );
+      
+      // Verificar que contenga caracteres válidos
+      const validChars = /^[A-Z0-9<]+$/;
+      const hasValidChars = lines.every(line => validChars.test(line));
+      
+      // Verificar que tenga al menos un dígito de control (número seguido de un dígito)
+      const hasCheckDigit = lines.some(line => /\d[0-9]/.test(line));
+      
+      return hasTypicalLength && hasValidChars && hasCheckDigit;
+    }
+
+    // Función para mostrar indicador de autodetección
+    function showAutoDetectionIndicator() {
+      outputEl.classList.add('auto-detected', 'flash');
+      setTimeout(() => {
+        outputEl.classList.remove('flash');
+      }, 500);
     }
 
     async function captureAndOCR(){
@@ -257,13 +304,32 @@
           logger: m => { if(m.status === 'recognizing text'){ statusEl.textContent = `Reconociendo… ${(m.progress*100).toFixed(0)}%`; } },
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ<0123456789'
         });
+        
         const cleaned = normalizeMRZ(data.text||'');
         outputEl.textContent = cleaned.trim();
-        setBusy(false, outputEl.textContent ? 'MRZ extraída.' : 'No se detectó MRZ clara. Intenta otra vez.');
+        
+        // Verificar si es un MRZ válido y proceder con el parseo automático
+        if (cleaned.trim() && isValidMRZ(cleaned) && autoDetectionEnabled) {
+          showAutoDetectionIndicator();
+          setTimeout(() => {
+            parseMRZAndDisplay(cleaned);
+            statusEl.textContent = 'MRZ detectada y parseada automáticamente.';
+          }, 300);
+        } else {
+          setBusy(false, outputEl.textContent ? 'MRZ extraída.' : 'No se detectó MRZ clara. Intenta otra vez.');
+        }
       }catch(err){
         console.error(err);
         setBusy(false, 'Error durante OCR: ' + (err.message||err));
       }
+    }
+
+    function parseMRZAndDisplay(text) {
+      const parsed = parseMRZ(text);
+      decodedEl.textContent = JSON.stringify(parsed, null, 2);
+      displayResults(parsed);
+      copyJsonBtn.disabled = false;
+      setBusy(false, parsed && parsed.format ? `MRZ parseada (${parsed.format}).` : 'No se pudo parsear.');
     }
 
     startBtn.addEventListener('click', startCamera);
@@ -289,6 +355,7 @@
 
     clearBtn.addEventListener('click', ()=>{
       outputEl.textContent='';
+      outputEl.classList.remove('auto-detected');
       decodedEl.textContent='';
       resultsContainer.style.display = 'none';
       setBusy(false,'Listo.');
@@ -481,11 +548,7 @@
     parseBtn.addEventListener('click', ()=>{
       const raw = outputEl.textContent.trim();
       if(!raw) return;
-      const parsed = parseMRZ(raw);
-      decodedEl.textContent = JSON.stringify(parsed, null, 2);
-      displayResults(parsed);
-      copyJsonBtn.disabled = false;
-      statusEl.textContent = parsed && parsed.format ? `MRZ parseada (${parsed.format}).` : 'No se pudo parsear.';
+      parseMRZAndDisplay(raw);
     });
   </script>
 </body>
