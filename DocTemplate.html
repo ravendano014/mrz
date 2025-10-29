@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF417 & MRZ – Scanner + Editor ROIs (Cámara Pro, Mejoras, Lupa)</title>
+  <title>PDF417 & MRZ – Scanner + Editor ROIs (Cámara Pro, Lupa, Crop)</title>
   <style>
     :root { --bg:#0b1220; --card:#121a2b; --line:#1e2a44; --txt:#e7ecf5; --muted:#9fb0cb; --accent:#2a6df5; --ok:#0f6; --warn:#bb6f00;}
     html,body{height:100%}
@@ -38,21 +38,35 @@
     .pill{background:#2b3b60;border-radius:999px;padding:2px 8px;font-size:.75rem}
     .prop-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
-    /* Scanner overlay */
-    #video{width:100%;height:300px;border-radius:12px;border:1px solid var(--line);background:#000}
+    /* Cámara "a pantalla completa" del contenedor, respetando aspecto real */
     .scanner-overlay{position:relative}
-    .scanner-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:85%;height:60%;border:3px solid var(--ok);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.5)}
+    #videoWrap{
+      width:100%;
+      /* la altura se calcula con aspect-ratio real del stream vía style="aspect-ratio: W/H" */
+      border-radius:12px;border:1px solid var(--line);background:#000;overflow:hidden;
+    }
+    #video{
+      width:100%; height:100%;
+      object-fit:contain; /* ocupa todo el ancho sin deformarse */
+      display:block;
+    }
+    .scanner-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:85%;height:60%;border:3px solid var(--ok);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.5);pointer-events:none}
 
     /* Lupa */
     #magnifier{position:absolute;display:none;width:200px;height:200px;border-radius:50%;border:2px solid var(--accent);overflow:hidden;pointer-events:none;box-shadow:0 0 0 3px rgba(42,109,245,.25); background:#000;}
-    #magnifier canvas{position:absolute;top:0;left:0}
+    #magnifier canvas{position:absolute;top:0;left:0; width:100%; height:100%;}
+
     .range-row{display:grid;grid-template-columns:120px 1fr 60px;gap:8px;align-items:center}
+
+    /* Crop */
+    .crop-toolbar .spacer{flex:1}
+    .badge{background:#243250;color:#cfe0ff;border:1px solid #335; padding:2px 8px;border-radius:999px;font-size:.75rem}
   </style>
 </head>
 <body>
 <div class="app">
   <h1>PDF417 & MRZ – Scanner + Editor de ROIs</h1>
-  <p class="hint">Cámara con controles pro, alternar entre cámaras, mejoras de imagen, **lupa circular** y ROIs táctiles.</p>
+  <p class="hint">Cámara con aspecto real del stream, <b>lupa circular</b> nítida y <b>Crop</b> interactivo con traslado de ROIs.</p>
 
   <div class="grid">
     <div>
@@ -64,22 +78,22 @@
             <option value="1280x720">1280×720 (720p)</option>
             <option value="1920x1080">1920×1080 (1080p)</option>
           </select>
-
-          <!-- NUEVO: selector de cámaras y cambiar -->
           <select id="cameraSelect" title="Cámara" style="min-width:200px"></select>
           <button id="switchCamButton" class="ghost">Cambiar cámara</button>
-
           <button id="startButton">Iniciar Cámara</button>
           <button id="resetButton" class="secondary">Detener</button>
           <button id="capturePhotoButton" class="ghost">Capturar Foto</button>
           <button id="torchButton" class="ghost" title="Linterna">Linterna: OFF</button>
+          <span id="arBadge" class="badge" style="display:none"></span>
         </div>
         <div id="camControls" class="panel" style="margin-top:10px;display:none">
           <h3 style="margin:0 0 6px">Controles del dispositivo</h3>
           <div id="camSliders" class="col"></div>
         </div>
         <div class="scanner-overlay" style="margin-top:10px;position:relative">
-          <video id="video" playsinline muted></video>
+          <div id="videoWrap" style="aspect-ratio:16/9;">
+            <video id="video" playsinline muted></video>
+          </div>
           <!-- Marco más grande, sin leyenda -->
           <div class="scanner-frame"></div>
         </div>
@@ -113,15 +127,23 @@
             <input type="range" id="rngIntensity" min="0" max="100" value="40" />
             <span id="lblIntensity" class="hint">40</span>
           </div>
-          <p class="hint" style="margin:6px 0 0">Se aplican a los **recortes ROI** y a la imagen completa cuando usas “Procesar MRZ/PDF417”.</p>
+          <p class="hint" style="margin:6px 0 0">Se aplican a los <b>recortes ROI</b> y a la imagen completa cuando usas “Procesar MRZ/PDF417”.</p>
+        </div>
+
+        <div class="row crop-toolbar" style="margin-top:10px">
+          <button id="btnCropActivate" class="ghost">Activar Crop</button>
+          <button id="btnCropApply" class="secondary" disabled>Aplicar</button>
+          <button id="btnCropCancel" class="secondary" disabled>Cancelar</button>
+          <span class="spacer"></span>
+          <span id="cropInfo" class="hint"></span>
         </div>
 
         <div id="stageWrap" class="img-stage" style="margin-top:10px;display:none">
           <img id="imagePreview" alt="Vista previa" />
           <canvas id="roiCanvas"></canvas>
-          <div id="magnifier"><canvas id="magCanvas" width="400" height="400"></canvas></div>
+          <div id="magnifier"><canvas id="magCanvas"></canvas></div>
         </div>
-        <p class="hint" style="margin-top:8px">La imagen **permanece** después de extraer/parsear, hasta cargar o capturar otra.</p>
+        <p class="hint" style="margin-top:8px">La imagen <b>permanece</b> después de extraer/parsear, hasta cargar o capturar otra.</p>
       </div>
 
       <!-- DUI RAW -->
@@ -228,6 +250,8 @@ let lastPDF417Raw = "";
 let track = null; // MediaStreamTrack
 let stream = null;
 
+const video = $('#video');
+const videoWrap = $('#videoWrap');
 const imgEl = $('#imagePreview');
 const stageWrap = $('#stageWrap');
 const canvas = $('#roiCanvas');
@@ -298,7 +322,7 @@ function applyEnhancementsToCanvas(cnv){
 }
 
 /* ==========================
-   Cámara y controles pro + alternar cámaras
+   Cámara + aspecto real del stream
 ========================== */
 async function enumerateCameras(){
   try{
@@ -327,17 +351,27 @@ async function startCamera(){
       audio:false
     };
     stream = await navigator.mediaDevices.getUserMedia(constraints);
-    const v = $('#video'); v.srcObject = stream; await v.play();
+    video.srcObject = stream; await video.play();
     isScanning = true; setStatus(`Cámara iniciada (${w}×${h}).`);
-    // actualizar lista (ya con permisos)
     await enumerateCameras();
     selectedDeviceId = stream.getVideoTracks()[0]?.getSettings?.().deviceId || selectedDeviceId;
 
-    // Guardar track y capacidades
     track = stream.getVideoTracks()[0];
     setupCameraControls(track);
+
+    // Ajustar aspect-ratio real del stream cuando conozcamos dimensiones
+    const applyAspect = ()=>{
+      const vw = video.videoWidth || w, vh = video.videoHeight || h;
+      if (vw && vh){
+        videoWrap.style.aspectRatio = `${vw} / ${vh}`; // CSS aspect-ratio
+        const arBadge = $('#arBadge'); arBadge.style.display='inline-block'; arBadge.textContent = `AR ${vw}:${vh}`;
+      }
+    };
+    if (video.readyState >= 2) applyAspect();
+    video.addEventListener('loadedmetadata', applyAspect, { once:true });
+
     // Decodificar en vivo PDF417
-    codeReader.decodeFromVideoElementContinuously(v, (result, err) => {
+    codeReader.decodeFromVideoElementContinuously(video, (result, err) => {
       if (result) {
         lastPDF417Raw = result.text || "";
         $('#result2').textContent = lastPDF417Raw;
@@ -377,18 +411,15 @@ $('#switchCamButton').addEventListener('click', async ()=>{
     const sel = $('#cameraSelect');
     if (!sel.options.length){ await enumerateCameras(); }
     if (!sel.options.length){ setStatus('No se encontraron cámaras.','fail'); return; }
-    // avanzar al siguiente índice
     const idx = sel.selectedIndex >= 0 ? sel.selectedIndex : 0;
     const next = (idx + 1) % sel.options.length;
     selectedDeviceId = sel.options[next].value;
     sel.selectedIndex = next;
-    // reiniciar con la nueva
     if (isScanning) { resetCamera(); }
     await startCamera();
     setStatus('Cámara cambiada.','ok');
   }catch(e){ setStatus('No se pudo cambiar de cámara: '+e.message,'fail'); }
 });
-// Rellenar lista al cargar (siempre que sea posible)
 if (navigator.mediaDevices?.enumerateDevices) enumerateCameras();
 
 /* Controles de cámara (zoom/torch/exposición...) */
@@ -421,7 +452,6 @@ function setupCameraControls(track){
     }catch(e){ setStatus("No se pudo cambiar la linterna: "+e.message,'fail'); }
   };
 
-  // Sliders disponibles
   if (cap.zoom) addSlider('Zoom','zoom',cap.zoom.min, cap.zoom.max, cap.zoom.step||0.1, track.getSettings?.().zoom ?? cap.zoom.min);
   if (cap.exposureCompensation) addSlider('Exposición','exposureCompensation', cap.exposureCompensation.min, cap.exposureCompensation.max, cap.exposureCompensation.step||0.1, track.getSettings?.().exposureCompensation ?? 0);
   if (cap.brightness) addSlider('Brillo','brightness', cap.brightness.min, cap.brightness.max, cap.brightness.step||1, track.getSettings?.().brightness ?? 0);
@@ -454,14 +484,22 @@ async function loadImageToStage(dataURL){
   scaleY = imgEl.naturalHeight / imgEl.clientHeight;
   $('#processImageButton').disabled=false;
   $('#processMRZButton').disabled=false;
+  configureMagnifierCanvas();
   drawCanvas();
 }
 
 /* ==========================
-   Lupa circular (mejorada: llena todo el círculo)
+   Lupa circular (nítida y robusta)
 ========================== */
 const mag = $('#magnifier'), magCanvas = $('#magCanvas'), mgx = magCanvas.getContext('2d');
 let magOn = false, magZoom = 2.0;
+function configureMagnifierCanvas(){
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const cssSize = 200; // px
+  mag.style.width = cssSize+'px'; mag.style.height = cssSize+'px';
+  magCanvas.width = Math.round(cssSize * dpr);
+  magCanvas.height = Math.round(cssSize * dpr);
+}
 $('#toggleMagnifier').addEventListener('click', ()=>{
   magOn = !magOn;
   mag.style.display = magOn ? 'block' : 'none';
@@ -472,23 +510,22 @@ function updateMagnifier(clientX, clientY){
   const rect = stageWrap.getBoundingClientRect();
   const x = clientX - rect.left, y = clientY - rect.top;
 
-  // posicionar el contenedor circular
   mag.style.left = (x - mag.clientWidth/2) + 'px';
   mag.style.top  = (y - mag.clientHeight/2) + 'px';
 
-  // limpiar y recortar en círculo (relleno completo)
   const r = magCanvas.width/2;
   mgx.clearRect(0,0,magCanvas.width,magCanvas.height);
   mgx.save();
   mgx.beginPath(); mgx.arc(r,r,r,0,Math.PI*2); mgx.clip();
 
-  // calcular fuente en coordenadas NATURALES para que el zoom sea nítido
+  // calcular fuente en naturales
   const srcW = (magCanvas.width / magZoom) * scaleX;
   const srcH = (magCanvas.height / magZoom) * scaleY;
   const srcX = (x*scaleX) - srcW/2;
   const srcY = (y*scaleY) - srcH/2;
 
-  // dibujar de forma que LLENE el círculo (canvas completo)
+  // dibujar llenando el círculo
+  mgx.imageSmoothingEnabled = true;
   mgx.drawImage(imgEl, srcX, srcY, srcW, srcH, 0, 0, magCanvas.width, magCanvas.height);
   mgx.restore();
 }
@@ -520,11 +557,15 @@ function tableOut(obj){
   $('#extractedDataTable').style.display='block';
 }
 function parseUSDL(str){
-  const CodeToKey = { DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes",
+  const CodeToKey = {
+    DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes",
     DBA:"dateOfExpiry", DCS:"lastName", DAC:"firstName", DAD:"middleName", DBD:"dateOfIssue", DBB:"dateOfBirth",
     DBC:"sex", DAY:"eyeColor", DAU:"height", DAG:"addressStreet", DAI:"addressCity", DAJ:"addressState",
-    DAK:"addressPostalCode", DAQ:"documentNumber", DCF:"documentDiscriminator", DCG:"issuer" };
-  const props={}; const lines=str.trim().split('\n').map(l=>l.replace(/[^\t\n\r -~]/g,'').trim()); let started=false;
+    DAK:"addressPostalCode", DAQ:"documentNumber", DCF:"documentDiscriminator", DCG:"issuer"
+  };
+  const props={};
+  const lines = str.trim().split('\n').map(l => l.replace(/[^\t\n\r -~]/g, '').trim());
+  let started=false;
   lines.forEach(line=>{
     if(!started){ if(line.startsWith('ANSI ')) started=true; return; }
     const code=line.slice(0,3), value=line.slice(3), key=CodeToKey[code];
@@ -639,7 +680,13 @@ function drawCanvas(){
   canvas.width=imgEl.clientWidth; canvas.height=imgEl.clientHeight;
   scaleX = imgEl.naturalWidth/imgEl.clientWidth; scaleY = imgEl.naturalHeight/imgEl.clientHeight;
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.save(); ctx.fillStyle="rgba(0,0,0,.12)"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.restore();
+
+  // Fondo semitransparente (si crop activo, se maneja aparte)
+  if (!cropState.active){
+    ctx.save(); ctx.fillStyle="rgba(0,0,0,.12)"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.restore();
+  }
+
+  // ROIs
   ROIs.forEach(r=>{
     const active=r.id===activeROIId;
     ctx.save();
@@ -652,6 +699,11 @@ function drawCanvas(){
     ctx.fillText(`${r.name} [${r.type}]`, r.x+6, Math.max(12, r.y-6));
     ctx.restore();
   });
+
+  // Dibujo del Crop si activo
+  if (cropState.active){
+    drawCropOverlay();
+  }
 }
 function getHandles(r){
   const {x,y,w,h}=r;
@@ -740,9 +792,11 @@ canvas.addEventListener('touchmove', e=>{
     fillProp(roi); drawCanvas(); e.preventDefault();
   }
 },{passive:false});
-canvas.addEventListener('touchend', ()=>{ if(pinchState && event.touches?.length===0) pinchState=null; endInteract(); }, {passive:false});
+canvas.addEventListener('touchend', (e)=>{ if(pinchState && (!e.touches || e.touches.length===0)) pinchState=null; endInteract(); }, {passive:false});
 
 function startInteract(x,y){
+  if (cropState.active){ startCropInteract(x,y); return; }
+
   for(let i=ROIs.length-1;i>=0;i--){
     const r=ROIs[i]; const h=hitHandle(r,x,y);
     if(h){ activeROIId=r.id; refreshROIList(); fillProp(r);
@@ -755,6 +809,8 @@ function startInteract(x,y){
   activeROIId=null; refreshROIList(); clearProp(); drawCanvas();
 }
 function moveInteract(x,y){
+  if (cropState.active){ moveCropInteract(x,y); return; }
+
   const r=getActive(); if(!r || !dragState.mode) return;
   const dx=x-dragState.startX, dy=y-dragState.startY;
   if(dragState.mode==='move'){
@@ -866,14 +922,156 @@ async function extractFromROI(r){
    Captura desde cámara a imagen
 ========================== */
 async function capturePhotoFromCamera(){
-  const v = $('#video');
-  if (!v.videoWidth) { setStatus("Inicia la cámara antes de capturar.",'fail'); return; }
+  if (!video.videoWidth) { setStatus("Inicia la cámara antes de capturar.",'fail'); return; }
   const shot = document.createElement('canvas');
-  shot.width=v.videoWidth; shot.height=v.videoHeight;
-  shot.getContext('2d').drawImage(v,0,0,shot.width,shot.height);
+  shot.width=video.videoWidth; shot.height=video.videoHeight;
+  shot.getContext('2d').drawImage(video,0,0,shot.width,shot.height);
   const dataURL = shot.toDataURL('image/png');
   await loadImageToStage(dataURL);
   setStatus("Foto capturada y cargada.","ok"); beep();
+}
+
+/* ==========================
+   CROP interactivo
+========================== */
+const cropState = {
+  active:false,
+  rect:null, // {x,y,w,h}
+  mode:null, startX:0, startY:0, startRect:null, handle:null
+};
+function defaultCropRect(){
+  const w = Math.floor(canvas.width*0.8);
+  const h = Math.floor(canvas.height*0.8);
+  return { x:Math.floor((canvas.width-w)/2), y:Math.floor((canvas.height-h)/2), w, h };
+}
+function drawCropOverlay(){
+  const r = cropState.rect;
+  // oscurecer todo menos el recorte
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.55)';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle='rgba(0,0,0,1)';
+  ctx.fillRect(r.x,r.y,r.w,r.h);
+  ctx.restore();
+
+  // borde y handlers
+  ctx.save();
+  ctx.strokeStyle='#2a6df5'; ctx.lineWidth=2.5;
+  ctx.setLineDash([8,6]);
+  ctx.strokeRect(r.x,r.y,r.w,r.h);
+  ctx.setLineDash([]);
+  const hs = getHandles(r);
+  ctx.fillStyle='#2a6df5';
+  hs.forEach(h=> ctx.fillRect(h.x-HANDLE_SIZE/2,h.y-HANDLE_SIZE/2,HANDLE_SIZE,HANDLE_SIZE));
+  ctx.restore();
+
+  $('#cropInfo').textContent = `Crop: (${r.x},${r.y}) ${r.w}×${r.h}`;
+}
+function startCropInteract(x,y){
+  const r = cropState.rect;
+  const handle = hitHandle(r,x,y);
+  if (handle){
+    cropState.mode='resize'; cropState.handle=handle;
+    cropState.startX=x; cropState.startY=y; cropState.startRect={...r};
+    return;
+  }
+  if (ptIn(x,y,r.x,r.y,r.w,r.h)){
+    cropState.mode='move'; cropState.handle=null;
+    cropState.startX=x; cropState.startY=y; cropState.startRect={...r};
+    return;
+  }
+  // click fuera: reposicionar centro
+  const cw = r.w, ch = r.h;
+  let nx = clamp(x - cw/2, 0, canvas.width - cw);
+  let ny = clamp(y - ch/2, 0, canvas.height - ch);
+  cropState.rect.x = nx; cropState.rect.y = ny;
+  drawCanvas();
+}
+function moveCropInteract(x,y){
+  if (!cropState.mode) return;
+  const dx = x - cropState.startX, dy = y - cropState.startY;
+  const s = cropState.startRect;
+  if (cropState.mode==='move'){
+    let nx = clamp(s.x + dx, 0, canvas.width - s.w);
+    let ny = clamp(s.y + dy, 0, canvas.height - s.h);
+    cropState.rect.x = nx; cropState.rect.y = ny;
+  }else if (cropState.mode==='resize'){
+    let nx=s.x, ny=s.y, nw=s.w, nh=s.h;
+    const h = cropState.handle;
+    if(h.includes('n')){ ny=clamp(s.y+dy,0,s.y+s.h-20); nh=s.h-(ny-s.y); }
+    if(h.includes('s')){ nh=clamp(s.h+dy,20,canvas.height-s.y); }
+    if(h.includes('w')){ nx=clamp(s.x+dx,0,s.x+s.w-20); nw=s.w-(nx-s.x); }
+    if(h.includes('e')){ nw=clamp(s.w+dx,20,canvas.width-s.x); }
+    cropState.rect.x=nx; cropState.rect.y=ny; cropState.rect.w=nw; cropState.rect.h=nh;
+  }
+  drawCanvas();
+}
+function setCropUI(enabled){
+  $('#btnCropApply').disabled = !enabled;
+  $('#btnCropCancel').disabled = !enabled;
+  $('#btnCropActivate').textContent = enabled ? 'Desactivar Crop' : 'Activar Crop';
+}
+$('#btnCropActivate').addEventListener('click', ()=>{
+  if (!imgEl.src){ setStatus('Carga/captura una imagen primero.','fail'); return; }
+  cropState.active = !cropState.active;
+  if (cropState.active){
+    cropState.rect = defaultCropRect();
+    setCropUI(true);
+  }else{
+    setCropUI(false); $('#cropInfo').textContent='';
+  }
+  drawCanvas();
+});
+$('#btnCropCancel').addEventListener('click', ()=>{
+  if (!cropState.active) return;
+  cropState.active=false; setCropUI(false); $('#cropInfo').textContent=''; drawCanvas();
+});
+$('#btnCropApply').addEventListener('click', async ()=>{
+  if (!cropState.active) return;
+  const r = cropState.rect;
+  // calcular en coordenadas naturales
+  const sx = Math.round(r.x * scaleX), sy = Math.round(r.y * scaleY);
+  const sw = Math.max(1, Math.round(r.w * scaleX)), sh = Math.max(1, Math.round(r.h * scaleY));
+
+  // hacer recorte
+  const c = document.createElement('canvas'); c.width=sw; c.height=sh;
+  const cx = c.getContext('2d'); cx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, sw, sh);
+  const dataURL = cx.canvas.toDataURL('image/png');
+
+  // trasladar/clipear ROIs al nuevo origen
+  adjustROIsAfterCrop(r);
+
+  // cargar nueva imagen recortada
+  await loadImageToStage(dataURL);
+
+  cropState.active=false; setCropUI(false); $('#cropInfo').textContent='';
+  setStatus('Recorte aplicado. ROIs trasladados/filtrados.','ok'); beep();
+});
+
+function adjustROIsAfterCrop(r){
+  // r está en coords de canvas (px en pantalla)
+  const newROIs = [];
+  for (const a of ROIs){
+    // nueva posición relativa al nuevo origen (r.x, r.y)
+    const nx = a.x - r.x, ny = a.y - r.y, nw = a.w, nh = a.h;
+
+    // intersección con [0,0,r.w,r.h]
+    const ix = clamp(nx, 0, r.w);
+    const iy = clamp(ny, 0, r.h);
+    const ix2 = clamp(nx+nw, 0, r.w);
+    const iy2 = clamp(ny+nh, 0, r.h);
+    const iw = Math.max(0, ix2 - ix);
+    const ih = Math.max(0, iy2 - iy);
+
+    if (iw >= 8 && ih >= 8){ // descarta sin área o demasiado pequeño
+      newROIs.push({ ...a, x:Math.round(ix), y:Math.round(iy), w:Math.round(iw), h:Math.round(ih) });
+    }
+  }
+  ROIs.length = 0;
+  newROIs.forEach(n => ROIs.push(n));
+  activeROIId = ROIs[0]?.id || null;
+  refreshROIList();
 }
 
 /* ==========================
@@ -883,4 +1081,3 @@ $('#torchButton').addEventListener('click', ()=>{/* handler real en setupCameraC
 </script>
 </body>
 </html>
-
