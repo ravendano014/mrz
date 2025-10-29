@@ -2,1142 +2,859 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
-  <title>PDF417 & MRZ – Scanner y Lector de Imagen + Editor de ROIs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF417 & MRZ – Scanner + Editor ROIs (Cámara Pro, Mejoras, Lupa)</title>
   <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
-    body { margin:0; padding:24px; background:#0b1220; color:#e7ecf5 }
-    h1 { font-size:1.4rem; margin:0 0 8px }
-    h2 { font-size:1.2rem; margin:0 0 12px; color:#cfe0ff }
-    h3 { font-size:1.1rem; margin:0 0 10px; color:#cfe0ff }
-    p { margin:6px 0 14px; color:#b9c2d0 }
-    .app { max-width: 1240px; margin:0 auto }
-    .card { background:#121a2b; border:1px solid #1e2a44; border-radius:16px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25) }
-    .grid { display:grid; grid-template-columns: 1fr; gap:16px }
-    @media (min-width: 1200px){ .grid { grid-template-columns: 520px 1fr } }
-    label.inline { display:inline-flex; align-items:center; gap:8px; background:#0f1726; border:1px dashed #2b3b60; padding:10px 12px; border-radius:12px; cursor:pointer }
-    input[type=file]{ display:none }
-    button { appearance:none; border:0; background:#2a6df5; color:white; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600 }
-    button.secondary { background:#2b3b60 }
-    button.success { background:#0a6 }
-    button.warn { background:#bb6f00 }
-    button.ghost { background:transparent; border:1px solid #2b3b60 }
-    img { max-width:100%; height:auto; border-radius:12px; border:1px solid #1e2a44; background:#0b1120 }
-    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
-    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size:.92rem }
-    textarea { width:100%; min-height:120px; resize:vertical; border-radius:12px; padding:10px; border:1px solid #1e2a44; background:#0f1726; color:#e7ecf5 }
-    pre { background:#0f1726; border:1px solid #1e2a44; padding:12px; border-radius:12px; overflow:auto }
-    .badge { font-size:.75rem; background:#0f6; color:#021; padding:3px 8px; border-radius:999px }
-    .hint { font-size:.85rem; color:#9fb0cb }
-    .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px }
-    .kv b{ color:#cfe0ff }
-    .mrz-guide { background:#0f1726; border:1px solid #1e2a44; border-radius:8px; padding:8px 12px; margin:8px 0 16px; font-size:.85rem }
-    .result-table { width:100%; border-collapse:collapse; margin-top:8px }
-    .result-table th, .result-table td{ padding:8px 12px; text-align:left; border-bottom:1px solid #1e2a44 }
-    .result-table th { background:#0f1726; color:#cfe0ff; font-weight:600 }
-    .result-table tr:last-child td{ border-bottom:none }
-    .check-ok { color:#0f6 }
-    .check-fail { color:#f06 }
-    .result-summary { background:#0f1726; border:1px solid #1e2a44; border-radius:8px; padding:12px; margin-bottom:16px }
-    .json-container { margin-top:16px }
-    .json-container h4 { margin:0 0 8px }
-    .json-pre { background:#0f1726; border:1px solid #1e2a44; border-radius:12px; padding:12px; max-height:300px; overflow-y:auto; font-size:.85rem }
-    .hidden { display:none }
-    #video { width:100%; height:300px; border-radius:12px; border:1px solid #1e2a44; background:#0b1120; position:relative }
-    #imagePreview { max-width:100%; max-height:680px; display:none; margin-top:10px; touch-action:none }
-    .section { margin-bottom:24px }
-    .button-group { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap }
-    select, input[type="text"], input[type="number"] { background:#0f1726; border:1px solid #1e2a44; border-radius:10px; padding:10px 12px; color:#e7ecf5 }
-    #sourceSelectPanel { margin-bottom:16px }
-    .scanner-overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:10 }
-    .scanner-frame { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; height:50%; border:3px solid #0f6; border-radius:12px; box-shadow:0 0 0 9999px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center }
-    .scanner-frame::before{ content:"Coloque el código PDF417 dentro de este marco"; position:absolute; top:-30px; color:#0f6; font-size:14px; text-align:center; width:100% }
-    .beep-option { display:flex; align-items:center; gap:8px; margin-top:12px }
-    .beep-option input[type="checkbox"]{ width:18px; height:18px; accent-color:#2a6df5 }
-
-    /* === ROI Editor === */
-    .img-stage { position:relative; overflow:auto; border-radius:12px; border:1px solid #1e2a44; background:#0b1120; padding:8px; touch-action:none }
-    #roiCanvas { position:absolute; top:0; left:0; pointer-events:auto; touch-action:none; }
-    .sidegrid { display:grid; grid-template-columns: 1fr; gap:12px }
-    .panel { background:#0f1726; border:1px solid #1e2a44; border-radius:12px; padding:12px }
-    .panel h4 { margin:0 0 8px }
-    .roi-list { max-height:240px; overflow:auto; border:1px solid #1e2a44; border-radius:10px }
-    .roi-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-bottom:1px solid #1e2a44; cursor:pointer }
-    .roi-item:last-child{ border-bottom:none }
-    .roi-item.active{ background:#162139; border-left:3px solid #2a6df5 }
-    .pill { padding:2px 8px; border-radius:999px; background:#2b3b60; font-size:.75rem }
-    .prop-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px }
-    .prop-grid label { font-size:.85rem; color:#9fb0cb }
-    .prop-grid input, .prop-grid select { width:100% }
-    .mini { font-size:.75rem; color:#9fb0cb }
+    :root { --bg:#0b1220; --card:#121a2b; --line:#1e2a44; --txt:#e7ecf5; --muted:#9fb0cb; --accent:#2a6df5; --ok:#0f6; --warn:#bb6f00;}
+    html,body{height:100%}
+    body{margin:0;padding:24px;background:var(--bg);color:var(--txt);font-family:system-ui,Segoe UI,Roboto,Arial}
+    h1{margin:0 0 8px;font-size:1.35rem}
+    h2{margin:0 0 10px;font-size:1.1rem;color:#cfe0ff}
+    .app{max-width:1320px;margin:0 auto}
+    .grid{display:grid;gap:16px;grid-template-columns:1fr}
+    @media(min-width:1200px){.grid{grid-template-columns:540px 1fr}}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    button{appearance:none;border:0;background:var(--accent);color:#fff;padding:9px 12px;border-radius:10px;font-weight:600;cursor:pointer}
+    button.secondary{background:#2b3b60}
+    button.ghost{background:transparent;border:1px solid #2b3b60}
+    button.warn{background:var(--warn)}
+    select,input[type="range"],input[type="number"],input[type="text"]{background:#0f1726;border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:8px 10px}
+    textarea{background:#0f1726;border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:10px;min-height:110px;width:100%}
+    .hint{color:var(--muted);font-size:.9rem}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    .result-table{width:100%;border-collapse:collapse;margin-top:8px}
+    .result-table th,.result-table td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left}
+    .ok{color:var(--ok)} .fail{color:#f36}
+    .img-stage{position:relative;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#0b1120;padding:8px;touch-action:none}
+    #imagePreview{max-width:100%;max-height:720px;display:none;touch-action:none}
+    #roiCanvas{position:absolute;top:0;left:0;pointer-events:auto;touch-action:none}
+    .panel{background:#0f1726;border:1px solid var(--line);border-radius:12px;padding:10px}
+    .kv{display:grid;grid-template-columns:150px 1fr;gap:6px 10px}
+    .json-pre{background:#0f1726;border:1px solid var(--line);border-radius:10px;padding:10px;max-height:300px;overflow:auto}
+    .roi-list{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+    .roi-item{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+    .roi-item.active{background:#162139;border-left:3px solid var(--accent)}
+    .pill{background:#2b3b60;border-radius:999px;padding:2px 8px;font-size:.75rem}
+    .prop-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    /* Scanner overlay */
+    #video{width:100%;height:300px;border-radius:12px;border:1px solid var(--line);background:#000}
+    .scanner-overlay{position:relative}
+    .scanner-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:70%;height:50%;border:3px solid var(--ok);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.5)}
+    .scanner-label{position:absolute;top:-26px;left:50%;transform:translateX(-50%);color:var(--ok);font-size:.9rem}
+    /* Lupa */
+    #magnifier{position:absolute;display:none;width:180px;height:180px;border-radius:50%;border:2px solid var(--accent);overflow:hidden;pointer-events:none;box-shadow:0 0 0 3px rgba(42,109,245,.25)}
+    #magnifier canvas{position:absolute;top:0;left:0}
+    .range-row{display:grid;grid-template-columns:120px 1fr 60px;gap:8px;align-items:center}
   </style>
 </head>
 <body>
-  <div class="app">
-    <h1>PDF417 & MRZ – Scanner y Lector de Imagen + Editor de ROIs</h1>
-    <p class="hint">Escanea PDF417, procesa imágenes, crea y gestiona <b>ROIs</b>, captura foto desde cámara, y ahora también <b>manipula ROIs con los dedos</b> en móviles (arrastrar, redimensionar por asas y pellizcar para escalar).</p>
+<div class="app">
+  <h1>PDF417 & MRZ – Scanner + Editor de ROIs</h1>
+  <p class="hint">Cámara con controles pro (resolución, torch, zoom, exposición…), mejoras de imagen (sharpen/contraste/binarización), **lupa circular**, ROIs táctiles, y extracción/parseo por tipo.</p>
 
-    <div class="grid">
-      <!-- Columna izquierda -->
-      <div>
-        <!-- CÁMARA PDF417 -->
-        <div class="card section">
-          <h2>1. Escanear desde Cámara (PDF417)</h2>
-          <div class="button-group">
-            <button id="startButton">Iniciar Cámara</button>
-            <button id="resetButton" class="secondary">Detener Cámara</button>
-            <button id="capturePhotoButton" class="ghost">Capturar Foto</button>
-          </div>
-          <div class="beep-option">
-            <input type="checkbox" id="beepCheckbox" checked />
-            <label for="beepCheckbox">Reproducir sonido al detectar código</label>
-          </div>
-          <div id="sourceSelectPanel" class="hidden">
-            <label for="sourceSelect">Seleccionar cámara:</label>
-            <select id="sourceSelect"></select>
-          </div>
-          <div style="position: relative;">
-            <video id="video" muted playsinline></video>
-            <div class="scanner-overlay"><div class="scanner-frame"></div></div>
-          </div>
+  <div class="grid">
+    <div>
+      <!-- CÁMARA -->
+      <div class="card">
+        <h2>1) Cámara (PDF417) – Captura Pro</h2>
+        <div class="row">
+          <select id="resSelect" title="Resolución">
+            <option value="1280x720">1280×720 (720p)</option>
+            <option value="1920x1080">1920×1080 (1080p)</option>
+          </select>
+          <button id="startButton">Iniciar Cámara</button>
+          <button id="resetButton" class="secondary">Detener</button>
+          <button id="capturePhotoButton" class="ghost">Capturar Foto</button>
+          <button id="torchButton" class="ghost" title="Linterna">Linterna: OFF</button>
         </div>
-
-        <!-- IMAGEN -->
-        <div class="card section">
-          <h2>2. Cargar o Capturar Imagen</h2>
-          <div class="button-group">
-            <input type="file" id="fileInput" accept="image/*" class="hidden" />
-            <button id="selectImageButton" class="secondary">Seleccionar Imagen</button>
-            <button id="processImageButton" class="success" disabled>Procesar Imagen (PDF417)</button>
-            <button id="processMRZButton" class="warn" disabled>Procesar MRZ (OCR)</button>
-          </div>
-          <div class="mrz-guide">
-            <b>Sugerencias MRZ:</b> recorta o carga una imagen donde las líneas MRZ estén rectas y legibles. El OCR se limita a caracteres <span class="mono">A–Z, 0–9, &lt;</span>.
-          </div>
-
-          <div id="stageWrap" class="img-stage hidden">
-            <img id="imagePreview" alt="Vista previa" />
-            <canvas id="roiCanvas"></canvas>
-          </div>
-          <p class="mini">Consejo: crea una plantilla de ROIs y reutilízala con documentos del mismo formato.</p>
+        <div id="camControls" class="panel" style="margin-top:10px;display:none">
+          <h3 style="margin:0 0 6px">Controles del dispositivo</h3>
+          <div id="camSliders" class="col"></div>
         </div>
-
-        <!-- TEXTO CRUDO DUI -->
-        <div class="card section">
-          <h2>3. Parsear Texto Crudo (DUI)</h2>
-          <p class="hint">Este botón usa automáticamente el <b>texto crudo detectado del PDF417</b> (Procesar Imagen o Cámara). Si no hay, usará lo que pegues abajo.</p>
-          <textarea id="rawInput" placeholder="Opcional: Pega texto crudo si no proviene del PDF417 (formato con '||')"></textarea>
-          <div class="button-group" style="margin-top:10px;">
-            <button id="parseRawButton">Parsear Texto Crudo (DUI)</button>
-          </div>
+        <div class="scanner-overlay" style="margin-top:10px;position:relative">
+          <video id="video" playsinline muted></video>
+          <div class="scanner-frame"><div class="scanner-label">Enfoque el PDF417 dentro del marco</div></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label class="hint"><input type="checkbox" id="beepCheckbox" checked /> Sonido al detectar</label>
         </div>
       </div>
 
-      <!-- Columna derecha -->
-      <div>
-        <div class="card section">
-          <h2>Resultados</h2>
-          <div class="result-summary">
-            <div class="kv"><b>Estado:</b> <span id="status">Esperando...</span></div>
-          </div>
-
-          <div id="extractedDataTable" class="hidden">
-            <h4>Datos Extraídos (Parseados):</h4>
-            <table class="result-table">
-              <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-              <tbody id="dataTableBody"></tbody>
-            </table>
-          </div>
-
-          <div class="json-container">
-            <h4>Datos en Formato JSON:</h4>
-            <pre class="json-pre" id="result"></pre>
-          </div>
-
-          <div class="json-container">
-            <h4>Texto Crudo:</h4>
-            <pre class="json-pre" id="result2"></pre>
-          </div>
+      <!-- IMAGEN -->
+      <div class="card" style="margin-top:16px">
+        <h2>2) Cargar/Capturar Imagen</h2>
+        <div class="row">
+          <input type="file" id="fileInput" accept="image/*" style="display:none" />
+          <button id="selectImageButton" class="secondary">Seleccionar Imagen</button>
+          <button id="processImageButton" class="ok" style="background:#0a6" disabled>Procesar Imagen (PDF417)</button>
+          <button id="processMRZButton" class="warn" disabled>Procesar MRZ (OCR)</button>
+          <button id="toggleMagnifier" class="ghost">Activar Lupa</button>
         </div>
 
-        <!-- PANEL ROI -->
-        <div class="card section">
-          <h2>4. Editor de ROIs</h2>
-          <div class="sidegrid">
-            <div class="panel">
-              <h4>Gestión</h4>
-              <div class="row">
-                <button id="btnAddROI" class="ghost">+ Nueva ROI</button>
-                <button id="btnDeleteROI" class="ghost">Eliminar ROI seleccionada</button>
-                <button id="btnExtractSelected" class="secondary">Extraer Seleccionada</button>
-                <button id="btnExtractAll" class="success">Extraer Todas</button>
-              </div>
-              <div class="row">
-                <button id="btnExportTpl">Exportar Plantilla</button>
-                <button id="btnImportTpl" class="secondary">Importar Plantilla</button>
-                <input type="file" id="tplFile" accept=".json" />
-              </div>
-              <p class="mini">Tipos soportados: <b>text</b> (OCR), <b>image</b> (captura base64), <b>barcode</b> (1D/2D), <b>pdf417</b>, <b>mrz</b>.</p>
-            </div>
-
-            <div class="panel">
-              <h4>ROIs</h4>
-              <div id="roiList" class="roi-list"></div>
-            </div>
-
-            <div class="panel">
-              <h4>Propiedades</h4>
-              <div class="prop-grid">
-                <label>Nombre<br/><input id="propName" type="text" placeholder="roi_1" /></label>
-                <label>Tipo<br/>
-                  <select id="propType">
-                    <option>text</option>
-                    <option>image</option>
-                    <option>barcode</option>
-                    <option>pdf417</option>
-                    <option>mrz</option>
-                  </select>
-                </label>
-                <label>X (px)<br/><input id="propX" type="number" step="1" /></label>
-                <label>Y (px)<br/><input id="propY" type="number" step="1" /></label>
-                <label>Ancho (px)<br/><input id="propW" type="number" step="1" /></label>
-                <label>Alto (px)<br/><input id="propH" type="number" step="1" /></label>
-              </div>
-              <div class="row" style="margin-top:8px">
-                <button id="btnApplyProps" class="secondary">Aplicar Propiedades</button>
-              </div>
-            </div>
+        <!-- Mejoras -->
+        <div id="enhancePanel" class="panel" style="margin-top:10px">
+          <h3 style="margin:0 0 8px">3) Mejorar Imagen (pre-OCR/Decode)</h3>
+          <div class="row">
+            <label class="hint"><input type="checkbox" id="chkGrayscale" /> Escala de grises</label>
+            <label class="hint"><input type="checkbox" id="chkBinarize" /> Binarización adaptativa</label>
+            <label class="hint"><input type="checkbox" id="chkSharpen" /> Sharpen</label>
+            <label class="hint"><input type="checkbox" id="chkBoost" /> Aumentar contraste</label>
           </div>
+          <div class="range-row">
+            <span class="hint">Intensidad</span>
+            <input type="range" id="rngIntensity" min="0" max="100" value="40" />
+            <span id="lblIntensity" class="hint">40</span>
+          </div>
+          <p class="hint" style="margin:6px 0 0">Estas mejoras se aplican a los **recortes ROI** y a la imagen completa cuando usas “Procesar MRZ/PDF417”.</p>
         </div>
 
+        <div id="stageWrap" class="img-stage" style="margin-top:10px;display:none">
+          <img id="imagePreview" alt="Vista previa" />
+          <canvas id="roiCanvas"></canvas>
+          <div id="magnifier"><canvas id="magCanvas" width="360" height="360"></canvas></div>
+        </div>
+        <p class="hint" style="margin-top:8px">La imagen **permanece** después de cualquier extracción/parseo, hasta que cargues o captures otra.</p>
+      </div>
+
+      <!-- DUI RAW -->
+      <div class="card" style="margin-top:16px">
+        <h2>4) Parsear Texto Crudo (DUI)</h2>
+        <p class="hint">Usa por defecto el texto crudo más reciente de PDF417; si no existe, tomará lo que pegues aquí.</p>
+        <textarea id="rawInput" placeholder="Pega aquí el texto crudo con separadores '||' si no proviene del PDF417."></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="parseRawButton">Parsear Texto Crudo (DUI)</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <!-- RESULTADOS -->
+      <div class="card">
+        <h2>Resultados</h2>
+        <div class="kv">
+          <b>Estado:</b> <span id="status">Esperando…</span>
+        </div>
+        <div id="extractedDataTable" style="display:none;margin-top:10px">
+          <table class="result-table">
+            <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+            <tbody id="dataTableBody"></tbody>
+          </table>
+        </div>
+        <h3 style="margin:12px 0 6px">JSON</h3>
+        <pre id="result" class="json-pre"></pre>
+        <h3 style="margin:12px 0 6px">Texto Crudo</h3>
+        <pre id="result2" class="json-pre"></pre>
+      </div>
+
+      <!-- ROIs -->
+      <div class="card" style="margin-top:16px">
+        <h2>Editor de ROIs</h2>
+        <div class="panel">
+          <div class="row">
+            <button id="btnAddROI" class="ghost">+ Nueva ROI</button>
+            <button id="btnDeleteROI" class="ghost">Eliminar ROI</button>
+            <button id="btnExtractSelected" class="secondary">Extraer Seleccionada</button>
+            <button id="btnExtractAll" class="ok" style="background:#0a6">Extraer Todas</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="btnExportTpl">Exportar Plantilla</button>
+            <button id="btnImportTpl" class="secondary">Importar</button>
+            <input type="file" id="tplFile" accept=".json" />
+          </div>
+          <p class="hint" style="margin-top:6px">Tipos: <b>text</b>, <b>image</b>, <b>barcode</b>, <b>pdf417</b>, <b>mrz</b>.</p>
+        </div>
+
+        <div class="panel" style="margin-top:10px">
+          <h3 style="margin:0 0 6px">ROIs</h3>
+          <div id="roiList" class="roi-list"></div>
+        </div>
+
+        <div class="panel" style="margin-top:10px">
+          <h3 style="margin:0 0 6px">Propiedades</h3>
+          <div class="prop-grid">
+            <label>Nombre<br><input id="propName" type="text" /></label>
+            <label>Tipo<br>
+              <select id="propType">
+                <option>text</option><option>image</option><option>barcode</option><option>pdf417</option><option>mrz</option>
+              </select>
+            </label>
+            <label>X (px)<br><input id="propX" type="number" step="1" /></label>
+            <label>Y (px)<br><input id="propY" type="number" step="1" /></label>
+            <label>Ancho (px)<br><input id="propW" type="number" step="1" /></label>
+            <label>Alto (px)<br><input id="propH" type="number" step="1" /></label>
+          </div>
+          <div class="row" style="margin-top:8px"><button id="btnApplyProps" class="secondary">Aplicar</button></div>
+        </div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- ZXing -->
-  <script src="https://unpkg.com/@zxing/library@latest"></script>
-  <!-- Tesseract.js -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+<!-- ZXing + Tesseract -->
+<script src="https://unpkg.com/@zxing/library@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
 
-  <script>
-    /* ========= utilidades ========= */
-    function playBeep() {
-      const beepCheckbox = document.getElementById('beepCheckbox');
-      if (!beepCheckbox || !beepCheckbox.checked) return;
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator(); const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = 800; osc.type = 'sine';
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-        osc.start(); osc.stop(ctx.currentTime + 0.3);
-      } catch (e) { /* noop */ }
-    }
-    function updateStatus(message, type = "info") {
-      const el = document.getElementById("status");
-      el.textContent = message;
-      el.className = "";
-      if (type === "success") el.classList.add("check-ok");
-      else if (type === "error") el.classList.add("check-fail");
-    }
-    function displayDataInTable(data) {
-      const body = document.getElementById('dataTableBody');
-      const container = document.getElementById('extractedDataTable');
-      body.innerHTML = '';
-      for (const [k, v] of Object.entries(data)) {
-        const tr = document.createElement('tr');
-        const tdK = document.createElement('td'); tdK.textContent = k;
-        const tdV = document.createElement('td'); tdV.textContent = (v ?? '');
-        tr.appendChild(tdK); tr.appendChild(tdV); body.appendChild(tr);
-      }
-      container.classList.remove('hidden');
-    }
+<script>
+/* ==========================
+   Utilidades UI
+========================== */
+const $ = sel => document.querySelector(sel);
+function beep() {
+  const cb = $('#beepCheckbox'); if (!cb || !cb.checked) return;
+  try{ const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=880;
+    o.connect(g); g.connect(ctx.destination); g.gain.value=.25; o.start(); setTimeout(()=>{o.stop();ctx.close();},250);
+  }catch{}
+}
+function setStatus(msg, cls='') {
+  const el = $('#status'); el.textContent = msg; el.className = cls;
+}
 
-    /* ========= Parser PDF417 (USDL/Genérico DUI) ========= */
-    const parseUSDL = str => {
-      const CodeToKey = {
-        DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes",
-        DBA:"dateOfExpiry", DCS:"lastName", DAC:"firstName", DAD:"middleName", DBD:"dateOfIssue", DBB:"dateOfBirth",
-        DBC:"sex", DAY:"eyeColor", DAU:"height", DAG:"addressStreet", DAI:"addressCity", DAJ:"addressState",
-        DAK:"addressPostalCode", DAQ:"documentNumber", DCF:"documentDiscriminator", DCG:"issuer",
-        DDE:"lastNameTruncated", DDF:"firstNameTruncated", DDG:"middleNameTruncated",
-        DAZ:"hairColor", DAH:"addressStreet2", DCI:"placeOfBirth", DCJ:"auditInformation", DCK:"inventoryControlNumber",
-        DBN:"otherLastName", DBG:"otherFirstName", DBS:"otherSuffixName", DCU:"nameSuffix",
-        DCE:"weightRange", DCL:"race", DCM:"standardVehicleClassification", DCN:"standardEndorsementCode",
-        DCO:"standardRestrictionCode", DCP:"jurisdictionVehicleClassificationDescription",
-        DCQ:"jurisdictionEndorsementCodeDescription", DCR:"jurisdictionRestrictionCodeDescription",
-        DDA:"complianceType", DDB:"dateCardRevised", DDC:"dateOfExpiryHazmatEndorsement",
-        DDD:"limitedDurationDocumentIndicator", DAW:"weightLb", DAX:"weightKg", DDH:"dateAge18",
-        DDI:"dateAge19", DDJ:"dateAge21", DDK:"organDonor", DDL:"veteran"
-      };
-      const parse = (str, options={suppressErrors:true}) => {
-        const props = {};
-        const lines = str.trim().split("\n").map(l => l.match(/[\011\012\015\040-\177]*/g).join("").trim());
-        let started=false;
-        lines.slice(0,-1).forEach(line=>{
-          if(!started){ if(line.indexOf("ANSI ")===0){ started=true;} return; }
-          let code=line.slice(0,3), value=line.slice(3), key=CodeToKey[code];
-          if(!key){ if(!options.suppressErrors) throw new Error("unknown code: "+code); return; }
-          if(code==="DBC") value = (value==="1"?"M":"F");
-          if(key.indexOf("date")===0) value = `${value.slice(4)}-${value.slice(0,2)}-${value.slice(2,4)}`;
-          props[key]=value;
-        });
-        return props;
-      };
-      return parse(str,{suppressErrors:true});
-    };
+/* ==========================
+   Estado global
+========================== */
+let codeReader = new ZXing.BrowserMultiFormatReader();
+let selectedDeviceId = null;
+let isScanning = false;
+let lastPDF417Raw = "";
+let track = null; // MediaStreamTrack para controles pro
+let stream = null;
 
-    /* ========= MRZ OCR + Parser ========= */
-    function mrzCheckDigit(data) {
-      const weights = [7,3,1];
-      const mapChar = (c) => {
-        if (c === '<') return 0;
-        if (c >= '0' && c <= '9') return c.charCodeAt(0) - 48;
-        if (c >= 'A' && c <= 'Z') return c.charCodeAt(0) - 55;
-        return 0;
-      };
-      let sum=0; for(let i=0;i<data.length;i++){ sum += mapChar(data[i])*weights[i%3]; }
-      return String(sum%10);
+const imgEl = $('#imagePreview');
+const stageWrap = $('#stageWrap');
+const canvas = $('#roiCanvas');
+const ctx = canvas.getContext('2d');
+let scaleX=1, scaleY=1;
+
+const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints>0);
+const HANDLE_SIZE = IS_TOUCH ? 18 : 8;
+
+/* ==========================
+   Mejoras (pre-procesado)
+========================== */
+const enhance = {
+  grayscale: false,
+  binarize: false,
+  sharpen: false,
+  boost: false,
+  intensity: 40
+};
+$('#chkGrayscale').addEventListener('change', e=> enhance.grayscale = e.target.checked);
+$('#chkBinarize').addEventListener('change', e=> enhance.binarize = e.target.checked);
+$('#chkSharpen').addEventListener('change', e=> enhance.sharpen = e.target.checked);
+$('#chkBoost').addEventListener('change', e=> enhance.boost = e.target.checked);
+$('#rngIntensity').addEventListener('input', e=> { enhance.intensity = +e.target.value; $('#lblIntensity').textContent = e.target.value; });
+
+function applyEnhancementsToCanvas(cnv){
+  if(!(enhance.grayscale||enhance.binarize||enhance.sharpen||enhance.boost)) return cnv;
+  const w=cnv.width,h=cnv.height; const cx=cnv.getContext('2d');
+  let img = cx.getImageData(0,0,w,h); let d=img.data;
+
+  // Escala de grises
+  if (enhance.grayscale || enhance.binarize) {
+    for(let i=0;i<d.length;i+=4){ const y=0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]; d[i]=d[i+1]=d[i+2]=y; }
+  }
+  // Aumento de contraste (lineal)
+  if (enhance.boost) {
+    const k = 1 + (enhance.intensity/100)*1.25; // 1..2.25
+    for(let i=0;i<d.length;i+=4){
+      d[i]=Math.max(0,Math.min(255,(d[i]-128)*k+128));
+      d[i+1]=Math.max(0,Math.min(255,(d[i+1]-128)*k+128));
+      d[i+2]=Math.max(0,Math.min(255,(d[i+2]-128)*k+128));
     }
-    function normalizeMRZLines(text) {
-      const clean = text.toUpperCase().replace(/[^\nA-Z0-9<]/g,'').split(/\n+/).map(l=>l.replace(/ /g,'').trim()).filter(l=>l.length>=24);
-      const candidates = [];
-      for (let i=0;i<clean.length;i++){
-        const l=clean[i];
-        if (l.length>=40 && l.length<=48 && i+1<clean.length && clean[i+1].length>=40 && clean[i+1].length<=48) {
-          candidates.push({typeGuess:'TD3', lines:[l.padEnd(44,'<').slice(0,44), clean[i+1].padEnd(44,'<').slice(0,44)]});
+  }
+  // Binarización (Sauvola simplificado)
+  if (enhance.binarize) {
+    const win = Math.max(9, Math.floor(Math.min(w,h)/20)|1); // ventana proporcional
+    // simple aproximación: umbral global + ajuste por intensidad
+    let sum=0; for(let i=0;i<d.length;i+=4) sum+=d[i];
+    const avg = sum/(d.length/4);
+    const k = 0.2 + (enhance.intensity/100)*0.6; // 0.2..0.8
+    const thr = avg*(0.9 + k*0.2);
+    for(let i=0;i<d.length;i+=4){ const v=d[i]>=thr?255:0; d[i]=d[i+1]=d[i+2]=v; }
+  }
+  cx.putImageData(img,0,0);
+
+  // Sharpen (Unsharp con kernel Laplaciano)
+  if (enhance.sharpen) {
+    const k = 0.5 + (enhance.intensity/100)*1.5; // 0.5..2.0
+    const tmp = document.createElement('canvas'); tmp.width=w; tmp.height=h;
+    const tx = tmp.getContext('2d'); tx.drawImage(cnv,0,0);
+    const src = tx.getImageData(0,0,w,h); const sd=src.data;
+    const out = cx.getImageData(0,0,w,h); const od=out.data;
+    // Laplaciano 3x3
+    const idx = (x,y)=> (y*w+x)*4;
+    for(let y=1;y<h-1;y++){
+      for(let x=1;x<w-1;x++){
+        for(let ch=0; ch<3; ch++){
+          const p = idx(x,y)+ch;
+          const v = 8*sd[p]
+            - sd[idx(x-1,y-1)+ch]-sd[idx(x,y-1)+ch]-sd[idx(x+1,y-1)+ch]
+            - sd[idx(x-1,y)+ch]    -sd[idx(x+1,y)+ch]
+            - sd[idx(x-1,y+1)+ch]-sd[idx(x,y+1)+ch]-sd[idx(x+1,y+1)+ch];
+          // Unsharp: original + amount*(original - blur) ~ original + k*laplaciano
+          od[p] = Math.max(0, Math.min(255, sd[p] + k*v/8 ));
         }
-        if (l.length>=32 && l.length<=40 && i+1<clean.length && clean[i+1].length>=32 && clean[i+1].length<=40) {
-          candidates.push({typeGuess:'TD2', lines:[l.padEnd(36,'<').slice(0,36), clean[i+1].padEnd(36,'<').slice(0,36)]});
-        }
-        if (l.length>=26 && l.length<=34 && i+2<clean.length && clean[i+1] && clean[i+2]) {
-          if (clean[i+1].length>=26 && clean[i+1].length<=34 && clean[i+2].length>=26 && clean[i+2].length<=34) {
-            candidates.push({typeGuess:'TD1', lines:[
-              l.padEnd(30,'<').slice(0,30),
-              clean[i+1].padEnd(30,'<').slice(0,30),
-              clean[i+2].padEnd(30,'<').slice(0,30)
-            ]});
-          }
-        }
-      }
-      candidates.sort((a,b)=>{
-        const dens = s => (s.join('').match(/</g)||[]).length;
-        return dens(b.lines)-dens(a.lines);
-      });
-      return candidates.length? candidates[0] : null;
-    }
-    function parseTD3(lines) {
-      const L1=lines[0], L2=lines[1];
-      const docType=L1.slice(0,2).replace(/</g,''), issuingCountry=L1.slice(2,5).replace(/</g,'');
-      const namePart=L1.slice(5).split('<<');
-      const surname=namePart[0].replace(/</g,''), givenNames=(namePart[1]||'').replace(/</g,' ').trim();
-      const docNumber=L2.slice(0,9), docNumberCD=L2[9];
-      const nationality=L2.slice(10,13).replace(/</g,''), birth=L2.slice(13,19), birthCD=L2[19];
-      const sex=L2[20], expiry=L2.slice(21,27), expiryCD=L2[27], optional=L2.slice(28,42), compositeCheck=L2[43];
-      const docNumberOK=mrzCheckDigit(docNumber)===docNumberCD, birthOK=mrzCheckDigit(birth)===birthCD, expiryOK=mrzCheckDigit(expiry)===expiryCD;
-      const compositeOK = mrzCheckDigit(docNumber+docNumberCD+birth+birthCD+expiry+expiryCD+optional)===compositeCheck;
-      return { mrzType:'TD3', documentType:docType, issuingCountry, surname, givenNames, documentNumber:docNumber.replace(/</g,''), documentNumberCheck:docNumberOK, nationality, birthDate:birth, birthDateCheck:birthOK, sex, expiryDate:expiry, expiryDateCheck:expiryOK, optional:optional.replace(/</g,'')||'', compositeCheck:compositeOK };
-    }
-    function parseTD2(lines) {
-      const L1=lines[0], L2=lines[1];
-      const docType=L1.slice(0,2).replace(/</g,''), issuingCountry=L1.slice(2,5).replace(/</g,'');
-      const namePart=L1.slice(5).split('<<');
-      const surname=namePart[0].replace(/</g,''), givenNames=(namePart[1]||'').replace(/</g,' ').trim();
-      const docNumber=L2.slice(0,9), docNumberCD=L2[9];
-      const nationality=L2.slice(10,13).replace(/</g,''), birth=L2.slice(13,19), birthCD=L2[19];
-      const sex=L2[20], expiry=L2.slice(21,27), expiryCD=L2[27], optional=L2.slice(28,35), compositeCheck=L2[35];
-      const docNumberOK=mrzCheckDigit(docNumber)===docNumberCD, birthOK=mrzCheckDigit(birth)===birthCD, expiryOK=mrzCheckDigit(expiry)===expiryCD;
-      const compositeCheckOK=mrzCheckDigit(docNumber+docNumberCD+birth+birthCD+expiry+expiryCD+optional)===compositeCheck;
-      return { mrzType:'TD2', documentType:docType, issuingCountry, surname, givenNames, documentNumber:docNumber.replace(/</g,''), documentNumberCheck:docNumberOK, nationality, birthDate:birth, birthDateCheck:birthOK, sex, expiryDate:expiry, expiryDateCheck:expiryOK, optional:optional.replace(/</g,'')||'', compositeCheck:compositeCheckOK };
-    }
-    function parseTD1(lines) {
-      const L1=lines[0], L2=lines[1], L3=lines[2];
-      const docType=L1.slice(0,2).replace(/</g,''), issuingCountry=L1.slice(2,5).replace(/</g,'');
-      const docNumber=L1.slice(5,14), docNumberCD=L1[14], optional1=L1.slice(15,30);
-      const birth=L2.slice(0,6), birthCD=L2[6], sex=L2[7], expiry=L2.slice(8,14), expiryCD=L2[14];
-      const nationality=L2.slice(15,18).replace(/</g,''), optional2=L2.slice(18,29), compositeCheck=L2[29];
-      const namePart=L3.split('<<'); const surname=namePart[0].replace(/</g,''), givenNames=(namePart[1]||'').replace(/</g,' ').trim();
-      const docNumberOK=mrzCheckDigit(docNumber)===docNumberCD, birthOK=mrzCheckDigit(birth)===birthCD, expiryOK=mrzCheckDigit(expiry)===expiryCD;
-      const compositeOK=mrzCheckDigit(docNumber+docNumberCD+birth+birthCD+expiry+expiryCD+optional1+optional2)===compositeCheck;
-      return { mrzType:'TD1', documentType:docType, issuingCountry, documentNumber:docNumber.replace(/</g,''), documentNumberCheck:docNumberOK, birthDate:birth, birthDateCheck:birthOK, sex, expiryDate:expiry, expiryDateCheck:expiryOK, nationality, optional:(optional1+optional2).replace(/</g,'')||'', surname, givenNames, compositeCheck:compositeOK };
-    }
-    function parseMRZ(linesObj) {
-      if (!linesObj) return { error:"No se detectaron líneas MRZ válidas." };
-      const {typeGuess, lines} = linesObj;
-      if (typeGuess==='TD3' && lines.length===2) return parseTD3(lines);
-      if (typeGuess==='TD2' && lines.length===2) return parseTD2(lines);
-      if (typeGuess==='TD1' && lines.length===3) return parseTD1(lines);
-      if (lines.length===2 && lines[0].length===44 && lines[1].length===44) return parseTD3(lines);
-      if (lines.length===2 && lines[0].length===36 && lines[1].length===36) return parseTD2(lines);
-      if (lines.length===3 && lines[0].length===30 && lines[1].length===30 && lines[2].length===30) return parseTD1(lines);
-      return { error:"Formato MRZ no reconocido." };
-    }
-
-    /* ========= DUI Texto Crudo ========= */
-    const DUI_FIELDS = [
-      "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Número de Emisión","Firma Digital",
-      "Lugar de Nacimiento","Municipio","Profesión u Oficio","Sexo","Fecha de Nacimiento","Fecha de Emisión",
-      "Código de Zona","Categoría","Estdo Familiar","Nacionalidad","Segunda Firma Digital","Código de Verificación"
-    ];
-    function parseRawDUI(raw) {
-      const text = (raw || "").trim().replace(/\r/g,'');
-      const parts = text.split("||").map(s => s.trim());
-      const out = {}; DUI_FIELDS.forEach((label, idx) => { out[label] = (parts[idx] ?? ""); });
-      return out;
-    }
-
-    /* ========= Estado global ========= */
-    let selectedDeviceId;
-    let codeReader;
-    let selectedImageFile = null;
-    let isScanning = false;
-    let lastPDF417Raw = "";
-
-    // ROI state
-    const ROIs = [];
-    let activeROIId = null;
-    let roiCounter = 1;
-
-    // Canvas/Layout refs y escalas
-    const imgEl = document.getElementById("imagePreview");
-    const stageWrap = document.getElementById("stageWrap");
-    const canvas = document.getElementById("roiCanvas");
-    const ctx = canvas.getContext("2d");
-    let scaleX = 1, scaleY = 1;
-
-    const videoEl = document.getElementById("video");
-
-    // Táctil
-    const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-    let pinchState = null; // { startDist, startRect, centerX, centerY }
-
-    /* ========= Inicialización ========= */
-    (async () => {
-      try {
-        codeReader = new ZXing.BrowserMultiFormatReader();
-        const videoInputDevices = await codeReader.getVideoInputDevices();
-        const sourceSelect = document.getElementById("sourceSelect");
-        selectedDeviceId = videoInputDevices?.[0]?.deviceId;
-
-        if ((videoInputDevices || []).length > 1) {
-          videoInputDevices.forEach(d => {
-            const opt = document.createElement("option");
-            opt.text = d.label; opt.value = d.deviceId; sourceSelect.appendChild(opt);
-          });
-          sourceSelect.onchange = () => { selectedDeviceId = sourceSelect.value; };
-          document.getElementById("sourceSelectPanel").classList.remove("hidden");
-        }
-        setupEventListeners();
-      } catch (err) {
-        updateStatus("Error: " + err.message, "error");
-        console.error(err);
-      }
-    })();
-
-    /* ========= Listeners ========= */
-    function setupEventListeners() {
-      // Cámara
-      document.getElementById("startButton").addEventListener("click", startCamera);
-      document.getElementById("resetButton").addEventListener("click", resetCamera);
-      document.getElementById("selectImageButton").addEventListener("click", () => document.getElementById("fileInput").click());
-      document.getElementById("fileInput").addEventListener("change", handleImageSelection);
-      document.getElementById("processImageButton").addEventListener("click", processImagePDF417);
-      document.getElementById("processMRZButton").addEventListener("click", processImageMRZ);
-      document.getElementById("parseRawButton").addEventListener("click", handleParseRawDUI);
-      document.getElementById("capturePhotoButton").addEventListener("click", capturePhotoFromCamera);
-
-      // ROI: gestión
-      document.getElementById("btnAddROI").addEventListener("click", addNewROI);
-      document.getElementById("btnDeleteROI").addEventListener("click", deleteSelectedROI);
-      document.getElementById("btnExtractSelected").addEventListener("click", () => extractFromROI(getActiveROI()));
-      document.getElementById("btnExtractAll").addEventListener("click", extractFromAllROIs);
-      document.getElementById("btnApplyProps").addEventListener("click", applyPropEdits);
-
-      // Plantillas
-      document.getElementById("btnExportTpl").addEventListener("click", exportTemplate);
-      document.getElementById("btnImportTpl").addEventListener("click", () => document.getElementById("tplFile").click());
-      document.getElementById("tplFile").addEventListener("change", importTemplateFile);
-
-      // Interacción mouse
-      canvas.addEventListener("mousedown", onMouseDown);
-      window.addEventListener("mousemove", onMouseMove);
-      window.addEventListener("mouseup", onMouseUp);
-
-      // Interacción táctil
-      canvas.addEventListener("touchstart", onTouchStart, { passive:false });
-      canvas.addEventListener("touchmove", onTouchMove, { passive:false });
-      canvas.addEventListener("touchend", onTouchEnd, { passive:false });
-      canvas.addEventListener("touchcancel", onTouchEnd, { passive:false });
-    }
-
-    function handleParseRawDUI() {
-      const fallback = document.getElementById("rawInput").value;
-      const sourceRaw = (lastPDF417Raw && lastPDF417Raw.trim()) ? lastPDF417Raw : fallback;
-      if (!sourceRaw || !sourceRaw.trim()) {
-        updateStatus("No hay texto crudo disponible (ni de PDF417 ni del textarea).", "error");
-        return;
-      }
-      const parsed = parseRawDUI(sourceRaw);
-      document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
-      document.getElementById("result2").textContent = sourceRaw;
-      displayDataInTable(parsed);
-      updateStatus((lastPDF417Raw && lastPDF417Raw.trim()) ? "Texto crudo (DUI) parseado desde PDF417." : "Texto crudo (DUI) parseado desde textarea.","success");
-      document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
-      playBeep();
-    }
-
-    /* ========= Cámara PDF417 ========= */
-    function startCamera() {
-      if (isScanning) { updateStatus("La cámara ya está en funcionamiento","info"); return; }
-      isScanning = true;
-      updateStatus("Escaneando con la cámara (PDF417)...","info");
-      codeReader.decodeFromVideoDevice(selectedDeviceId, "video", (result, err) => {
-        if (result) {
-          lastPDF417Raw = result.text || "";
-          document.getElementById("result2").textContent = lastPDF417Raw;
-
-          if (lastPDF417Raw.includes("||")) {
-            const parsed = parseRawDUI(lastPDF417Raw);
-            document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
-            displayDataInTable(parsed);
-            updateStatus("Texto crudo (DUI) auto-parseado desde PDF417 (cámara).","success");
-            document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
-            playBeep();
-            return;
-          }
-          if (result.format === 10) { // PDF417
-            const parsedData = parseUSDL(result.text);
-            document.getElementById("result").textContent = JSON.stringify(parsedData, null, 2);
-            displayDataInTable(parsedData);
-            updateStatus("Código PDF417 detectado y procesado","success");
-            document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
-            playBeep();
-          } else {
-            updateStatus("Formato detectado: " + result.format,"info");
-          }
-        }
-        if (err && !(err instanceof ZXing.NotFoundException)) {
-          console.error(err);
-          updateStatus("Error: " + err.message,"error");
-        }
-      });
-    }
-    function resetCamera() {
-      if (codeReader) codeReader.reset();
-      isScanning = false;
-      updateStatus("Cámara detenida","info");
-    }
-
-    /* ========= Captura desde cámara -> imagen ========= */
-    async function capturePhotoFromCamera() {
-      try {
-        const vw = videoEl.videoWidth;
-        const vh = videoEl.videoHeight;
-        if (!vw || !vh) {
-          updateStatus("La cámara no está lista para capturar. Inicia la cámara y espera un momento.", "error");
-          return;
-        }
-        const shot = document.createElement("canvas");
-        shot.width = vw; shot.height = vh;
-        const sctx = shot.getContext("2d");
-        sctx.drawImage(videoEl, 0, 0, vw, vh);
-        const dataUrl = shot.toDataURL("image/png");
-
-        await applyLoadedImage(dataUrl, /*fromCapture*/ true);
-        updateStatus("Foto capturada y cargada como imagen.","success");
-        playBeep();
-      } catch (e) {
-        console.error(e);
-        updateStatus("No se pudo capturar la foto: " + e.message, "error");
+        od[idx(x,y)+3]=255;
       }
     }
+    cx.putImageData(out,0,0);
+  }
+  return cnv;
+}
 
-    /* ========= Imagen: manejo común ========= */
-    function handleImageSelection(e) {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        applyLoadedImage(ev.target.result, /*fromCapture*/ false, file);
-      };
-      reader.readAsDataURL(file);
+/* ==========================
+   Cámara y controles pro
+========================== */
+async function startCamera(){
+  if (isScanning) { setStatus("La cámara ya está activa."); return; }
+  try{
+    const [w,h] = ($('#resSelect').value||'1280x720').split('x').map(Number);
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal:w }, height:{ ideal:h },
+        facingMode: { ideal: 'environment' },
+        focusMode: 'continuous' // hint
+      },
+      audio:false
+    });
+    const v = $('#video'); v.srcObject = stream; await v.play();
+    isScanning = true; setStatus(`Cámara iniciada (${w}×${h}).`);
+    // Guardar track y capacidades
+    track = stream.getVideoTracks()[0];
+    setupCameraControls(track);
+    // Decodificar en vivo PDF417 (igual que antes)
+    codeReader.decodeFromVideoElementContinuously(v, (result, err) => {
+      if (result) {
+        lastPDF417Raw = result.text || "";
+        $('#result2').textContent = lastPDF417Raw;
+        if (lastPDF417Raw.includes("||")) {
+          const parsed = parseRawDUI(lastPDF417Raw);
+          $('#result').textContent = JSON.stringify(parsed,null,2);
+          tableOut(parsed); setStatus("DUI (PDF417 cámara) parseado.", "ok"); beep(); return;
+        }
+        if (result.format === 10){ // PDF417
+          const parsed = parseUSDL(result.text);
+          $('#result').textContent = JSON.stringify(parsed,null,2);
+          tableOut(parsed); setStatus("PDF417 detectado (cámara).", "ok"); beep();
+        }
+      } else if (err && !(err instanceof ZXing.NotFoundException)) {
+        console.error(err); setStatus("Error cámara: "+err.message,'fail');
+      }
+    });
+  }catch(e){
+    console.error(e); setStatus("No se pudo iniciar la cámara: "+e.message,'fail');
+  }
+}
+function resetCamera(){
+  try{
+    codeReader.reset();
+    if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; }
+    isScanning=false; setStatus("Cámara detenida.");
+    $('#camControls').style.display='none';
+  }catch(e){/* noop */}
+}
+$('#startButton').addEventListener('click', startCamera);
+$('#resetButton').addEventListener('click', resetCamera);
+$('#capturePhotoButton').addEventListener('click', capturePhotoFromCamera);
+
+async function capturePhotoFromCamera(){
+  const v = $('#video');
+  if (!v.videoWidth) { setStatus("Inicia la cámara antes de capturar.",'fail'); return; }
+  const shot = document.createElement('canvas');
+  shot.width=v.videoWidth; shot.height=v.videoHeight;
+  shot.getContext('2d').drawImage(v,0,0,shot.width,shot.height);
+  const dataURL = shot.toDataURL('image/png');
+  await loadImageToStage(dataURL, true);
+  setStatus("Foto capturada y cargada.","ok"); beep();
+}
+
+function setupCameraControls(track){
+  const cap = track.getCapabilities?.(); if (!cap) return;
+  const sliders = $('#camSliders'); sliders.innerHTML='';
+  $('#camControls').style.display='block';
+
+  function addSlider(name, prop, min, max, step=1, valInit){
+    const row = document.createElement('div'); row.className='range-row';
+    const label = document.createElement('span'); label.className='hint'; label.textContent = name;
+    const input = document.createElement('input'); input.type='range'; input.min=min; input.max=max; input.step=step; input.value = valInit ?? (min+max)/2;
+    const out = document.createElement('span'); out.className='hint'; out.textContent = input.value;
+    input.addEventListener('input', async ()=>{
+      out.textContent = input.value;
+      try{ await track.applyConstraints({ advanced:[{ [prop]: Number(input.value) }] }); }catch(e){ /*ignore*/ }
+    });
+    row.appendChild(label); row.appendChild(input); row.appendChild(out); sliders.appendChild(row);
+  }
+  // Torch
+  const torchBtn = $('#torchButton');
+  let torchOn = false;
+  torchBtn.onclick = async ()=>{
+    if (!cap.torch){ setStatus("Torch no soportado por este dispositivo.","fail"); return; }
+    try{
+      torchOn = !torchOn;
+      await track.applyConstraints({ advanced:[{ torch: torchOn }] });
+      torchBtn.textContent = `Linterna: ${torchOn?'ON':'OFF'}`;
+      setStatus(torchOn?"Linterna encendida.":"Linterna apagada.");
+    }catch(e){ setStatus("No se pudo cambiar la linterna: "+e.message,'fail'); }
+  };
+
+  // Zoom
+  if (cap.zoom) addSlider('Zoom','zoom',cap.zoom.min, cap.zoom.max, cap.zoom.step||0.1, track.getSettings?.().zoom ?? cap.zoom.min);
+  if (cap.exposureCompensation) addSlider('Exposición','exposureCompensation', cap.exposureCompensation.min, cap.exposureCompensation.max, cap.exposureCompensation.step||0.1, track.getSettings?.().exposureCompensation ?? 0);
+  if (cap.brightness) addSlider('Brillo','brightness', cap.brightness.min, cap.brightness.max, cap.brightness.step||1, track.getSettings?.().brightness ?? 0);
+  if (cap.contrast) addSlider('Contraste','contrast', cap.contrast.min, cap.contrast.max, cap.contrast.step||1, track.getSettings?.().contrast ?? 0);
+  if (cap.whiteBalanceMode && cap.whiteBalanceMode.length){
+    // Intentar 'continuous'
+    track.applyConstraints({ advanced:[{ whiteBalanceMode:'continuous' }] }).catch(()=>{});
+  }
+}
+
+/* ==========================
+   Imagen: cargar + persistir
+========================== */
+$('#selectImageButton').addEventListener('click', ()=> $('#fileInput').click());
+$('#fileInput').addEventListener('change', e=>{
+  const f = e.target.files?.[0]; if(!f) return;
+  const fr = new FileReader();
+  fr.onload = async ev => { await loadImageToStage(ev.target.result, false); };
+  fr.readAsDataURL(f);
+});
+
+async function loadImageToStage(dataURL, fromCapture=false){
+  imgEl.src = dataURL;
+  await new Promise(res=> imgEl.onload = res);
+  stageWrap.style.display='block';
+  imgEl.style.display='block';
+  // Ajustar canvas
+  canvas.width = imgEl.clientWidth; canvas.height = imgEl.clientHeight;
+  canvas.style.width = imgEl.clientWidth+'px'; canvas.style.height = imgEl.clientHeight+'px';
+  canvas.style.left = imgEl.offsetLeft+'px'; canvas.style.top = imgEl.offsetTop+'px';
+  scaleX = imgEl.naturalWidth / imgEl.clientWidth;
+  scaleY = imgEl.naturalHeight / imgEl.clientHeight;
+
+  // No limpiar la imagen ni ROIs al procesar -> la imagen persiste hasta ser sustituida
+  $('#processImageButton').disabled=false;
+  $('#processMRZButton').disabled=false;
+
+  drawCanvas(); // repintar ROIs
+}
+
+/* ==========================
+   Lupa circular
+========================== */
+const mag = $('#magnifier'), magCanvas = $('#magCanvas'), mgx = magCanvas.getContext('2d');
+let magOn = false, magZoom = 2.0;
+$('#toggleMagnifier').addEventListener('click', ()=>{
+  magOn = !magOn;
+  mag.style.display = magOn ? 'block' : 'none';
+  $('#toggleMagnifier').textContent = magOn ? 'Desactivar Lupa' : 'Activar Lupa';
+});
+function updateMagnifier(clientX, clientY){
+  if (!magOn || !imgEl.src) return;
+  const rect = stageWrap.getBoundingClientRect();
+  const x = clientX - rect.left, y = clientY - rect.top;
+  mag.style.left = (x - mag.clientWidth/2) + 'px';
+  mag.style.top  = (y - mag.clientHeight/2) + 'px';
+
+  const r = magCanvas.width/2;
+  mgx.clearRect(0,0,magCanvas.width,magCanvas.height);
+  mgx.save();
+  mgx.beginPath(); mgx.arc(r,r,r,0,Math.PI*2); mgx.clip();
+
+  // dibujar la imagen ampliada
+  const sx = (x - (magCanvas.width/(2*magZoom))) * scaleX;
+  const sy = (y - (magCanvas.height/(2*magZoom))) * scaleY;
+  const sw = (magCanvas.width / magZoom) * scaleX;
+  const sh = (magCanvas.height / magZoom) * scaleY;
+
+  mgx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, magCanvas.width, magCanvas.height);
+  mgx.restore();
+}
+stageWrap.addEventListener('mousemove', e=> updateMagnifier(e.clientX, e.clientY));
+stageWrap.addEventListener('wheel', e=>{ if(!magOn) return; e.preventDefault(); magZoom = Math.max(1, Math.min(8, magZoom + (e.deltaY<0?0.2:-0.2))); updateMagnifier(e.clientX,e.clientY); }, {passive:false});
+// Pinch para la lupa en móviles (si está activa)
+stageWrap.addEventListener('touchmove', e=>{
+  if (!magOn) return;
+  if (e.touches.length===2){
+    const dx = e.touches[1].clientX - e.touches[0].clientX;
+    const dy = e.touches[1].clientY - e.touches[0].clientY;
+    const dist = Math.hypot(dx,dy);
+    // usar dist normalizada (simple): aumentar/reducir ligeramente
+    magZoom = Math.max(1, Math.min(8, dist/80));
+    updateMagnifier(e.touches[0].clientX, e.touches[0].clientY);
+    e.preventDefault();
+  } else if (e.touches.length===1){
+    updateMagnifier(e.touches[0].clientX, e.touches[0].clientY);
+  }
+}, {passive:false});
+
+/* ==========================
+   Parser / DUI / MRZ (igual base)
+========================== */
+function tableOut(obj){
+  const tbody = $('#dataTableBody'); tbody.innerHTML='';
+  Object.entries(obj||{}).forEach(([k,v])=>{
+    const tr=document.createElement('tr'); const td1=document.createElement('td'), td2=document.createElement('td');
+    td1.textContent=k; td2.textContent = (v??''); tr.appendChild(td1); tr.appendChild(td2); tbody.appendChild(tr);
+  });
+  $('#extractedDataTable').style.display='block';
+}
+// USDL/Genérico
+function parseUSDL(str){ /* igual que versión previa abreviada (mapas estándar AAMVA) */
+  const CodeToKey = { DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes",
+    DBA:"dateOfExpiry", DCS:"lastName", DAC:"firstName", DAD:"middleName", DBD:"dateOfIssue", DBB:"dateOfBirth",
+    DBC:"sex", DAY:"eyeColor", DAU:"height", DAG:"addressStreet", DAI:"addressCity", DAJ:"addressState",
+    DAK:"addressPostalCode", DAQ:"documentNumber", DCF:"documentDiscriminator", DCG:"issuer" };
+  const props={}; const lines=str.trim().split('\n').map(l=>l.replace(/[^\t\n\r -~]/g,'').trim()); let started=false;
+  lines.forEach(line=>{
+    if(!started){ if(line.startsWith('ANSI ')) started=true; return; }
+    const code=line.slice(0,3), value=line.slice(3), key=CodeToKey[code];
+    if(!key) return; let v=value;
+    if(code==='DBC') v=(value==='1'?'M':'F');
+    if(key.startsWith('date') && /^\d{8}$/.test(value)) v=`${value.slice(4)}-${value.slice(0,2)}-${value.slice(2,4)}`;
+    props[key]=v;
+  }); return props;
+}
+// DUI raw
+const DUI_FIELDS=["Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Número de Emisión","Firma Digital","Lugar de Nacimiento","Municipio","Profesión u Oficio","Sexo","Fecha de Nacimiento","Fecha de Emisión","Código de Zona","Categoría","Estdo Familiar","Nacionalidad","Segunda Firma Digital","Código de Verificación"];
+function parseRawDUI(raw){ const parts=(raw||'').trim().replace(/\r/g,'').split('||').map(s=>s.trim()); const out={}; DUI_FIELDS.forEach((l,i)=> out[l]=parts[i]??""); return out; }
+// MRZ helpers (idénticos a versión anterior)
+function mrzCheckDigit(data){const w=[7,3,1];const map=c=>c==='<'?0:(c>='0'&&c<='9')?c.charCodeAt(0)-48:(c>='A'&&c<='Z')?c.charCodeAt(0)-55:0;let s=0;for(let i=0;i<data.length;i++)s+=map(data[i])*w[i%3];return String(s%10);}
+function normalizeMRZLines(text){
+  const clean=text.toUpperCase().replace(/[^\nA-Z0-9<]/g,'').split(/\n+/).map(l=>l.replace(/ /g,'').trim()).filter(l=>l.length>=24);
+  const cand=[];
+  for(let i=0;i<clean.length;i++){
+    const L=clean[i];
+    if(L.length>=40 && i+1<clean.length){ if(clean[i+1].length>=40) cand.push({typeGuess:'TD3',lines:[L.padEnd(44,'<').slice(0,44),clean[i+1].padEnd(44,'<').slice(0,44)]});}
+    if(L.length>=32 && i+1<clean.length){ if(clean[i+1].length>=32) cand.push({typeGuess:'TD2',lines:[L.padEnd(36,'<').slice(0,36),clean[i+1].padEnd(36,'<').slice(0,36)]});}
+    if(L.length>=26 && i+2<clean.length){
+      const a=clean[i+1],b=clean[i+2];
+      if(a && b && a.length>=26 && b.length>=26) cand.push({typeGuess:'TD1',lines:[L.padEnd(30,'<').slice(0,30),a.padEnd(30,'<').slice(0,30),b.padEnd(30,'<').slice(0,30)]});
     }
+  }
+  cand.sort((A,B)=> ((B.lines.join('').match(/</g)||[]).length) - ((A.lines.join('').match(/</g)||[]).length));
+  return cand[0]||null;
+}
+function parseTD3(L){const A=L[0],B=L[1];const t=A.slice(0,2).replace(/</g,''), c=A.slice(2,5).replace(/</g,''); const np=A.slice(5).split('<<'); const s=np[0].replace(/</g,''), g=(np[1]||'').replace(/</g,' ').trim(); const dn=B.slice(0,9), dnc=B[9]; const nat=B.slice(10,13).replace(/</g,''), bd=B.slice(13,19), bdc=B[19], sx=B[20], ex=B.slice(21,27), exc=B[27], opt=B.slice(28,42), comp=B[43]; return {mrzType:'TD3',documentType:t,issuingCountry:c,surname:s,givenNames:g,documentNumber:dn.replace(/</g,''),documentNumberCheck:mrzCheckDigit(dn)===dnc,nationality:nat,birthDate:bd,birthDateCheck:mrzCheckDigit(bd)===bdc,sex:sx,expiryDate:ex,expiryDateCheck:mrzCheckDigit(ex)===exc,optional:opt.replace(/</g,''),compositeCheck:mrzCheckDigit(dn+dnc+bd+bdc+ex+exc+opt)===comp};}
+function parseTD2(L){const A=L[0],B=L[1];const t=A.slice(0,2).replace(/</g,''), c=A.slice(2,5).replace(/</g,''); const np=A.slice(5).split('<<'); const s=np[0].replace(/</g,''), g=(np[1]||'').replace(/</g,' ').trim(); const dn=B.slice(0,9), dnc=B[9]; const nat=B.slice(10,13).replace(/</g,''), bd=B.slice(13,19), bdc=B[19], sx=B[20], ex=B.slice(21,27), exc=B[27], opt=B.slice(28,35), comp=B[35]; return {mrzType:'TD2',documentType:t,issuingCountry:c,surname:s,givenNames:g,documentNumber:dn.replace(/</g,''),documentNumberCheck:mrzCheckDigit(dn)===dnc,nationality:nat,birthDate:bd,birthDateCheck:mrzCheckDigit(bd)===bdc,sex:sx,expiryDate:ex,expiryDateCheck:mrzCheckDigit(ex)===exc,optional:opt.replace(/</g,''),compositeCheck:mrzCheckDigit(dn+dnc+bd+bdc+ex+exc+opt)===comp};}
+function parseTD1(L){const A=L[0],B=L[1],C=L[2];const t=A.slice(0,2).replace(/</g,''), c=A.slice(2,5).replace(/</g,''); const dn=A.slice(5,14), dnc=A[14], opt1=A.slice(15,30); const bd=B.slice(0,6), bdc=B[6], sx=B[7], ex=B.slice(8,14), exc=B[14], nat=B.slice(15,18).replace(/</g,''), opt2=B.slice(18,29), comp=B[29]; const np=C.split('<<'); const s=np[0].replace(/</g,''), g=(np[1]||'').replace(/</g,' ').trim(); return {mrzType:'TD1',documentType:t,issuingCountry:c,documentNumber:dn.replace(/</g,''),documentNumberCheck:mrzCheckDigit(dn)===dnc,birthDate:bd,birthDateCheck:mrzCheckDigit(bd)===bdc,sex:sx,expiryDate:ex,expiryDateCheck:mrzCheckDigit(ex)===exc,nationality:nat,optional:(opt1+opt2).replace(/</g,''),surname:s,givenNames:g,compositeCheck:mrzCheckDigit(dn+dnc+bd+bdc+ex+exc+opt1+opt2)===comp};}
+function parseMRZ(o){if(!o) return {error:'No MRZ'}; const L=o.lines; if(L.length===2 && L[0].length===44) return parseTD3(L); if(L.length===2 && L[0].length===36) return parseTD2(L); if(L.length===3 && L[0].length===30) return parseTD1(L); return {error:'Formato no reconocido'};}
 
-    async function applyLoadedImage(dataURL, fromCapture=false, originalFile=null) {
-      imgEl.src = dataURL;
-      await new Promise(res => { imgEl.onload = res; });
+/* ==========================
+   Procesar imagen completa con mejoras
+========================== */
+function drawImageToCanvasWithEnhancements(img){
+  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const cctx = c.getContext('2d'); cctx.drawImage(img,0,0);
+  return applyEnhancementsToCanvas(c);
+}
+function cropROIToCanvas(roi){
+  const sx = Math.round(roi.x*scaleX), sy=Math.round(roi.y*scaleY);
+  const sw = Math.max(1, Math.round(roi.w*scaleX)), sh=Math.max(1, Math.round(roi.h*scaleY));
+  const c = document.createElement('canvas'); c.width=sw; c.height=sh;
+  const cctx = c.getContext('2d'); cctx.imageSmoothingEnabled=true; cctx.drawImage(imgEl, sx, sy, sw, sh, 0,0,sw,sh);
+  return applyEnhancementsToCanvas(c);
+}
 
-      stageWrap.classList.remove("hidden");
-      imgEl.style.display = 'block';
-      canvas.width = imgEl.clientWidth;
-      canvas.height = imgEl.clientHeight;
-      canvas.style.width = imgEl.clientWidth + "px";
-      canvas.style.height = imgEl.clientHeight + "px";
-      canvas.style.left = imgEl.offsetLeft + "px";
-      canvas.style.top = imgEl.offsetTop + "px";
-
-      scaleX = imgEl.naturalWidth / imgEl.clientWidth;
-      scaleY = imgEl.naturalHeight / imgEl.clientHeight;
-
-      document.getElementById("processImageButton").disabled = false;
-      document.getElementById("processMRZButton").disabled = false;
-
-      if (fromCapture || !originalFile) {
-        const blob = await (await fetch(dataURL)).blob();
-        selectedImageFile = new File([blob], `captura_${Date.now()}.png`, { type: 'image/png' });
+/* ==========================
+   Procesar PDF417 / MRZ desde imagen
+========================== */
+$('#processImageButton').addEventListener('click', ()=>{
+  if (!imgEl.src) { setStatus('Carga/captura una imagen primero.','fail'); return; }
+  setStatus('Procesando imagen (PDF417)…');
+  const procCanvas = drawImageToCanvasWithEnhancements(imgEl);
+  const tmpImg = new Image();
+  tmpImg.onload=()=>{
+    codeReader.decodeFromImageElement(tmpImg).then(result=>{
+      lastPDF417Raw = result?.text || "";
+      $('#result2').textContent = lastPDF417Raw;
+      if (lastPDF417Raw.includes('||')){
+        const parsed = parseRawDUI(lastPDF417Raw);
+        $('#result').textContent = JSON.stringify(parsed,null,2); tableOut(parsed);
+        setStatus('DUI (PDF417 imagen) parseado.','ok'); beep(); return;
+      }
+      if (result && result.format===10){
+        const parsed = parseUSDL(result.text);
+        $('#result').textContent = JSON.stringify(parsed,null,2); tableOut(parsed);
+        setStatus('PDF417 detectado en imagen.','ok'); beep();
       } else {
-        selectedImageFile = originalFile;
+        setStatus('No se detectó PDF417.','fail'); $('#extractedDataTable').style.display='none';
       }
+    }).catch(err=>{ console.error(err); setStatus('Error: '+err.message,'fail'); });
+  };
+  tmpImg.src = procCanvas.toDataURL('image/png');
+});
+$('#processMRZButton').addEventListener('click', async ()=>{
+  if (!imgEl.src) { setStatus('Carga/captura una imagen primero.','fail'); return; }
+  setStatus('OCR MRZ en imagen…');
+  try{
+    const procCanvas = drawImageToCanvasWithEnhancements(imgEl);
+    const { data } = await Tesseract.recognize(procCanvas, 'eng', { tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<', preserve_interword_spaces:'1' });
+    const raw=(data.text||'').toUpperCase().replace(/[^\nA-Z0-9< ]/g,'');
+    $('#result2').textContent = raw;
+    const linesObj = normalizeMRZLines(raw);
+    if (!linesObj){ setStatus('No se detectó MRZ.','fail'); $('#result').textContent=''; $('#extractedDataTable').style.display='none'; return; }
+    const parsed = parseMRZ(linesObj);
+    if (parsed.error){ setStatus('MRZ detectado, pero no se pudo parsear.','fail'); $('#result').textContent = JSON.stringify({mrzLines:linesObj.lines},null,2); $('#extractedDataTable').style.display='none'; return; }
+    $('#result').textContent = JSON.stringify({mrzLines:linesObj.lines, parsed},null,2);
+    tableOut(parsed); setStatus(`MRZ (${parsed.mrzType}) extraído y parseado.`,'ok'); beep();
+  }catch(e){ console.error(e); setStatus('Error OCR MRZ: '+e.message,'fail'); }
+});
 
-      document.getElementById("result").textContent = "";
-      document.getElementById("result2").textContent = "";
-      document.getElementById("extractedDataTable").classList.add("hidden");
+/* ==========================
+   DUI - botón
+========================== */
+$('#parseRawButton').addEventListener('click', ()=>{
+  const src = (lastPDF417Raw && lastPDF417Raw.trim()) ? lastPDF417Raw : $('#rawInput').value;
+  if (!src || !src.trim()) { setStatus('No hay texto crudo disponible.','fail'); return; }
+  const parsed = parseRawDUI(src);
+  $('#result').textContent = JSON.stringify(parsed,null,2);
+  $('#result2').textContent = src;
+  tableOut(parsed); setStatus('Texto crudo DUI parseado.','ok'); beep();
+});
 
-      drawCanvas();
+/* ==========================
+   ROI Editor (mismo motor + táctil)
+========================== */
+const ROIs=[]; let activeROIId=null; let roiCounter=1;
+function drawCanvas(){
+  if (!imgEl.src) { ctx.clearRect(0,0,canvas.width,canvas.height); return; }
+  canvas.width=imgEl.clientWidth; canvas.height=imgEl.clientHeight;
+  scaleX = imgEl.naturalWidth/imgEl.clientWidth; scaleY = imgEl.naturalHeight/imgEl.clientHeight;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save(); ctx.fillStyle="rgba(0,0,0,.12)"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.restore();
+  ROIs.forEach(r=>{
+    const active=r.id===activeROIId;
+    ctx.save();
+    ctx.strokeStyle=active? '#2a6df5':'#0f6'; ctx.lineWidth=active?2.5:2;
+    ctx.fillStyle='rgba(42,109,245,.10)';
+    ctx.beginPath(); ctx.rect(r.x,r.y,r.w,r.h); ctx.fill(); ctx.stroke();
+    // asas
+    const hs=getHandles(r); ctx.fillStyle=active?'#2a6df5':'#0f6';
+    hs.forEach(h=> ctx.fillRect(h.x-HANDLE_SIZE/2,h.y-HANDLE_SIZE/2,HANDLE_SIZE,HANDLE_SIZE));
+    // etiqueta
+    ctx.fillStyle='#e7ecf5'; ctx.font='12px ui-monospace,monospace';
+    ctx.fillText(`${r.name} [${r.type}]`, r.x+6, Math.max(12, r.y-6));
+    ctx.restore();
+  });
+}
+function getHandles(r){
+  const {x,y,w,h}=r;
+  return [
+    {x:x,y:y,pos:'nw'},{x:x+w/2,y:y,pos:'n'},{x:x+w,y:y,pos:'ne'},
+    {x:x,y:y+h/2,pos:'w'},{x:x+w,y:y+h/2,pos:'e'},
+    {x:x,y:y+h,pos:'sw'},{x:x+w/2,y:y+h,pos:'s'},{x:x+w,y:y+h,pos:'se'}
+  ];
+}
+function ptIn(px,py,x,y,w,h){ return px>=x && py>=y && px<=x+w && py<=y+h; }
+function hitHandle(r, mx,my){ return getHandles(r).find(h=> ptIn(mx,my,h.x-HANDLE_SIZE/2,h.y-HANDLE_SIZE/2,HANDLE_SIZE,HANDLE_SIZE))?.pos||null; }
+
+function addROI(){
+  if(!imgEl.src){ setStatus('Carga/captura una imagen para crear ROIs.','fail'); return; }
+  const w=Math.max(40, Math.floor(canvas.width*0.25));
+  const h=Math.max(40, Math.floor(canvas.height*0.18));
+  const roi={ id:'roi_'+(roiCounter++), name:'roi_'+(roiCounter-1), type:'text', x:Math.floor((canvas.width-w)/2), y:Math.floor((canvas.height-h)/2), w, h };
+  ROIs.push(roi); activeROIId=roi.id; refreshROIList(); drawCanvas(); fillProp(roi);
+}
+function delROI(){
+  if(!activeROIId) return;
+  const i=ROIs.findIndex(r=>r.id===activeROIId); if(i>=0) ROIs.splice(i,1);
+  activeROIId = ROIs[0]?.id || null; refreshROIList(); drawCanvas(); if(activeROIId) fillProp(getActive()); else clearProp();
+}
+function getActive(){ return ROIs.find(r=>r.id===activeROIId)||null; }
+function refreshROIList(){
+  const list=$('#roiList'); list.innerHTML='';
+  ROIs.forEach(r=>{
+    const div=document.createElement('div'); div.className='roi-item'+(r.id===activeROIId?' active':'');
+    div.innerHTML=`<div><b>${r.name}</b> <span class="pill">${r.type}</span></div><div class="hint">(${r.x},${r.y}) ${r.w}×${r.h}</div>`;
+    div.onclick=()=>{ activeROIId=r.id; refreshROIList(); drawCanvas(); fillProp(r); };
+    list.appendChild(div);
+  });
+}
+function fillProp(r){
+  $('#propName').value=r.name; $('#propType').value=r.type;
+  $('#propX').value=Math.round(r.x); $('#propY').value=Math.round(r.y);
+  $('#propW').value=Math.round(r.w); $('#propH').value=Math.round(r.h);
+}
+function clearProp(){ ['propName','propType','propX','propY','propW','propH'].forEach(id=> $('#'+id).value=''); }
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
+function applyProps(){
+  const r=getActive(); if(!r) return;
+  r.name=($('#propName').value||r.id).trim(); r.type=$('#propType').value;
+  r.x=clamp(parseInt($('#propX').value||r.x,10),0,canvas.width-1);
+  r.y=clamp(parseInt($('#propY').value||r.y,10),0,canvas.height-1);
+  r.w=clamp(parseInt($('#propW').value||r.w,10),10,canvas.width-r.x);
+  r.h=clamp(parseInt($('#propH').value||r.h,10),10,canvas.height-r.y);
+  refreshROIList(); drawCanvas();
+}
+$('#btnAddROI').addEventListener('click', addROI);
+$('#btnDeleteROI').addEventListener('click', delROI);
+$('#btnApplyProps').addEventListener('click', applyProps);
+
+/* Interacción mouse/táctil */
+let dragState = { mode:null, startX:0, startY:0, startRect:null, handle:null };
+let pinchState = null;
+function canvasToLocal(clientX,clientY){ const r=canvas.getBoundingClientRect(); return {x:clientX-r.left, y:clientY-r.top}; }
+
+canvas.addEventListener('mousedown', e=>{ const p=canvasToLocal(e.clientX,e.clientY); startInteract(p.x,p.y); });
+window.addEventListener('mousemove', e=>{ if(!dragState.mode && !pinchState) return; const p=canvasToLocal(e.clientX,e.clientY); moveInteract(p.x,p.y); });
+window.addEventListener('mouseup', ()=> endInteract());
+canvas.addEventListener('touchstart', e=>{
+  if (e.touches.length===1){
+    const t=e.touches[0]; const p=canvasToLocal(t.clientX,t.clientY); startInteract(p.x,p.y); e.preventDefault();
+  } else if (e.touches.length===2){
+    const t1=e.touches[0], t2=e.touches[1];
+    const p1=canvasToLocal(t1.clientX,t1.clientY), p2=canvasToLocal(t2.clientX,t2.clientY);
+    const dist=Math.hypot(p2.x-p1.x,p2.y-p1.y); const roi=getActive(); if(!roi) return;
+    pinchState={ startDist:dist, startRect:{...roi}, centerX:(p1.x+p2.x)/2, centerY:(p1.y+p2.y)/2 };
+    dragState.mode=null; e.preventDefault();
+  }
+},{passive:false});
+canvas.addEventListener('touchmove', e=>{
+  if(e.touches.length===1 && dragState.mode){
+    const t=e.touches[0]; const p=canvasToLocal(t.clientX,t.clientY); moveInteract(p.x,p.y); e.preventDefault();
+  } else if(e.touches.length===2 && pinchState){
+    const t1=e.touches[0], t2=e.touches[1];
+    const p1=canvasToLocal(t1.clientX,t1.clientY), p2=canvasToLocal(t2.clientX,t2.clientY);
+    const scale=Math.max(0.2, Math.min(5, Math.hypot(p2.x-p1.x,p2.y-p1.y)/(pinchState.startDist||1)));
+    const roi=getActive(); if(!roi) return; const s=pinchState.startRect;
+    let nw=clamp(s.w*scale,10,canvas.width), nh=clamp(s.h*scale,10,canvas.height);
+    let nx=pinchState.centerX - (pinchState.centerX - s.x)*scale;
+    let ny=pinchState.centerY - (pinchState.centerY - s.y)*scale;
+    nx=clamp(nx,0,canvas.width-nw); ny=clamp(ny,0,canvas.height-nh);
+    roi.x=Math.round(nx); roi.y=Math.round(ny); roi.w=Math.round(nw); roi.h=Math.round(nh);
+    fillProp(roi); drawCanvas(); e.preventDefault();
+  }
+},{passive:false});
+canvas.addEventListener('touchend', ()=>{ if(pinchState && event.touches?.length===0) pinchState=null; endInteract(); }, {passive:false});
+
+function startInteract(x,y){
+  // asas
+  for(let i=ROIs.length-1;i>=0;i--){
+    const r=ROIs[i]; const h=hitHandle(r,x,y);
+    if(h){ activeROIId=r.id; refreshROIList(); fillProp(r);
+      dragState={mode:'resize',startX:x,startY:y,startRect:{...r},handle:h}; drawCanvas(); return; }
+  }
+  // mover
+  for(let i=ROIs.length-1;i>=0;i--){
+    const r=ROIs[i]; if(ptIn(x,y,r.x,r.y,r.w,r.h)){ activeROIId=r.id; refreshROIList(); fillProp(r);
+      dragState={mode:'move',startX:x,startY:y,startRect:{...r},handle:null}; drawCanvas(); return; }
+  }
+  activeROIId=null; refreshROIList(); clearProp(); drawCanvas();
+}
+function moveInteract(x,y){
+  const r=getActive(); if(!r || !dragState.mode) return;
+  const dx=x-dragState.startX, dy=y-dragState.startY;
+  if(dragState.mode==='move'){
+    r.x=clamp(dragState.startRect.x+dx,0,canvas.width-r.w);
+    r.y=clamp(dragState.startRect.y+dy,0,canvas.height-r.h);
+  } else if(dragState.mode==='resize'){
+    let {x:sx,y:sy,w:sw,h:sh}=dragState.startRect; let nx=sx,ny=sy,nw=sw,nh=sh; const h=dragState.handle;
+    if(h.includes('n')){ ny=clamp(sy+dy,0,sy+sh-10); nh=sh-(ny-sy); }
+    if(h.includes('s')){ nh=clamp(sh+dy,10,canvas.height-sy); }
+    if(h.includes('w')){ nx=clamp(sx+dx,0,sx+sw-10); nw=sw-(nx-sx); }
+    if(h.includes('e')){ nw=clamp(sw+dx,10,canvas.width-sx); }
+    r.x=nx; r.y=ny; r.w=nw; r.h=nh;
+  }
+  fillProp(r); drawCanvas();
+}
+function endInteract(){ dragState={mode:null,startX:0,startY:0,startRect:null,handle:null}; }
+
+/* ==========================
+   Plantillas
+========================== */
+$('#btnExportTpl').addEventListener('click', ()=>{
+  if(!ROIs.length){ setStatus('No hay ROIs para exportar.','fail'); return; }
+  const name = prompt('Nombre de la plantilla:','plantilla_rois') || 'plantilla_rois';
+  const payload={ templateName:name, imageInfo:{ naturalWidth:imgEl.naturalWidth||null, naturalHeight:imgEl.naturalHeight||null },
+    rois: ROIs.map(r=>({id:r.id,name:r.name,type:r.type, relX:r.x/canvas.width, relY:r.y/canvas.height, relW:r.w/canvas.width, relH:r.h/canvas.height})) };
+  const blob=new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name+'.json'; document.body.appendChild(a); a.click(); a.remove();
+  setStatus('Plantilla exportada.','ok');
+});
+$('#btnImportTpl').addEventListener('click', ()=> $('#tplFile').click());
+$('#tplFile').addEventListener('change', e=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  const fr=new FileReader();
+  fr.onload=()=>{ try{
+      const tpl=JSON.parse(fr.result); if(!tpl.rois||!Array.isArray(tpl.rois)) throw new Error('Plantilla inválida');
+      ROIs.length=0;
+      tpl.rois.forEach(r=> ROIs.push({ id:r.id||('roi_'+(roiCounter++)), name:r.name||('roi_'+(roiCounter-1)), type:r.type||'text',
+        x:Math.round((r.relX||0)*canvas.width), y:Math.round((r.relY||0)*canvas.height),
+        w:Math.round((r.relW||.3)*canvas.width), h:Math.round((r.relH||.2)*canvas.height) }));
+      activeROIId=ROIs[0]?.id||null; refreshROIList(); drawCanvas(); if(activeROIId) fillProp(getActive()); setStatus('Plantilla importada.','ok');
+    }catch(err){ setStatus('Error plantilla: '+err.message,'fail'); }
+    e.target.value='';
+  };
+  fr.readAsText(f);
+});
+
+/* ==========================
+   Extracción por ROI (con mejoras)
+========================== */
+$('#btnExtractSelected').addEventListener('click', ()=> extractFromROI(getActive()));
+$('#btnExtractAll').addEventListener('click', async ()=>{
+  if(!ROIs.length){ setStatus('No hay ROIs.','fail'); return; }
+  const res={}; for(const r of ROIs){ res[r.name] = await extractFromROI(r) || {error:'Sin resultado'}; }
+  $('#result').textContent = JSON.stringify(res,null,2); setStatus('Extracción en lote finalizada.','ok');
+});
+
+async function extractFromROI(r){
+  if(!r){ setStatus('Selecciona una ROI.','fail'); return; }
+  if(!imgEl.src){ setStatus('Carga/captura una imagen.','fail'); return; }
+  try{
+    if (r.type==='image'){
+      const c=cropROIToCanvas(r); const dataUrl=c.toDataURL('image/png');
+      const out={type:'image', name:r.name, base64:dataUrl};
+      $('#result').textContent=JSON.stringify(out,null,2);
+      tableOut({ROI:r.name,Tipo:'image','Base64 (preview)':dataUrl.slice(0,64)+'…'}); setStatus(`Captura base64 (${r.name}).`,'ok'); beep(); return out;
     }
-
-    /* ========= Proceso: PDF417 desde imagen ========= */
-    function processImagePDF417() {
-      if (!selectedImageFile) { updateStatus("Selecciona o captura una imagen primero.","error"); return; }
-      const img = document.getElementById("imagePreview");
-      updateStatus("Procesando imagen (PDF417)...","info");
-
-      codeReader.decodeFromImageElement(img)
-        .then(result => {
-          lastPDF417Raw = result?.text || "";
-          document.getElementById("result2").textContent = lastPDF417Raw;
-
-          if (lastPDF417Raw && lastPDF417Raw.includes("||")) {
-            const parsedDUI = parseRawDUI(lastPDF417Raw);
-            document.getElementById("result").textContent = JSON.stringify(parsedDUI, null, 2);
-            displayDataInTable(parsedDUI);
-            updateStatus("Texto crudo (DUI) auto-parseado desde PDF417 (imagen).","success");
-            document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
-            playBeep();
-            return;
-          }
-          if (result && result.format === 10) {
-            const parsed = parseUSDL(result.text);
-            document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
-            displayDataInTable(parsed);
-            updateStatus("Código PDF417 detectado y procesado","success");
-            document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
-            playBeep();
-          } else {
-            updateStatus("No se detectó PDF417 en la imagen.","error");
-            document.getElementById("extractedDataTable").classList.add("hidden");
-          }
-        })
-        .catch(err => {
-          console.error(err);
-          updateStatus("Error al procesar la imagen: " + err.message,"error");
-          document.getElementById("result2").textContent = "";
-          document.getElementById("extractedDataTable").classList.add("hidden");
-          lastPDF417Raw = "";
-        });
+    if (r.type==='text'){
+      setStatus(`OCR (text) en ${r.name}…`);
+      const c=cropROIToCanvas(r);
+      const {data}=await Tesseract.recognize(c,'eng',{tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789<>:/-.,#()@ ',preserve_interword_spaces:'1'});
+      const raw=(data.text||'').trim(); const out={type:'text', name:r.name, raw};
+      $('#result2').textContent=raw; tableOut({ROI:r.name,Tipo:'text',Texto:raw}); setStatus(`OCR completo (${r.name}).`,'ok'); beep(); return out;
     }
-
-    /* ========= Proceso: MRZ desde imagen (OCR) ========= */
-    async function processImageMRZ() {
-      if (!selectedImageFile) { updateStatus("Selecciona o captura una imagen primero.","error"); return; }
-      const img = document.getElementById("imagePreview");
-      updateStatus("Ejecutando OCR (MRZ)...","info");
-
-      try {
-        const { data } = await Tesseract.recognize(img, 'eng', {
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
-          preserve_interword_spaces: '1'
-        });
-        const raw = (data.text || '').toUpperCase().replace(/[^\nA-Z0-9< ]/g,'');
-        document.getElementById("result2").textContent = raw;
-
-        const linesObj = normalizeMRZLines(raw);
-        if (!linesObj) {
-          updateStatus("No se localizaron líneas MRZ válidas en el OCR.","error");
-          document.getElementById("extractedDataTable").classList.add("hidden");
-          document.getElementById("result").textContent = "";
-          return;
-        }
-        const parsed = parseMRZ(linesObj);
-        if (parsed.error) {
-          updateStatus("MRZ detectado, pero no se pudo parsear: " + parsed.error,"error");
-          document.getElementById("extractedDataTable").classList.add("hidden");
-          document.getElementById("result").textContent = JSON.stringify({ mrzLines: linesObj.lines }, null, 2);
-          return;
-        }
-        document.getElementById("result").textContent = JSON.stringify({ mrzLines: linesObj.lines, parsed }, null, 2);
-        displayDataInTable(parsed);
-        updateStatus(`MRZ (${parsed.mrzType}) extraído y parseado`,"success");
-        document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
-        playBeep();
-      } catch (err) {
-        console.error(err);
-        updateStatus("Error en OCR MRZ: " + err.message,"error");
-        document.getElementById("extractedDataTable").classList.add("hidden");
-        document.getElementById("result").textContent = "";
-      }
+    if (r.type==='barcode'){
+      setStatus(`Decodificando barcode en ${r.name}…`);
+      const c=cropROIToCanvas(r); const dataUrl=c.toDataURL('image/png'); const im=new Image();
+      const res = await new Promise((resolve,reject)=>{ im.onload=()=> codeReader.decodeFromImageElement(im).then(resolve).catch(reject); im.onerror=reject; im.src=dataUrl; });
+      const out={type:'barcode', name:r.name, format:res?.format, text:res?.text||''};
+      $('#result2').textContent=out.text; tableOut({ROI:r.name,Tipo:'barcode',Formato:res?.format,Texto:out.text}); setStatus(`Barcode extraído (${r.name}).`,'ok'); beep(); return out;
     }
-
-    /* ========= ROI Editor ========= */
-    function addNewROI() {
-      if (!imgEl.src) { updateStatus("Primero carga o captura una imagen para crear ROIs.","error"); return; }
-      const w = Math.max(40, Math.floor(canvas.width * 0.25));
-      const h = Math.max(40, Math.floor(canvas.height * 0.18));
-      const roi = {
-        id: "roi_" + (roiCounter++),
-        name: "roi_" + (roiCounter-1),
-        type: "text",
-        x: Math.floor((canvas.width - w)/2),
-        y: Math.floor((canvas.height - h)/2),
-        w, h
-      };
-      ROIs.push(roi);
-      activeROIId = roi.id;
-      refreshROIList();
-      drawCanvas();
-      fillPropEditor(roi);
+    if (r.type==='pdf417'){
+      setStatus(`Decodificando PDF417 en ${r.name}…`);
+      const c=cropROIToCanvas(r); const dataUrl=c.toDataURL('image/png'); const im=new Image();
+      const res = await new Promise((resolve,reject)=>{ im.onload=()=> codeReader.decodeFromImageElement(im).then(resolve).catch(reject); im.onerror=reject; im.src=dataUrl; });
+      const raw=res?.text||''; lastPDF417Raw = raw;
+      let parsed={}; if(raw.includes('||')) parsed=parseRawDUI(raw); else if(res && res.format===10) parsed=parseUSDL(raw);
+      const out={type:'pdf417', name:r.name, raw, parsed};
+      $('#result').textContent=JSON.stringify(parsed,null,2); $('#result2').textContent=raw; if(parsed && Object.keys(parsed).length) tableOut(parsed);
+      setStatus(`PDF417 extraído (${r.name}).`,'ok'); beep(); return out;
     }
-    function getActiveROI() { return ROIs.find(r => r.id === activeROIId) || null; }
-    function deleteSelectedROI() {
-      if (!activeROIId) return;
-      const idx = ROIs.findIndex(r => r.id === activeROIId);
-      if (idx>=0) { ROIs.splice(idx,1); }
-      activeROIId = ROIs.length ? ROIs[Math.max(0, idx-1)].id : null;
-      refreshROIList();
-      drawCanvas();
-      if (activeROIId) fillPropEditor(getActiveROI()); else clearPropEditor();
+    if (r.type==='mrz'){
+      setStatus(`OCR (MRZ) en ${r.name}…`);
+      const c=cropROIToCanvas(r);
+      const {data}=await Tesseract.recognize(c,'eng',{tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',preserve_interword_spaces:'1'});
+      const raw=(data.text||'').toUpperCase().replace(/[^\nA-Z0-9< ]/g,'');
+      const linesObj=normalizeMRZLines(raw); let payload={};
+      if (linesObj){ const p=parseMRZ(linesObj); payload = p.error? {error:p.error,mrzLines:linesObj.lines} : {mrzLines:linesObj.lines,parsed:p}; }
+      else payload={error:'No MRZ lines'};
+      const out={type:'mrz', name:r.name, raw, ...payload};
+      $('#result').textContent=JSON.stringify(out,null,2); $('#result2').textContent=raw;
+      if(out.parsed) tableOut(out.parsed);
+      setStatus(`MRZ procesado (${r.name}).`,'ok'); beep(); return out;
     }
-    function refreshROIList() {
-      const list = document.getElementById("roiList");
-      list.innerHTML = "";
-      ROIs.forEach(roi => {
-        const row = document.createElement("div");
-        row.className = "roi-item" + (roi.id===activeROIId ? " active":"");
-        row.innerHTML = `
-          <div><b>${roi.name}</b> <span class="pill">${roi.type}</span></div>
-          <div class="mini">(${roi.x},${roi.y}) ${roi.w}×${roi.h}</div>
-        `;
-        row.addEventListener("click", ()=>{ activeROIId = roi.id; refreshROIList(); drawCanvas(); fillPropEditor(roi); });
-        list.appendChild(row);
-      });
-    }
-    function fillPropEditor(roi){
-      document.getElementById("propName").value = roi.name || "";
-      document.getElementById("propType").value = roi.type || "text";
-      document.getElementById("propX").value = Math.round(roi.x);
-      document.getElementById("propY").value = Math.round(roi.y);
-      document.getElementById("propW").value = Math.round(roi.w);
-      document.getElementById("propH").value = Math.round(roi.h);
-    }
-    function clearPropEditor(){
-      ["propName","propType","propX","propY","propW","propH"].forEach(id => { const el=document.getElementById(id); if (el) el.value = ""; });
-    }
-    function applyPropEdits(){
-      const roi = getActiveROI(); if (!roi) return;
-      roi.name = (document.getElementById("propName").value || roi.id).trim();
-      roi.type = document.getElementById("propType").value;
-      roi.x = clamp( parseInt(document.getElementById("propX").value||roi.x,10), 0, canvas.width-1);
-      roi.y = clamp( parseInt(document.getElementById("propY").value||roi.y,10), 0, canvas.height-1);
-      roi.w = clamp( parseInt(document.getElementById("propW").value||roi.w,10), 10, canvas.width - roi.x);
-      roi.h = clamp( parseInt(document.getElementById("propH").value||roi.h,10), 10, canvas.height - roi.y);
-      refreshROIList();
-      drawCanvas();
-    }
-    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+    setStatus('Tipo de ROI no soportado.','fail');
+  }catch(e){ console.error(e); setStatus('Error extracción: '+e.message,'fail'); }
+}
 
-    // Tamaño de asas (más grandes en táctil)
-    const HANDLE_SIZE = IS_TOUCH ? 18 : 8;
-
-    function drawCanvas(){
-      if (!imgEl.src) { ctx.clearRect(0,0,canvas.width, canvas.height); return; }
-      canvas.width = imgEl.clientWidth;
-      canvas.height = imgEl.clientHeight;
-      scaleX = imgEl.naturalWidth / imgEl.clientWidth;
-      scaleY = imgEl.naturalHeight / imgEl.clientHeight;
-
-      ctx.clearRect(0,0,canvas.width, canvas.height);
-      ctx.save();
-      ctx.fillStyle = "rgba(0,0,0,0.15)";
-      ctx.fillRect(0,0,canvas.width, canvas.height);
-      ctx.restore();
-
-      ROIs.forEach(roi => {
-        const active = roi.id === activeROIId;
-        ctx.save();
-        ctx.strokeStyle = active ? "#2a6df5" : "#0f6";
-        ctx.lineWidth = active ? 2.5 : 2;
-        ctx.fillStyle = "rgba(42,109,245,0.10)";
-        ctx.beginPath();
-        ctx.rect(roi.x, roi.y, roi.w, roi.h);
-        ctx.fill();
-        ctx.stroke();
-
-        const handles = getHandles(roi);
-        ctx.fillStyle = active ? "#2a6df5" : "#0f6";
-        handles.forEach(h => { ctx.fillRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE); });
-
-        ctx.fillStyle = "#e7ecf5";
-        ctx.font = "12px ui-monospace,monospace";
-        ctx.fillText(`${roi.name} [${roi.type}]`, roi.x + 6, Math.max(12, roi.y - 6));
-        ctx.restore();
-      });
-    }
-    function getHandles(roi){
-      const {x,y,w,h} = roi;
-      return [
-        {x:x,y:y, pos:"nw"}, {x:x+w/2,y:y, pos:"n"}, {x:x+w,y:y, pos:"ne"},
-        {x:x,y:y+h/2, pos:"w"}, {x:x+w,y:y+h/2, pos:"e"},
-        {x:x,y:y+h, pos:"sw"}, {x:x+w/2,y:y+h, pos:"s"}, {x:x+w,y:y+h, pos:"se"}
-      ];
-    }
-    function ptInRect(px,py, x,y,w,h){ return px>=x && py>=y && px<=x+w && py<=y+h; }
-    function hitHandle(roi, mx,my){
-      const handles = getHandles(roi);
-      for (let h of handles){
-        if (ptInRect(mx,my, h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE)) return h.pos;
-      }
-      return null;
-    }
-
-    // Interacciones comunes
-    let dragState = { mode:null, startX:0, startY:0, startRect:null, handle:null };
-    function canvasToLocalPointer(clientX, clientY){
-      const rect = canvas.getBoundingClientRect();
-      return { x: clientX - rect.left, y: clientY - rect.top };
-    }
-
-    // === Mouse
-    function onMouseDown(evt){
-      const {x,y} = canvasToLocalPointer(evt.clientX, evt.clientY);
-      startInteractionAt(x,y);
-    }
-    function onMouseMove(evt){
-      if (!dragState.mode && !pinchState) return;
-      const {x,y} = canvasToLocalPointer(evt.clientX, evt.clientY);
-      moveInteractionTo(x,y);
-    }
-    function onMouseUp(){
-      endInteraction();
-    }
-
-    // === Touch
-    function onTouchStart(evt){
-      if (!imgEl.src) return;
-      if (evt.touches.length === 1){
-        evt.preventDefault();
-        const t = evt.touches[0];
-        const {x,y} = canvasToLocalPointer(t.clientX, t.clientY);
-        startInteractionAt(x,y);
-      } else if (evt.touches.length === 2){
-        evt.preventDefault();
-        // Pinch sobre ROI activo
-        const roi = getActiveROI();
-        if (!roi) return;
-        const t1 = evt.touches[0], t2 = evt.touches[1];
-        const p1 = canvasToLocalPointer(t1.clientX, t1.clientY);
-        const p2 = canvasToLocalPointer(t2.clientX, t2.clientY);
-        const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        const centerX = (p1.x + p2.x)/2;
-        const centerY = (p1.y + p2.y)/2;
-        pinchState = { startDist: dist, startRect: { ...roi }, centerX, centerY };
-        dragState.mode = null; // cancelar drag/resize de un dedo
-      }
-    }
-    function onTouchMove(evt){
-      if (evt.touches.length === 1){
-        if (!dragState.mode) return;
-        evt.preventDefault();
-        const t = evt.touches[0];
-        const {x,y} = canvasToLocalPointer(t.clientX, t.clientY);
-        moveInteractionTo(x,y);
-      } else if (evt.touches.length === 2 && pinchState){
-        evt.preventDefault();
-        const roi = getActiveROI(); if (!roi) return;
-        const t1 = evt.touches[0], t2 = evt.touches[1];
-        const p1 = canvasToLocalPointer(t1.clientX, t1.clientY);
-        const p2 = canvasToLocalPointer(t2.clientX, t2.clientY);
-        const newDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        const scale = Math.max(0.2, Math.min(5, newDist / (pinchState.startDist || 1)));
-
-        // Escalado proporcional alrededor del centro del pinch
-        const sr = pinchState.startRect;
-        let newW = clamp(sr.w * scale, 10, canvas.width);
-        let newH = clamp(sr.h * scale, 10, canvas.height);
-
-        // Mantener centro
-        let newX = pinchState.centerX - (pinchState.centerX - sr.x) * scale;
-        let newY = pinchState.centerY - (pinchState.centerY - sr.y) * scale;
-
-        // Limites
-        newX = clamp(newX, 0, canvas.width - newW);
-        newY = clamp(newY, 0, canvas.height - newH);
-
-        roi.x = Math.round(newX);
-        roi.y = Math.round(newY);
-        roi.w = Math.round(newW);
-        roi.h = Math.round(newH);
-
-        fillPropEditor(roi);
-        drawCanvas();
-      }
-    }
-    function onTouchEnd(evt){
-      if (evt.touches.length === 0){
-        endInteraction();
-        pinchState = null;
-      } else if (evt.touches.length === 1){
-        // si estaba en pinch y soltó un dedo, seguimos con uno, pero sin estado previo
-        pinchState = null;
-      }
-    }
-
-    // === Lógica común para comenzar/mover/terminar interacción
-    function startInteractionAt(x,y){
-      if (!imgEl.src) return;
-
-      // probar asas primero
-      for (let i=ROIs.length-1; i>=0; i--){
-        const r = ROIs[i];
-        const handle = hitHandle(r, x,y);
-        if (handle){
-          activeROIId = r.id; refreshROIList(); fillPropEditor(r);
-          dragState.mode = "resize"; dragState.handle = handle;
-          dragState.startX=x; dragState.startY=y; dragState.startRect={...r};
-          drawCanvas(); return;
-        }
-      }
-      // luego área del ROI (mover)
-      for (let i=ROIs.length-1; i>=0; i--){
-        const r = ROIs[i];
-        if (ptInRect(x,y, r.x,r.y,r.w,r.h)){
-          activeROIId = r.id; refreshROIList(); fillPropEditor(r);
-          dragState.mode = "move"; dragState.startX=x; dragState.startY=y; dragState.startRect={...r};
-          drawCanvas(); return;
-        }
-      }
-      // click/touch vacío: deseleccionar
-      activeROIId = null; refreshROIList(); clearPropEditor(); drawCanvas();
-    }
-    function moveInteractionTo(x,y){
-      const roi = getActiveROI(); if (!roi || !dragState.mode) return;
-      const dx = x - dragState.startX, dy = y - dragState.startY;
-
-      if (dragState.mode === "move"){
-        roi.x = clamp(dragState.startRect.x + dx, 0, canvas.width - roi.w);
-        roi.y = clamp(dragState.startRect.y + dy, 0, canvas.height - roi.h);
-      } else if (dragState.mode === "resize"){
-        let {x:sx,y:sy,w:sw,h:sh} = dragState.startRect;
-        let nx=sx, ny=sy, nw=sw, nh=sh;
-        const h = dragState.handle;
-        if (h.includes("n")) { ny = clamp(sy + dy, 0, sy+sh-10); nh = sh - (ny - sy); }
-        if (h.includes("s")) { nh = clamp(sh + dy, 10, canvas.height - sy); }
-        if (h.includes("w")) { nx = clamp(sx + dx, 0, sx+sw-10); nw = sw - (nx - sx); }
-        if (h.includes("e")) { nw = clamp(sw + dx, 10, canvas.width - sx); }
-        roi.x=nx; roi.y=ny; roi.w=nw; roi.h=nh;
-      }
-      fillPropEditor(roi);
-      drawCanvas();
-    }
-    function endInteraction(){
-      dragState = { mode:null, startX:0, startY:0, startRect:null, handle:null };
-    }
-
-    /* ========= Export / Import Plantillas ========= */
-    function exportTemplate() {
-      if (!ROIs.length) { updateStatus("No hay ROIs para exportar.","error"); return; }
-      const name = prompt("Nombre de la plantilla a exportar:", "plantilla_rois");
-      const payload = {
-        templateName: name || "plantilla_rois",
-        imageInfo: {
-          naturalWidth: imgEl.naturalWidth || null,
-          naturalHeight: imgEl.naturalHeight || null
-        },
-        rois: ROIs.map(r => ({
-          id: r.id, name: r.name, type: r.type,
-          relX: r.x / canvas.width,
-          relY: r.y / canvas.height,
-          relW: r.w / canvas.width,
-          relH: r.h / canvas.height
-        }))
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = (payload.templateName || "plantilla_rois") + ".json";
-      document.body.appendChild(a); a.click(); a.remove();
-      updateStatus("Plantilla exportada.","success");
-    }
-    function importTemplateFile(e) {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const fr = new FileReader();
-      fr.onload = () => {
-        try {
-          const tpl = JSON.parse(fr.result);
-          if (!tpl.rois || !Array.isArray(tpl.rois)) throw new Error("Plantilla inválida.");
-          ROIs.length = 0;
-          tpl.rois.forEach((r,i) => {
-            ROIs.push({
-              id: r.id || ("roi_"+(roiCounter++)),
-              name: r.name || ("roi_"+(roiCounter-1)),
-              type: r.type || "text",
-              x: Math.round((r.relX || 0)*canvas.width),
-              y: Math.round((r.relY || 0)*canvas.height),
-              w: Math.round((r.relW || 0.3)*canvas.width),
-              h: Math.round((r.relH || 0.2)*canvas.height)
-            });
-          });
-          activeROIId = ROIs[0]?.id || null;
-          refreshROIList(); drawCanvas();
-          if (activeROIId) fillPropEditor(getActiveROI());
-          updateStatus("Plantilla importada.","success");
-        } catch (err) {
-          console.error(err);
-          updateStatus("Error al importar plantilla: " + err.message,"error");
-        } finally {
-          e.target.value = "";
-        }
-      };
-      fr.readAsText(file);
-    }
-
-    /* ========= Extracción por ROI ========= */
-    function cropROIToCanvas(roi){
-      const sx = Math.round(roi.x * scaleX);
-      const sy = Math.round(roi.y * scaleY);
-      const sw = Math.max(1, Math.round(roi.w * scaleX));
-      const sh = Math.max(1, Math.round(roi.h * scaleY));
-      const c = document.createElement("canvas");
-      c.width = sw; c.height = sh;
-      const cctx = c.getContext("2d");
-      cctx.imageSmoothingEnabled = true;
-      cctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, sw, sh);
-      return c;
-    }
-
-    async function extractFromROI(roi){
-      if (!roi) { updateStatus("Selecciona una ROI.","error"); return; }
-      if (!imgEl.src) { updateStatus("Primero carga o captura una imagen.","error"); return; }
-
-      try {
-        let out = {};
-        if (roi.type === "image") {
-          const c = cropROIToCanvas(roi);
-          const dataUrl = c.toDataURL("image/png");
-          out = { type:"image", name:roi.name, base64: dataUrl };
-          document.getElementById("result").textContent = JSON.stringify(out, null, 2);
-          displayDataInTable({ "ROI": roi.name, "Tipo": "image", "Base64 (preview)": dataUrl.slice(0,64)+"..." });
-          updateStatus(`Captura base64 generada (${roi.name})`,"success");
-          playBeep();
-          return out;
-        }
-
-        if (roi.type === "text") {
-          updateStatus(`OCR (text) en ${roi.name}...`,"info");
-          const c = cropROIToCanvas(roi);
-          const { data } = await Tesseract.recognize(c, 'eng', {
-            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789<>:/-.,#()@ ',
-            preserve_interword_spaces: '1'
-          });
-          const raw = (data.text || '').trim();
-          out = { type:"text", name:roi.name, raw };
-          document.getElementById("result2").textContent = raw;
-          displayDataInTable({ "ROI": roi.name, "Tipo": "text", "Texto": raw });
-          updateStatus(`OCR (text) completado (${roi.name})`,"success");
-          playBeep();
-          return out;
-        }
-
-        if (roi.type === "barcode") {
-          updateStatus(`Decodificando barcode en ${roi.name}...`,"info");
-          const c = cropROIToCanvas(roi);
-          const dataUrl = c.toDataURL("image/png");
-          const img = new Image();
-          const res = await new Promise((resolve,reject)=>{
-            img.onload = () => { codeReader.decodeFromImageElement(img).then(resolve).catch(reject); };
-            img.onerror = reject;
-            img.src = dataUrl;
-          });
-          out = { type:"barcode", name:roi.name, format: res?.format, text: res?.text || "" };
-          document.getElementById("result2").textContent = res?.text || "";
-          displayDataInTable({ "ROI": roi.name, "Tipo": "barcode", "Formato": res?.format, "Texto": res?.text || "" });
-          updateStatus(`Barcode extraído (${roi.name})`,"success");
-          playBeep();
-          return out;
-        }
-
-        if (roi.type === "pdf417") {
-          updateStatus(`Decodificando PDF417 en ${roi.name}...`,"info");
-          const c = cropROIToCanvas(roi);
-          const dataUrl = c.toDataURL("image/png");
-          const img = new Image();
-          const res = await new Promise((resolve,reject)=>{
-            img.onload = () => { codeReader.decodeFromImageElement(img).then(resolve).catch(reject); };
-            img.onerror = reject;
-            img.src = dataUrl;
-          });
-          const raw = res?.text || "";
-          lastPDF417Raw = raw;
-          let parsed = {};
-          if (raw.includes("||")) parsed = parseRawDUI(raw);
-          else if (res && res.format === 10) parsed = parseUSDL(raw);
-
-          out = { type:"pdf417", name:roi.name, raw, parsed };
-          document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
-          document.getElementById("result2").textContent = raw;
-          if (parsed && Object.keys(parsed).length) displayDataInTable(parsed);
-          updateStatus(`PDF417 extraído (${roi.name})`,"success");
-          playBeep();
-          return out;
-        }
-
-        if (roi.type === "mrz") {
-          updateStatus(`OCR (MRZ) en ${roi.name}...`,"info");
-          const c = cropROIToCanvas(roi);
-          const { data } = await Tesseract.recognize(c, 'eng', {
-            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
-            preserve_interword_spaces: '1'
-          });
-          const raw = (data.text || '').toUpperCase().replace(/[^\nA-Z0-9< ]/g,'');
-          const linesObj = normalizeMRZLines(raw);
-          let parsed = {};
-          if (linesObj) {
-            const p = parseMRZ(linesObj);
-            parsed = p.error ? { error:p.error, mrzLines: linesObj.lines } : { mrzLines: linesObj.lines, parsed:p };
-          } else {
-            parsed = { error:"No MRZ lines found." };
-          }
-          out = { type:"mrz", name:roi.name, raw, ...parsed };
-          document.getElementById("result").textContent = JSON.stringify(out, null, 2);
-          document.getElementById("result2").textContent = raw;
-          if (out.parsed) displayDataInTable(out.parsed);
-          updateStatus(`MRZ procesado (${roi.name})`,"success");
-          playBeep();
-          return out;
-        }
-
-        updateStatus(`Tipo de ROI no soportado: ${roi.type}`,"error");
-      } catch (err) {
-        console.error(err);
-        updateStatus("Error en extracción ROI: " + err.message,"error");
-      }
-    }
-
-    async function extractFromAllROIs(){
-      if (!ROIs.length) { updateStatus("No hay ROIs para extraer.","error"); return; }
-      const results = {};
-      for (const r of ROIs) {
-        const out = await extractFromROI(r);
-        results[r.name] = out || { error:"Sin resultado" };
-      }
-      document.getElementById("result").textContent = JSON.stringify(results, null, 2);
-      updateStatus("Extracción en lote terminada.","success");
-    }
-
-    /* ========= Helpers ========= */
-    function getActiveIndex(){ return ROIs.findIndex(r => r.id===activeROIId); }
-
-  </script>
+/* ==========================
+   Eventos restantes
+========================== */
+$('#torchButton').addEventListener('click', ()=>{/* handler se define en setupCameraControls si es soportado */});
+</script>
 </body>
 </html>
