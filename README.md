@@ -9,7 +9,7 @@ Uses:
 
 [MRZ Coder](https://ravendano014.github.io/mrz/MRZGen.html)
 
-[MRZ Decoder](https://ravendano014.github.io/mrz/MRZReaderPaerser.html)
+[MRZ Decoder](https://ravendano014.github.io/mrz/MRZReaderParser.html)
 
 [MRZ Persitent](https://ravendano014.github.io/mrz/mrz.html)
 
