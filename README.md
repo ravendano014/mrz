@@ -3,6 +3,9 @@ Uses:
   DUIFrente.JPG with salvador_id_card_template_front.json
   DUIDorso.JPG with salvador_id_card_template_back.json
 
+<span style="color:green;">Doc HeatMap OCR</span> [HeatMap & OCR](https://ravendano014.github.io/mrz/DocHeatMap.html)
+<span style="color:green;">Doc ROI PDF417</span> [ROI PDF417](https://ravendano014.github.io/mrz/DocROI.html)
+
 <span style="color:green;">MRZ</span> [MRZ Online Cam Reader](https://ravendano014.github.io/mrz/)
 
 [MRZ Online Image Reader](https://ravendano014.github.io/mrz/MRZFeed.html)
@@ -41,7 +44,7 @@ Uses:
 
 <span style="color:green;">Barcode & OCR</span> [Barcode & OCR](https://ravendano014.github.io/mrz/CAFOCR.html)
 
-<span style="color:green;">HeatMap OCR</span> [HeatMap & OCR](https://ravendano014.github.io/mrz/DocHeatMap.html)
+
 
 
 
