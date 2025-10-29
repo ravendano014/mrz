@@ -1,566 +1,667 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>DocROI · + Cámara · PDF417 (ZXing) · BarcodeDetector · OCR/MRZ</title>
-<!-- ZXing UMD (multi-formato + PDF417 específico) -->
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.2/umd/index.min.js"></script>
-<!-- Tesseract.js -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js"></script>
-<style>
-  :root{color-scheme:dark;--panel:#111827;--muted:#94a3b8;--ink:#e5e7eb;--roi:#10b981;--roi-sel:#60a5fa;--roi-handle:#eab308}
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Inter,Arial;background:linear-gradient(180deg,#07090d 0%, #0b1220 100%);color:var(--ink)}
-  header,footer{padding:10px 16px}
-  header h1{font-size:18px;margin:8px 0 12px;color:#cbd5e1}
-  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .group{background:var(--panel);padding:8px;border-radius:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  label{font-size:12px;color:var(--muted)}
-  input[type="file"],select,input[type="text"],textarea,button{background:#0f172a;color:var(--ink);border:1px solid #1f2937;border-radius:10px;padding:8px 10px;font-size:13px}
-  button{cursor:pointer}
-  button.primary{background:#0b3b22;border-color:#134e4a}
-  button.primary:hover{background:#0e4a2a}
-  button.warn{background:#3a2a0a;border-color:#7c5800}
-  button.danger{background:#3a0a0a;border-color:#7c1f1f}
-  #work{display:grid;grid-template-columns:1fr 420px;gap:12px;padding:12px}
-  #canvasWrap{background:#0b1320;border:1px solid #1f2937;border-radius:14px;padding:12px;overflow:auto;max-height:72vh}
-  #stage{position:relative;margin:auto}
-  #doc{display:block;max-width:none;height:auto;user-select:none;-webkit-user-drag:none;visibility:hidden}
-  .roi{position:absolute;border:2px solid var(--roi);border-radius:8px;box-shadow:0 0 0 1px rgba(16,185,129,.3) inset;background:rgba(16,185,129,.06);cursor:move}
-  .roi[data-type="mrz"]{border-color:#f97316;background:rgba(249,115,22,.06)}
-  .roi[data-type="pdf417"]{border-color:#22c55e;background:rgba(34,197,94,.06)}
-  .roi[data-type="barcode"]{border-color:#8b5cf6;background:rgba(139,92,246,.08)}
-  .roi[data-type="image"]{border-color:#38bdf8;background:rgba(56,189,248,.08)}
-  .roi.selected{outline:2px solid var(--roi-sel);box-shadow:0 0 0 1px rgba(96,165,250,.5)}
-  .handle{position:absolute;width:12px;height:12px;background:var(--roi-handle);border:2px solid #111;border-radius:50%}
-  .handle.nw{left:-7px;top:-7px}.handle.ne{right:-7px;top:-7px}.handle.sw{left:-7px;bottom:-7px}.handle.se{right:-7px;bottom:-7px}
-  #side{background:var(--panel);border:1px solid #1f2937;border-radius:14px;padding:12px;overflow:auto;max-height:72vh}
-  #side h3{margin:6px 0 8px 0;font-size:14px;color:#e2e8f0}
-  table{width:100%;border-collapse:collapse;font-size:12px}
-  th,td{border-bottom:1px dashed #334155;padding:6px;vertical-align:top}
-  th{text-align:left;color:#cbd5e1}
-  .small{font-size:11px;color:var(--muted)}
-  .row{display:flex;gap:8px;align-items:center}
-  #jsonOut{width:100%;height:160px}
-  .thumb{max-width:140px;max-height:80px;border:1px solid #334155;border-radius:6px;display:block}
-  /* Cámara */
-  #camWrap{display:flex;flex-direction:column;gap:8px}
-  #video{max-width:100%;width:420px;background:#0a0f1a;border-radius:12px;border:1px solid #1f2937}
-  #camResult{white-space:pre-wrap;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; background:#0b1320; border:1px dashed #334155; padding:8px; border-radius:8px; max-height:140px; overflow:auto}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CodeScanner + ROI Editor (Dark) — PDF417 / MRZ / OCR</title>
+  <style>
+    :root{
+      --bg:#0b0f1a; --panel:#12192a; --muted:#1a2338; --text:#e8ecf1; --sub:#98a2b3; --accent:#6ea8fe; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+      --br:14px; --gap:14px;
+      --line:#2a3452; --handle:#cbd5e1; --roi-text:#60a5fa; --roi-barcode:#f97316; --roi-pdf417:#22c55e; --roi-mrz:#e11d48; --roi-image:#a855f7;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    h1{font-size:18px;margin:0 0 8px}
+    h2{font-size:16px;margin:0 0 8px}
+    .app{display:grid;grid-template-columns: 420px 1fr; gap:var(--gap); padding:var(--gap)}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--br);padding:var(--gap);}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .col{display:flex;flex-direction:column;gap:8px}
+    .muted{color:var(--sub)}
+    label{font-size:12px;color:var(--sub)}
+    input[type="text"],input[type="number"],select{background:#0f1626;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+    input[type="file"]{color:var(--sub)}
+    button{background:#0f1626;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:8px 12px;cursor:pointer}
+    button:hover{border-color:var(--accent)}
+    button.primary{background:linear-gradient(180deg,#1b2b4f,#152343);border-color:#2e3c62}
+    button.ok{border-color:#14532d;background:#0a1f12}
+    button.warn{border-color:#7c4a0b;background:#1e1508}
+    button.ghost{background:transparent}
+    .tag{display:inline-block;padding:2px 6px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--sub)}
+
+    /* Layout specifics */
+    .video{width:100%;max-width:100%;border-radius:10px;border:1px solid var(--line);background:#050913}
+    .preview img{max-width:100%;border:1px dashed var(--line);border-radius:10px}
+    .grid2{display:grid;grid-template-columns: 1fr 1fr; gap:var(--gap)}
+    .tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .tools .right{margin-left:auto}
+
+    /* Editor */
+    .editor-wrap{position:relative;background:var(--muted);border-radius:var(--br);border:1px solid var(--line);overflow:hidden;min-height:420px}
+    canvas#editor{display:block;width:100%;height:100%;}
+    .overlay{pointer-events:none;position:absolute;inset:0}
+
+    /* ROI visuals */
+    .roi{position:absolute;border:2px solid var(--roi-text);border-radius:8px;box-shadow:0 0 0 1px rgba(0,0,0,.25) inset}
+    .roi[data-type="barcode"]{border-color:var(--roi-barcode)}
+    .roi[data-type="pdf417"]{border-color:var(--roi-pdf417)}
+    .roi[data-type="mrz"]{border-color:var(--roi-mrz)}
+    .roi[data-type="image"]{border-color:var(--roi-image)}
+    .roi.selected{outline:2px solid var(--accent);outline-offset:2px}
+    .handle{position:absolute;width:10px;height:10px;background:var(--handle);border-radius:4px;border:1px solid #0b1222;pointer-events:auto}
+    .handle.nw{left:-6px;top:-6px}
+    .handle.ne{right:-6px;top:-6px}
+    .handle.sw{left:-6px;bottom:-6px}
+    .handle.se{right:-6px;bottom:-6px}
+    .handle.n{top:-6px;left:calc(50% - 5px)}
+    .handle.s{bottom:-6px;left:calc(50% - 5px)}
+    .handle.w{left:-6px;top:calc(50% - 5px)}
+    .handle.e{right:-6px;top:calc(50% - 5px)}
+    .roi .title{position:absolute;left:0;top:-20px;font-size:11px;color:#d1d8e6;background:#101728;border:1px solid var(--line);padding:2px 6px;border-radius:6px}
+
+    .sidebar{display:grid;grid-template-rows:auto auto 1fr;gap:var(--gap)}
+    .list{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px;background:#101728}
+    .list .item{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer}
+    .list .item:hover{background:#0d1526}
+    .list .item.active{background:#13203b;border:1px solid #26395f}
+    .item .dot{width:8px;height:8px;border-radius:999px;display:inline-block}
+
+    .log{white-space:pre-wrap;background:#0f1626;border:1px solid var(--line);border-radius:10px;padding:8px;min-height:120px;max-height:240px;overflow:auto}
+    .tbl{width:100%;border-collapse:collapse;font-size:13px}
+    .tbl th,.tbl td{border:1px solid var(--line);padding:6px 8px;text-align:left}
+    .tbl th{background:#0f1626;color:#c7d2fe}
+
+    .small{font-size:12px}
+  </style>
 </head>
 <body>
-<header>
-  <h1>DocROI · Editor de ROIs + Cámara (PDF417 en vivo) · ZXing · BarcodeDetector · OCR/MRZ</h1>
-  <div class="bar">
-    <div class="group">
-      <label>Imagen</label>
-      <input id="fileImg" type="file" accept="image/*"/>
-      <button id="btnFit">Centrar</button>
-    </div>
+  <div class="app">
+    <!-- LEFT: Cámara + Decodificación (se mantiene y amplía) -->
+    <section class="card col" id="left">
+      <div>
+        <h1>📷 Cámara y Decodificador</h1>
+        <div class="muted small">Mantiene "Procesar imagen (PDF417)". Añadidos: captura al editor.</div>
+      </div>
+      <video id="video" class="video" autoplay muted playsinline></video>
+      <div class="tools">
+        <button id="startButton" class="primary">Iniciar cámara</button>
+        <button id="stopButton">Detener</button>
+        <button id="changeButton">Cambiar cámara</button>
+        <span class="tag">Stream → lectura en vivo</span>
+        <div class="right"></div>
+        <button id="snapToEditor" class="ok">📸 Capturar al editor</button>
+      </div>
 
-    <div class="group">
-      <label>Acción</label>
-      <button id="btnDraw" class="primary">Dibujar ROI</button>
-      <button id="btnSelect">Seleccionar/Editar</button>
-      <select id="roiType">
-        <option value="text">Texto (OCR)</option>
-        <option value="pdf417">PDF417</option>
-        <option value="barcode">Barcode (multi-formato)</option>
-        <option value="mrz">MRZ</option>
-        <option value="image">Image (recorte)</option>
-      </select>
-      <input id="roiName" type="text" placeholder="Nombre del campo" style="min-width:220px"/>
-      <button id="btnAdd">Añadir ROI vacío</button>
-    </div>
+      <div class="col">
+        <div class="row">
+          <input type="file" id="myFile" accept="image/png, image/jpeg" />
+          <button id="clearButton" class="ghost">Limpiar vista previa</button>
+          <button id="decodeButton" class="primary">Procesar imagen (PDF417)</button>
+        </div>
+        <div class="preview" id="preview"></div>
+      </div>
 
-    <div class="group">
-      <label>Plantilla</label>
-      <input id="fileTpl" type="file" accept="application/json"/>
-      <button id="btnImport">Importar JSON</button>
-      <button id="btnExport" class="warn">Exportar JSON</button>
-      <button id="btnClear" class="danger">Limpiar ROIs</button>
-    </div>
+      <div class="grid2">
+        <div>
+          <h2>Resultado — Cámara</h2>
+          <div id="result" class="log"></div>
+        </div>
+        <div>
+          <h2>Resultado — Imagen</h2>
+          <div id="resultImg" class="log"></div>
+        </div>
+      </div>
 
-    <div class="group">
-      <label>Extracción</label>
-      <select id="ocrLang">
-        <option value="eng" selected>Inglés</option>
-        <option value="spa">Español</option>
-        <option value="fra">Francés</option>
-        <option value="ita">Italiano</option>
-      </select>
-      <button id="btnExtract" class="primary">Extraer Todo</button>
-    </div>
+      <div class="col">
+        <h2>📑 DUI (parseo tras PDF417)</h2>
+        <table class="tbl" id="duiTable"></table>
+      </div>
+    </section>
 
-    <div class="group" id="camControls">
-      <label>Cámara (PDF417)</label>
-      <button id="camStart" class="primary">Iniciar</button>
-      <button id="camStop">Detener</button>
-      <button id="camSwitch">Cambiar</button>
-      <button id="camSnap" class="warn" title="Captura el fotograma al lienzo">Usar fotograma</button>
-    </div>
+    <!-- RIGHT: Editor con ROIs, OCR, MRZ, PDF417, Barcode -->
+    <section class="card col" id="right">
+      <div class="tools">
+        <h1>🖼️ Editor de ROIs</h1>
+        <div class="right"></div>
+        <label class="small">Zoom <input type="range" id="zoom" min="10" max="400" step="5" value="100"/></label>
+        <span id="zoomPct" class="tag">100%</span>
+      </div>
+      <div class="row">
+        <button id="loadPreviewToEditor">Cargar imagen de la vista previa</button>
+        <input type="file" id="openImage" accept="image/*" />
+        <button id="addRoi">+ Nueva ROI</button>
+        <select id="newRoiType">
+          <option value="text">text (OCR)</option>
+          <option value="barcode">barcode</option>
+          <option value="pdf417">pdf417</option>
+          <option value="mrz">mrz</option>
+          <option value="image">image (captura)</option>
+        </select>
+        <button id="exportTpl">Exportar plantilla</button>
+        <input type="file" id="importTpl" accept="application/json" />
+      </div>
+
+      <div class="editor-wrap" id="editorWrap">
+        <canvas id="editor" width="1280" height="720"></canvas>
+        <div class="overlay" id="overlay"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="sidebar">
+          <div>
+            <h2>ROIs</h2>
+            <div class="list" id="roiList"></div>
+          </div>
+          <div class="col">
+            <h2>Propiedades</h2>
+            <div class="col">
+              <label>Nombre <input type="text" id="propName"/></label>
+              <label>Tipo
+                <select id="propType">
+                  <option value="text">text</option>
+                  <option value="barcode">barcode</option>
+                  <option value="pdf417">pdf417</option>
+                  <option value="mrz">mrz</option>
+                  <option value="image">image</option>
+                </select>
+              </label>
+              <div class="row">
+                <label>X <input type="number" id="propX" step="1"/></label>
+                <label>Y <input type="number" id="propY" step="1"/></label>
+                <label>W <input type="number" id="propW" step="1"/></label>
+                <label>H <input type="number" id="propH" step="1"/></label>
+              </div>
+              <div class="row">
+                <button id="btnExtract" class="primary">Extraer este ROI</button>
+                <button id="btnDelete" class="warn">Eliminar ROI</button>
+              </div>
+              <div class="row">
+                <button id="btnExtractAll">Extraer TODOS</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <h2>Resultados</h2>
+          <div class="log" id="log"></div>
+          <h2>MRZ (parseado)</h2>
+          <table class="tbl" id="mrzTable"></table>
+        </div>
+      </div>
+    </section>
   </div>
-</header>
 
-<div id="work">
-  <div id="canvasWrap">
-    <div id="stage"><img id="doc" alt="Documento"/></div>
-    <div class="small" style="margin-top:8px">
-      Se usa <b>BarcodeDetector</b> si está disponible; ZXing queda como respaldo. También puedes decodificar PDF417 en vivo con la cámara y <i>capturar</i> el fotograma para trabajar con ROIs.
-    </div>
-    <div id="camWrap" style="margin-top:12px">
-      <video id="video" playsinline muted></video>
-      <div><strong>Resultado cámara:</strong></div>
-      <div id="camResult" class="small">Sin lectura…</div>
-    </div>
-  </div>
+  <!-- Dependencias: ZXing + Tesseract. Si ya usas una copia local de zxing.js, puedes comentar la CDN. -->
+  <script src="https://unpkg.com/@zxing/library@0.21.2/umd/index.min.js"></script>
+  <script>
+    // Si existe zxing.js local, úsalo (opcional). Debe exponer ZXing en window.
+    // <script src="zxing.js"></script>
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
-  <aside id="side">
-    <h3>ROIs (click para seleccionar)</h3>
-    <div id="roiList" class="small">Sin ROIs…</div>
-    <h3 style="margin-top:14px">JSON de Plantilla</h3>
-    <textarea id="jsonOut" spellcheck="false"></textarea>
-    <div class="row" style="justify-content:space-between;margin:8px 0 12px 0">
-      <span class="small">Exporta/Importa plantillas.</span>
-      <a id="dlJson" style="display:none"></a>
-    </div>
-    <h3>Resultados</h3>
-    <table>
-      <thead><tr><th>#</th><th>Campo</th><th>Tipo</th><th>Valor / Mensaje</th><th>ROI (base64)</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </aside>
-</div>
-
-<footer class="small">Compatibilidad de formatos depende del navegador. Si el detector nativo no soporta PDF417, se usará ZXing. Cámara en vivo inspirada en <code>decodeFromStream</code> de ZXing.</footer>
-
-<script>
-/* ====== Estado / utilidades ====== */
-const $ = s => document.querySelector(s);
-const stage = $('#stage'), img = $('#doc');
-let mode='draw', rois=[], selected=null;
-const TYPES=['text','pdf417','barcode','mrz','image'];
-
-function uuid(){ return 'r'+Math.random().toString(36).slice(2,9) }
-function naturalRect(){ return {x:0,y:0,w:img.naturalWidth,h:img.naturalHeight}; }
-function relFromAbs(a){ const R=naturalRect(); return {x:a.x/R.w,y:a.y/R.h,w:a.w/R.w,h:a.h/R.h}; }
-function absFromRel(r){ const R=naturalRect(); return {x:Math.round(r.x*R.w),y:Math.round(r.y*R.h),w:Math.round(r.w*R.w),h:Math.round(r.h*R.h)}; }
-function ensureImageLoaded(){ if(!img.src || img.style.visibility!=='visible') throw new Error('Primero carga o captura una imagen.'); }
-function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]) )}
-
-/* ====== Inicialización UI ====== */
-document.addEventListener('DOMContentLoaded', () => {
-  $('#btnDraw').classList.add('primary');
-  $('#fileImg').addEventListener('change', onPickImage);
-  $('#btnFit').addEventListener('click', ()=>stage.scrollIntoView({behavior:'smooth',block:'center'}));
-  $('#btnDraw').addEventListener('click',()=>{mode='draw';$('#btnDraw').classList.add('primary');$('#btnSelect').classList.remove('primary')});
-  $('#btnSelect').addEventListener('click',()=>{mode='select';$('#btnSelect').classList.add('primary');$('#btnDraw').classList.remove('primary')});
-  $('#btnAdd').addEventListener('click', addEmptyROI);
-  $('#btnExport').addEventListener('click', exportTemplate);
-  $('#btnImport').addEventListener('click', importTemplateFromFile);
-  $('#btnClear').addEventListener('click', ()=>clearROIs(true));
-  $('#btnExtract').addEventListener('click', extractAll);
-
-  // Cámara
-  $('#camStart').addEventListener('click', camStart);
-  $('#camStop').addEventListener('click', camStop);
-  $('#camSwitch').addEventListener('click', camSwitch);
-  $('#camSnap').addEventListener('click', camSnap);
-
-  stage.addEventListener('pointerdown', stagePointerDown);
-});
-
-function onPickImage(e){
-  const f=e.target.files?.[0]; if(!f) return;
-  const url=URL.createObjectURL(f);
-  img.onload=()=>{ stage.style.width=img.naturalWidth+'px'; stage.style.height=img.naturalHeight+'px'; img.style.visibility='visible'; };
-  img.src=url;
-}
-
-/* ====== ROIs ====== */
-function addEmptyROI(){
-  try{ensureImageLoaded()}catch(e){alert(e.message);return}
-  const type=$('#roiType').value;
-  const name=$('#roiName').value.trim()||(type.toUpperCase()+'_'+(rois.length+1));
-  const R=naturalRect(); const w=Math.round(R.w*0.25), h=Math.round(R.h*0.08);
-  const abs={x:Math.round(R.w*0.375), y:Math.round(R.h*0.46), w,h};
-  createROI({id:uuid(),name,type,abs,rel:relFromAbs(abs)});
-}
-function createROI({id,name,type,abs,rel}){
-  const el=document.createElement('div'); el.className='roi'; el.dataset.id=id; el.dataset.type=type; position(el,abs);
-  ['nw','ne','sw','se'].forEach(p=>{const h=document.createElement('div');h.className='handle '+p;el.appendChild(h);});
-  el.addEventListener('pointerdown', onRoiPointerDown);
-  stage.appendChild(el);
-  const roi={id,name,type,abs,rel,el}; rois.push(roi); selectROI(roi); refreshList();
-}
-function position(el,abs){ el.style.left=abs.x+'px'; el.style.top=abs.y+'px'; el.style.width=abs.w+'px'; el.style.height=abs.h+'px'; }
-function refreshList(){
-  const box=$('#roiList'); if(rois.length===0){box.innerHTML='Sin ROIs…';return} box.innerHTML='';
-  rois.forEach((r,i)=>{
-    const line=document.createElement('div'); line.className='row'; line.style.justifyContent='space-between'; line.style.padding='4px 0';
-    const left=document.createElement('div'); left.innerHTML=`<strong>${i+1}.</strong> ${escapeHtml(r.name)} <span class="small">(${r.type})</span>`;
-    const right=document.createElement('div');
-    right.innerHTML=`<button data-act="focus" data-id="${r.id}">Ir</button>
-      <button data-act="rename" data-id="${r.id}">Renombrar</button>
-      <button data-act="type" data-id="${r.id}">Tipo</button>
-      <button class="danger" data-act="del" data-id="${r.id}">Del</button>`;
-    line.appendChild(left);line.appendChild(right);box.appendChild(line);
-  });
-  box.querySelectorAll('button').forEach(b=>b.addEventListener('click',ev=>{
-    const id=ev.target.dataset.id; const roi=rois.find(r=>r.id===id); const act=ev.target.dataset.act;
-    if(act==='focus') selectROI(roi,true);
-    if(act==='rename'){const nv=prompt('Nuevo nombre:',roi.name); if(nv){roi.name=nv.trim(); refreshList();}}
-    if(act==='type'){const t=prompt('Tipo (text/pdf417/barcode/mrz/image):',roi.type); if(t && TYPES.includes(t.toLowerCase())){roi.type=t.toLowerCase(); roi.el.dataset.type=roi.type; refreshList();}}
-    if(act==='del') deleteROI(id);
-  }));
-  updateJSONPreview();
-}
-function deleteROI(id){ const i=rois.findIndex(r=>r.id===id); if(i>=0){ rois[i].el.remove(); rois.splice(i,1); selected=null; refreshList(); } }
-function selectROI(roi,scroll=false){ if(selected?.el) selected.el.classList.remove('selected'); selected=roi; if(roi?.el) roi.el.classList.add('selected'); if(scroll) roi.el.scrollIntoView({behavior:'smooth',block:'center',inline:'center'}); }
-
-/* ----- Dibujo / mover / redimensionar ----- */
-let drawStart=null,drawTemp=null,currentHandle=null,moveOffset=null;
-function stagePointerDown(ev){
-  if(mode!=='draw') return;
-  if(ev.target!==stage && ev.target!==img) return;
-  try{ensureImageLoaded()}catch(e){alert(e.message);return}
-  const start=stageCoords(ev); drawStart=start;
-  drawTemp=document.createElement('div'); drawTemp.className='roi'; drawTemp.dataset.type=$('#roiType').value; stage.appendChild(drawTemp);
-  position(drawTemp,{x:start.x,y:start.y,w:1,h:1});
-  addMoveListeners(stagePointerMove, stagePointerUp);
-}
-function stagePointerMove(ev){
-  if(!drawStart||!drawTemp) return;
-  const cur=stageCoords(ev); const x=Math.min(drawStart.x,cur.x), y=Math.min(drawStart.y,cur.y);
-  const w=Math.abs(drawStart.x-cur.x), h=Math.abs(drawStart.y-cur.y);
-  position(drawTemp,{x,y,w,h});
-}
-function stagePointerUp(){
-  const rect=rectFromEl(drawTemp); drawTemp.remove(); drawTemp=null; drawStart=null;
-  if(rect.w<8||rect.h<8) return;
-  const name=$('#roiName').value.trim()||($('#roiType').value.toUpperCase()+'_'+(rois.length+1));
-  createROI({id:uuid(),name,type:$('#roiType').value,abs:rect,rel:relFromAbs(rect)});
-  mode='select'; $('#btnSelect').classList.add('primary'); $('#btnDraw').classList.remove('primary');
-}
-function onRoiPointerDown(ev){
-  const el=ev.currentTarget; const roi=rois.find(r=>r.id===el.dataset.id); selectROI(roi); ev.stopPropagation();
-  const isHandle=ev.target.classList.contains('handle'); const start=stageCoords(ev); const startRect=rectFromEl(el);
-  if(isHandle){ currentHandle={which:ev.target.classList[1],startRect}; addMoveListeners(onResizeMove,onResizeUp); }
-  else{ moveOffset={dx:start.x-startRect.x,dy:start.y-startRect.y,w:startRect.w,h:startRect.h}; addMoveListeners(onMoveMove,onMoveUp); }
-}
-function onMoveMove(ev){
-  if(!selected||!moveOffset) return;
-  const cur=stageCoords(ev);
-  const nx=clamp(cur.x-moveOffset.dx,0,img.naturalWidth-moveOffset.w);
-  const ny=clamp(cur.y-moveOffset.dy,0,img.naturalHeight-moveOffset.h);
-  selected.abs={x:nx,y:ny,w:moveOffset.w,h:moveOffset.h}; selected.rel=relFromAbs(selected.abs); position(selected.el,selected.abs); updateJSONPreview();
-}
-function onMoveUp(){ moveOffset=null; }
-function onResizeMove(ev){
-  if(!selected||!currentHandle) return;
-  const cur=stageCoords(ev); let {x,y,w,h}=currentHandle.startRect; const min=8;
-  if(currentHandle.which.includes('n')){h+=(y-cur.y);y=cur.y}
-  if(currentHandle.which.includes('w')){w+=(x-cur.x);x=cur.x}
-  if(currentHandle.which.includes('s')){h=Math.max(min,cur.y-y)}
-  if(currentHandle.which.includes('e')){w=Math.max(min,cur.x-x)}
-  x=clamp(x,0,img.naturalWidth); y=clamp(y,0,img.naturalHeight);
-  w=clamp(w,min,img.naturalWidth-x); h=clamp(h,min,img.naturalHeight-y);
-  selected.abs={x,y,w,h}; selected.rel=relFromAbs(selected.abs); position(selected.el,selected.abs); updateJSONPreview();
-}
-function onResizeUp(){ currentHandle=null; }
-function addMoveListeners(move,up){ window.addEventListener('pointermove',move); window.addEventListener('pointerup',()=>{ window.removeEventListener('pointermove',move); up(); },{once:true}); }
-function stageCoords(ev){ const r=stage.getBoundingClientRect(); const x=clamp(Math.round(ev.clientX-r.left),0,img.naturalWidth); const y=clamp(Math.round(ev.clientY-r.top),0,img.naturalHeight); return {x,y}; }
-function rectFromEl(el){ return {x:parseInt(el.style.left||'0',10),y:parseInt(el.style.top||'0',10),w:parseInt(el.style.width||'0',10),h:parseInt(el.style.height||'0',10)} }
-
-/* ====== Exportar / Importar ====== */
-function buildTemplateObject(name='DUI_Template'){ const regions=rois.map(r=>({field_name:r.name,field_type:(r.type==='text'?'data_field':'roi'),data_type:r.type,rel:{...r.rel}})); return {template_name:name,regions}; }
-function updateJSONPreview(){ $('#jsonOut').value=JSON.stringify(buildTemplateObject('Current_Template'),null,2); }
-function exportTemplate(){ const name=prompt('Nombre de la plantilla','DUI_El_Salvador_Custom')||'template'; const blob=new Blob([JSON.stringify(buildTemplateObject(name),null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=$('#dlJson'); a.href=url; a.download=`${name}.json`; a.click(); }
-async function importTemplateFromFile(){ const f=$('#fileTpl').files?.[0]; if(!f){alert('Selecciona un JSON');return} const txt=await f.text(); try{ const tpl=JSON.parse(txt); applyTemplate(tpl); $('#jsonOut').value=JSON.stringify(tpl,null,2);}catch(e){alert('JSON inválido')} }
-function applyTemplate(tpl){ try{ensureImageLoaded()}catch(e){alert('Carga o captura una imagen antes de importar');return} clearROIs(false); (tpl.regions||[]).forEach(reg=>{ const type=(reg.data_type&&TYPES.includes(reg.data_type))?reg.data_type:((reg.field_type==='data_field')?'text':'text'); const abs=absFromRel(reg.rel||reg.coordinates||{x:0,y:0,w:.1,h:.05}); createROI({id:uuid(),name:reg.field_name||'field',type,abs,rel:relFromAbs(abs)}); }); refreshList(); }
-function clearROIs(confirmAsk){ if(confirmAsk && !confirm('¿Eliminar todos los ROIs?')) return; rois.forEach(r=>r.el.remove()); rois=[]; selected=null; refreshList(); }
-
-/* ====== Extracción por ROIs ====== */
-async function extractAll(){
-  try{ensureImageLoaded()}catch(e){alert(e.message);return}
-  const lang=$('#ocrLang').value||'eng'; const tbody=$('#rows'); tbody.innerHTML='';
-  const c=document.createElement('canvas'); const cx=c.getContext('2d',{willReadFrequently:true});
-
-  // preparar BarcodeDetector (si existe)
-  const bd = await makeBarcodeDetector();
-
-  for(let i=0;i<rois.length;i++){
-    const r=rois[i];
-    // recorte base
-    c.width=r.abs.w; c.height=r.abs.h; cx.clearRect(0,0,c.width,c.height);
-    cx.drawImage(img,r.abs.x,r.abs.y,r.abs.w,r.abs.h,0,0,r.abs.w,r.abs.h);
-    const dataURL=c.toDataURL('image/png'); // base64 para todos
-
-    let value='', ok=true;
-    try{
-      if(r.type==='pdf417'){
-        // 1) intentar BarcodeDetector si soporta pdf417
-        const outBD = bd ? await detectWithBD(c, bd, /*expectPdf417*/true) : null;
-        if(outBD && outBD.text){ value = `[${outBD.format}] ${outBD.text}`; }
-        else{
-          // 2) respaldo ZXing específico PDF417
-          const out=await decodePDF417Optim(c);
-          value = out.text ? `[${out.format}] ${out.text}` : 'No se detectó PDF417';
-          ok = Boolean(out.text);
-        }
-      }else if(r.type==='barcode'){
-        // 1) BarcodeDetector (nativo)
-        const outBD = bd ? await detectWithBD(c, bd, false) : null;
-        if(outBD && outBD.text){ value = `[${outBD.format}] ${outBD.text}`; }
-        else{
-          // 2) Respaldo ZXing multi-formato
-          const out=await decodeBarcodeOptim(c);
-          value = out.text ? `[${out.format}] ${out.text}` : 'No se detectó código de barras';
-          ok = Boolean(out.text);
-        }
-      }else if(r.type==='mrz'){
-        const raw=await ocrText(dataURL,'eng',{whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ<0123456789',psm:6});
-        const parsed=parseMRZ(raw); value=parsed.ok?JSON.stringify(parsed.fields):('MRZ RAW:\\n'+raw.trim()); ok=parsed.ok;
-      }else if(r.type==='text'){
-        value=await ocrText(dataURL,lang);
-      }else if(r.type==='image'){
-        value='Recorte generado (base64)';
-      }
-    }catch(e){ ok=false; value='Error: '+(e.message||e); }
-
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${i+1}</td>
-      <td><strong>${escapeHtml(r.name)}</strong></td>
-      <td>${r.type.toUpperCase()}</td>
-      <td><pre style="white-space:pre-wrap;margin:0;max-width:260px">${escapeHtml(String(value))}</pre></td>
-      <td>
-        <img class="thumb" src="${dataURL}" alt="roi"/>
-        <button data-copy="${i}">Copiar base64</button>
-      </td>`;
-    tbody.appendChild(tr);
-    tr.querySelector('button[data-copy]').addEventListener('click',()=>copyToClipboard(dataURL));
-    if(!ok) tr.style.opacity=.85;
+  <script>
+  /*************************
+   * UTILIDADES GENERALES  *
+   *************************/
+  const $ = (sel, ctx=document) => ctx.querySelector(sel);
+  const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+  const logEl = $('#log');
+  const duiTable = $('#duiTable');
+  const mrzTable = $('#mrzTable');
+  function log(msg){
+    const time = new Date().toLocaleTimeString();
+    logEl.textContent += `[${time}] ${msg}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
   }
-}
-
-/* ====== Barcode Detection API ====== */
-async function makeBarcodeDetector(){
-  if(!('BarcodeDetector' in window)) return null;
-  try{
-    const supported = await window.BarcodeDetector.getSupportedFormats();
-    const wanted = ['qr_code','pdf417','code_128','code_39','ean_13','ean_8','upc_a','upc_e','itf','data_matrix','aztec']
-      .filter(f => supported.includes(f));
-    if(wanted.length===0) return null;
-    return new window.BarcodeDetector({ formats: wanted });
-  }catch{ return null; }
-}
-async function detectWithBD(canvas, detector, expectPdf417){
-  try{
-    const bitm = await createImageBitmap(canvas);
-    const codes = await detector.detect(bitm);
-    let best = null;
-    if(expectPdf417) best = codes.find(c => (c.format||'').toLowerCase()==='pdf417') || codes[0];
-    else best = codes[0];
-    if(best && best.rawValue){ return {text:best.rawValue, format:(best.format||'BD')} }
-    return null;
-  }catch{ return null; }
-}
-
-/* ====== OCR ====== */
-async function ocrText(dataURL, lang='eng', opts={}){
-  const cfg={}; if(opts.whitelist) cfg.tessedit_char_whitelist=opts.whitelist;
-  if(opts.psm) cfg.presets={single_block:false,oem:1,psm:opts.psm};
-  const {data:{text}}=await Tesseract.recognize(dataURL, lang, Object.keys(cfg).length?{config:cfg}:{});
-  return text;
-}
-
-/* ====== ZXing · respaldo optimizado (ROIs) ====== */
-const POSSIBLE_FORMATS = [
-  ZXing.BarcodeFormat.QR_CODE, ZXing.BarcodeFormat.PDF_417,
-  ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
-  ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
-  ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E,
-  ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.DATA_MATRIX,
-  ZXing.BarcodeFormat.AZTEC
-];
-function setHints(reader){
-  const hints=new Map();
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, POSSIBLE_FORMATS);
-  if(reader.setHints) reader.setHints(hints);
-}
-function buildAttempts(baseCanvas){
-  const src=baseCanvas;
-  const rotations=[0,90,180,270];
-  const scales=[1,1.5,2];
-  const bins=['hybrid','global'];
-  const list=[];
-  for(const rot of rotations){
-    for(const sc of scales){
-      for(const bin of bins){
-        const c=document.createElement('canvas'), cx=c.getContext('2d',{willReadFrequently:true});
-        if(rot%180===0){ c.width=Math.round(src.width*sc); c.height=Math.round(src.height*sc); }
-        else{ c.width=Math.round(src.height*sc); c.height=Math.round(src.width*sc); }
-        cx.save();
-        cx.translate(c.width/2, c.height/2);
-        cx.rotate(rot*Math.PI/180);
-        const dw=src.width*sc, dh=src.height*sc;
-        cx.drawImage(src, -dw/2, -dh/2, dw, dh);
-        cx.restore();
-        list.push({canvas:c, binType:bin});
-      }
+  function clearTable(t){ while(t.firstChild) t.removeChild(t.firstChild); }
+  function fillTable(t, obj){
+    clearTable(t);
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>Campo</th><th>Valor</th></tr>';
+    t.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for(const [k,v] of Object.entries(obj||{})){
+      const tr = document.createElement('tr');
+      const td1 = document.createElement('td'); td1.textContent = k;
+      const td2 = document.createElement('td'); td2.textContent = typeof v==='string'? v : JSON.stringify(v);
+      tr.append(td1,td2); tbody.appendChild(tr);
     }
+    t.appendChild(tbody);
   }
-  return list;
-}
-async function decodeBarcodeOptim(baseCanvas){
-  const reader=new ZXing.BrowserMultiFormatReader(); setHints(reader);
-  const attempts = buildAttempts(baseCanvas);
-  for(const {canvas, binType} of attempts){
-    try{
-      const luminance=new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-      const bin = (binType==='hybrid') ? new ZXing.HybridBinarizer(luminance) : new ZXing.GlobalHistogramBinarizer(luminance);
-      const bitmap=new ZXing.BinaryBitmap(bin);
-      const res=reader.decodeBitmap(bitmap);
-      if(res?.getText){ return {text:res.getText(), format:String(res.getBarcodeFormat?.())}; }
-    }catch(_){}
-  }
-  return {text:'',format:''};
-}
-async function decodePDF417Optim(baseCanvas){
-  const reader=new ZXing.BrowserPDF417Reader();
-  const attempts = buildAttempts(baseCanvas);
-  for(const {canvas, binType} of attempts){
-    try{
-      const luminance=new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-      const bin = (binType==='hybrid') ? new ZXing.HybridBinarizer(luminance) : new ZXing.GlobalHistogramBinarizer(luminance);
-      const bitmap=new ZXing.BinaryBitmap(bin);
-      const res=reader.decodeBitmap(bitmap);
-      if(res?.getText){ return {text:res.getText(), format:'PDF_417'}; }
-    }catch(_){}
-  }
-  return {text:'',format:''};
-}
 
-/* ====== MRZ Parser ====== */
-function parseMRZ(raw){
-  const lines=raw.split(/\\r?\\n/).map(s=>s.replace(/[^A-Z0-9<]/g,'').trim()).filter(Boolean);
-  if(lines.length<2) return {ok:false,msg:'MRZ no detectada',fields:null};
-  if(lines.length===2 && (lines[0].length>=36 && lines[1].length>=36)){
-    const L1=pad(lines[0],44), L2=pad(lines[1],44);
-    const docType=L1.substring(0,2), issuer=L1.substring(2,5);
-    const names=L1.substring(5).split('<<'); const surname=names[0].replace(/<+/g,' ').trim(); const given=(names[1]||'').replace(/<+/g,' ').trim();
-    const number=L2.substring(0,9).replace(/</g,''); const nationality=L2.substring(10,13).replace(/</g,'');
-    const birth=L2.substring(13,19), sex=L2.substring(20,21).replace('<','X'), expiry=L2.substring(21,27);
-    return {ok:true,type:'TD3',fields:{docType,issuer,surname,given,number,nationality,birth,sex,expiry}};
-  }
-  if(lines.length>=3){
-    const L1=pad(lines[0],30), L2=pad(lines[1],30), L3=pad(lines[2],30);
-    const docType=L1.substring(0,2), issuer=L1.substring(2,5);
-    const number=L1.substring(5,14).replace(/</g,'');
-    const birth=L2.substring(0,6), sex=L2.substring(7,8).replace('<','X'), expiry=L2.substring(8,14);
-    const nationality=L2.substring(15,18).replace(/</g,'');
-    const namePart=L3.split('<<'); const surname=(namePart[0]||'').replace(/<+/g,' ').trim(); const given=(namePart[1]||'').replace(/<+/g,' ').trim();
-    return {ok:true,type:'TD1',fields:{docType,issuer,number,birth,sex,expiry,nationality,surname,given}};
-  }
-  return {ok:false,msg:'Formato MRZ no reconocido',fields:null};
-}
-function pad(s,l){return (s||'').padEnd(l,'<').substring(0,l)}
-
-/* ====== Clipboard ====== */
-async function copyToClipboard(text){ try{ await navigator.clipboard.writeText(text); }catch(_){} }
-
-/* ====================================================================== */
-/* ========================= CÁMARA (PDF417) ============================ */
-/* ====================================================================== */
-
-let streamObj = null;
-let facingIndex = 1; // 0=user, 1=environment (preferir trasera)
-let facingModes = ['user','environment'];
-let liveReader = null;
-
-async function camStart(){
-  try{
-    await camStop(); // asegura detener instancia previa
-    const facingMode = facingModes[facingIndex];
-    const constraints = { video: { facingMode } };
-    streamObj = await navigator.mediaDevices.getUserMedia(constraints);
-    const video = $('#video');
-    video.srcObject = streamObj;
-    await video.play();
-
-    // Inicializar ZXing BrowserMultiFormatReader (como en codescanner)
-    liveReader = new ZXing.BrowserMultiFormatReader();
-    // Pista: decodeFromStream entrega "result" o "err" continuamente mientras el stream está activo
-    liveReader.decodeFromStream(streamObj, video, (result, err) => {
-      const box = $('#camResult');
-      if(result){
-        try{
-          const txt = result.getText ? result.getText() : (result.text || '');
-          const fmt = result.getBarcodeFormat ? String(result.getBarcodeFormat()) : (result.format || '');
-          box.textContent = `[${fmt}] ${txt}`;
-        }catch(e){
-          box.textContent = JSON.stringify(result, null, 2);
-        }
-      }
-      if(err && !(err instanceof ZXing.NotFoundException)){
-        console.error(err);
-      }
-    });
-  }catch(e){
-    alert('No se pudo iniciar la cámara: '+(e.message||e));
-  }
-}
-
-async function camStop(){
-  try{
-    $('#camResult').textContent = 'Sin lectura…';
-    if(liveReader && liveReader.reset) { try{ liveReader.reset(); }catch(_){ } }
-    liveReader = null;
-    if(streamObj){
-      streamObj.getTracks().forEach(t=>{ if(t.readyState==='live' && t.kind==='video') t.stop(); });
-      streamObj = null;
-    }
-    const v=$('#video'); if(v){ v.pause?.(); v.srcObject = null; }
-  }catch(_){}
-}
-
-async function camSwitch(){
-  facingIndex = (facingIndex+1) % facingModes.length;
-  await camStart();
-}
-
-async function camSnap(){
+  /*************************
+   * SECCIÓN: CÁMARA BASE  *
+   *************************/
   const video = $('#video');
-  if(!video || !streamObj){
-    alert('Inicia la cámara primero.');
-    return;
-  }
-  // Captura el fotograma actual al lienzo -> img principal
-  const c=document.createElement('canvas'); const cx=c.getContext('2d',{willReadFrequently:true});
-  const w=video.videoWidth, h=video.videoHeight;
-  if(!w || !h){ alert('No hay fotograma disponible aún.'); return; }
-  c.width=w; c.height=h;
-  cx.drawImage(video,0,0,w,h);
-  const dataURL=c.toDataURL('image/png');
+  let codeReader = null;
+  let streamObj = null;
+  let CameraMode = 'user'; // 'environment'
 
-  // Pregunta para mantener o limpiar ROIs, ya que cambian dimensiones
-  if(rois.length>0){
-    const ok = confirm('Se cargará una nueva imagen desde la cámara. ¿Deseas limpiar los ROIs existentes? (Recomendado)');
-    if(ok) clearROIs(false);
+  function ensureZXing(){
+    if (!window.ZXing || !window.ZXing.BrowserMultiFormatReader) {
+      throw new Error('ZXing no está disponible. Verifica la carga de la librería.');
+    }
+    if (!codeReader) codeReader = new ZXing.BrowserMultiFormatReader();
+    return codeReader;
   }
-  img.onload=()=>{
-    stage.style.width=img.naturalWidth+'px';
-    stage.style.height=img.naturalHeight+'px';
-    img.style.visibility='visible';
-  };
-  img.src = dataURL;
-}
 
-/* ====================================================================== */
-</script>
+  async function startCam(){
+    try{
+      await navigator.mediaDevices.getUserMedia({video:{facingMode: CameraMode}}).then(stream=>{
+        streamObj = stream; video.srcObject = stream;
+        ensureZXing().decodeFromStream(stream, video, (result, err)=>{
+          if(result){ onLiveDecode(result); }
+          if(err && !(err instanceof ZXing.NotFoundException)){
+            $('#result').textContent = String(err);
+          }
+        });
+      });
+    }catch(e){ console.error(e); }
+  }
+  function stopCam(){
+    if(streamObj){ streamObj.getTracks().forEach(t=> t.stop()); streamObj=null; }
+  }
+  function changeCam(){
+    if(streamObj) stopCam();
+    CameraMode = (CameraMode==='user')? 'environment':'user';
+    startCam();
+  }
+
+  // Botones cámara
+  $('#startButton').addEventListener('click', startCam);
+  $('#stopButton').addEventListener('click', stopCam);
+  $('#changeButton').addEventListener('click', changeCam);
+
+  // Vista previa de archivo + decodificación imagen (se mantiene)
+  $('#myFile').addEventListener('change', ()=>{
+    const files = $('#myFile').files;
+    const preview = $('#preview');
+    while(preview.firstChild) preview.removeChild(preview.firstChild);
+    if(files && files[0]){
+      const img = new Image(); img.src = URL.createObjectURL(files[0]); img.width=360; img.onload=()=>{};
+      preview.appendChild(img);
+    }
+  });
+  $('#clearButton').addEventListener('click', ()=>{
+    const preview = $('#preview');
+    while(preview.firstChild) preview.removeChild(preview.firstChild);
+  });
+
+  $('#decodeButton').addEventListener('click', async()=>{
+    const prev = $('#preview'); if(!prev.firstChild) return;
+    const img = prev.firstChild.cloneNode(true);
+    try{
+      const res = await ensureZXing().decodeFromImage(img);
+      $('#resultImg').textContent = res.text || String(res);
+      // Intentar parsear DUI si es PDF417
+      try{ const parsed = parseDUISV(res.text||''); if(parsed && Object.keys(parsed).length){ fillTable(duiTable, parsed); } }catch{}
+    }catch(err){ $('#resultImg').textContent = String(err); }
+  });
+
+  function onLiveDecode(result){
+    // Mostrar resultados en vivo. Si fuera CODE_128 se podría derivar a tu parseador externo.
+    const out = { format: result.getBarcodeFormat? String(result.getBarcodeFormat()) : result.format, text: result.text };
+    $('#result').textContent = JSON.stringify(out, null, 2);
+    // Intentar parseo DUI si parece PDF417
+    try{ const parsed = parseDUISV(result.text||''); if(parsed && Object.keys(parsed).length){ fillTable(duiTable, parsed); } }catch{}
+  }
+
+  // Capturar frame al editor
+  $('#snapToEditor').addEventListener('click', ()=>{
+    if(!video.videoWidth){ log('⚠️ La cámara no está lista.'); return; }
+    const tmp = document.createElement('canvas');
+    tmp.width = video.videoWidth; tmp.height = video.videoHeight;
+    const ctx = tmp.getContext('2d'); ctx.drawImage(video,0,0);
+    const dataURL = tmp.toDataURL('image/png');
+    loadImageToEditor(dataURL);
+    log('📸 Frame de cámara enviado al editor.');
+  });
+
+  /*************************
+   * SECCIÓN: EDITOR ROIs  *
+   *************************/
+  const editor = $('#editor');
+  const overlay = $('#overlay');
+  const wrap = $('#editorWrap');
+  const ctx = editor.getContext('2d');
+  let baseImg = null; // {image:HTMLImageElement, naturalW, naturalH}
+  let zoom = 1.0; let zoomPctEl = $('#zoomPct');
+
+  // ROIs almacenados en coordenadas NATURALES (respecto a la imagen base)
+  let rois = []; // {id,name,type,x,y,w,h}
+  let activeId = null;
+  let mode = 'idle'; // 'idle'|'creating'|'dragging'|'resizing'
+  let createType = 'text';
+  let dragStart = null; // {x,y}
+  let resizeHandle = null; // 'nw','ne','sw','se','n','s','w','e'
+
+  function setZoom(pct){
+    zoom = Math.max(.1, Math.min(4, pct/100));
+    $('#zoom').value = Math.round(zoom*100);
+    zoomPctEl.textContent = `${Math.round(zoom*100)}%`;
+    render();
+  }
+  $('#zoom').addEventListener('input', e=> setZoom(parseInt(e.target.value,10)) );
+
+  // Cargar imagen en editor
+  $('#openImage').addEventListener('change', ()=>{
+    const f = $('#openImage').files?.[0]; if(!f) return;
+    const url = URL.createObjectURL(f); loadImageToEditor(url);
+  });
+  $('#loadPreviewToEditor').addEventListener('click', ()=>{
+    const prev = $('#preview'); if(!prev.firstChild) return log('⚠️ No hay imagen en vista previa.');
+    const url = prev.firstChild.src; loadImageToEditor(url);
+  });
+
+  function loadImageToEditor(src){
+    const img = new Image(); img.onload = ()=>{
+      baseImg = {image:img, naturalW: img.naturalWidth, naturalH: img.naturalHeight};
+      // Ajustar canvas manteniendo proporciones
+      const maxW = wrap.clientWidth; const maxH = Math.max(420, wrap.clientHeight);
+      const ratio = img.naturalWidth/img.naturalHeight;
+      let cw = maxW, ch = Math.round(maxW/ratio);
+      if(ch>600){ ch=600; cw = Math.round(ch*ratio); }
+      editor.width = cw; editor.height = ch;
+      setZoom(100);
+      rois = []; activeId = null; refreshRoiList();
+      render();
+    }; img.src = src;
+  }
+
+  function naturalToCanvas(r){
+    if(!baseImg) return {x:0,y:0,w:0,h:0};
+    const scale = (editor.width/baseImg.naturalW)*zoom;
+    return { x: r.x*scale, y: r.y*scale, w: r.w*scale, h: r.h*scale };
+  }
+  function canvasToNatural(x,y){
+    if(!baseImg) return {x:0,y:0};
+    const scale = (editor.width/baseImg.naturalW)*zoom;
+    return { x: x/scale, y: y/scale };
+  }
+
+  function render(){
+    ctx.fillStyle = '#0b1426'; ctx.fillRect(0,0,editor.width,editor.height);
+    if(baseImg){
+      // Dibuja imagen al tamaño de canvas (zoom aplicado via overlay)
+      ctx.drawImage(baseImg.image, 0,0, editor.width, editor.height);
+    }
+    drawOverlay();
+  }
+
+  function drawOverlay(){
+    overlay.innerHTML = '';
+    if(!baseImg) return;
+    for(const r of rois){
+      const c = naturalToCanvas(r);
+      const div = document.createElement('div');
+      div.className = 'roi' + (r.id===activeId? ' selected':'');
+      div.style.left = `${c.x}px`; div.style.top = `${c.y}px`;
+      div.style.width = `${c.w}px`; div.style.height = `${c.h}px`;
+      div.dataset.id = r.id; div.dataset.type = r.type;
+      // título
+      const title = document.createElement('div'); title.className='title'; title.textContent = `${r.name||r.type}`; div.appendChild(title);
+      // asas
+      ['nw','ne','sw','se','n','s','w','e'].forEach(h=>{
+        const hd = document.createElement('div'); hd.className = `handle ${h}`; hd.dataset.handle=h; hd.dataset.id=r.id;
+        hd.addEventListener('pointerdown', onHandleDown);
+        div.appendChild(hd);
+      });
+      // drag
+      div.addEventListener('pointerdown', onRoiDown);
+      overlay.appendChild(div);
+    }
+  }
+
+  function onRoiDown(ev){
+    const id = ev.currentTarget.dataset.id;
+    activeId = id; refreshProps(); refreshRoiList();
+    mode='dragging'; dragStart = {cx:ev.clientX, cy:ev.clientY};
+    ev.preventDefault();
+    window.addEventListener('pointermove', onDragMove);
+    window.addEventListener('pointerup', onDragUp, {once:true});
+  }
+  function onDragMove(ev){
+    if(mode!=='dragging') return;
+    const r = rois.find(x=>x.id===activeId); if(!r) return;
+    const dx = ev.clientX - dragStart.cx; const dy = ev.clientY - dragStart.cy; dragStart.cx = ev.clientX; dragStart.cy = ev.clientY;
+    // convierto delta canvas→natural
+    const natDelta = canvasToNatural(dx,dy);
+    r.x += natDelta.x; r.y += natDelta.y;
+    clampRoi(r);
+    drawOverlay(); refreshPropsInputs();
+  }
+  function onDragUp(){ mode='idle'; window.removeEventListener('pointermove', onDragMove); }
+
+  function onHandleDown(ev){
+    resizeHandle = ev.currentTarget.dataset.handle; activeId = ev.currentTarget.dataset.id;
+    refreshProps(); refreshRoiList();
+    mode='resizing'; dragStart = {cx:ev.clientX, cy:ev.clientY};
+    ev.stopPropagation(); ev.preventDefault();
+    window.addEventListener('pointermove', onResizeMove);
+    window.addEventListener('pointerup', onResizeUp, {once:true});
+  }
+  function onResizeMove(ev){
+    if(mode!=='resizing') return;
+    const r = rois.find(x=>x.id===activeId); if(!r) return;
+    const dx = ev.clientX - dragStart.cx; const dy = ev.clientY - dragStart.cy; dragStart.cx = ev.clientX; dragStart.cy = ev.clientY;
+    const d = canvasToNatural(dx,dy);
+    const min=8; // px naturales
+    if(['w','nw','sw'].includes(resizeHandle)){ r.x += d.x; r.w -= d.x; }
+    if(['e','ne','se'].includes(resizeHandle)){ r.w += d.x; }
+    if(['n','nw','ne'].includes(resizeHandle)){ r.y += d.y; r.h -= d.y; }
+    if(['s','sw','se'].includes(resizeHandle)){ r.h += d.y; }
+    r.w = Math.max(min, r.w); r.h = Math.max(min, r.h);
+    clampRoi(r);
+    drawOverlay(); refreshPropsInputs();
+  }
+  function onResizeUp(){ mode='idle'; resizeHandle=null; window.removeEventListener('pointermove', onResizeMove); }
+
+  function clampRoi(r){
+    if(!baseImg) return; const W=baseImg.naturalW, H=baseImg.naturalH;
+    r.x = Math.max(0, Math.min(W - r.w, r.x));
+    r.y = Math.max(0, Math.min(H - r.h, r.y));
+  }
+
+  // Crear ROI
+  $('#addRoi').addEventListener('click', ()=>{
+    createType = $('#newRoiType').value;
+    mode='creating';
+    log(`➕ Arrastra sobre la imagen para crear ROI (${createType}).`);
+  });
+
+  overlay.addEventListener('pointerdown', ev=>{
+    if(mode!=='creating') return;
+    const rect = editor.getBoundingClientRect();
+    const cx = ev.clientX - rect.left; const cy = ev.clientY - rect.top;
+    const startNat = canvasToNatural(cx,cy);
+    const tmp = { id: crypto.randomUUID(), name:`${createType}-${rois.length+1}`, type:createType, x:startNat.x,y:startNat.y,w:10,h:10 };
+    activeId = tmp.id; rois.push(tmp); refreshRoiList(); drawOverlay();
+    function move(ev2){
+      const x2 = Math.max(0, Math.min(rect.width, ev2.clientX - rect.left));
+      const y2 = Math.max(0, Math.min(rect.height, ev2.clientY - rect.top));
+      const n2 = canvasToNatural(x2,y2);
+      tmp.w = Math.abs(n2.x - startNat.x); tmp.h = Math.abs(n2.y - startNat.y);
+      tmp.x = Math.min(startNat.x, n2.x); tmp.y = Math.min(startNat.y, n2.y);
+      clampRoi(tmp); drawOverlay(); refreshPropsInputs();
+    }
+    function up(){ window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); mode='idle'; }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up, {once:true});
+  });
+
+  // Lista y propiedades
+  function refreshRoiList(){
+    const list = $('#roiList'); list.innerHTML='';
+    for(const r of rois){
+      const it=document.createElement('div'); it.className='item'+(r.id===activeId?' active':''); it.dataset.id=r.id;
+      const dot=document.createElement('span'); dot.className='dot'; dot.style.background=getTypeColor(r.type);
+      const nm=document.createElement('span'); nm.textContent = `${r.name||r.type}`; nm.style.color='#e2e8f0';
+      const tp=document.createElement('span'); tp.className='tag'; tp.textContent=r.type;
+      it.append(dot,nm,tp); it.addEventListener('click',()=>{ activeId=r.id; refreshRoiList(); refreshProps(); });
+      list.appendChild(it);
+    }
+    drawOverlay();
+  }
+  function getTypeColor(t){
+    return {'text':'#60a5fa','barcode':'#f97316','pdf417':'#22c55e','mrz':'#e11d48','image':'#a855f7'}[t]||'#60a5fa';
+  }
+  function refreshProps(){
+    const r = rois.find(x=>x.id===activeId);
+    $('#propName').value = r? (r.name||'') : '';
+    $('#propType').value = r? r.type : 'text';
+    refreshPropsInputs();
+  }
+  function refreshPropsInputs(){
+    const r = rois.find(x=>x.id===activeId); if(!r){ ['propX','propY','propW','propH'].forEach(id=> $('#'+id).value=''); return; }
+    $('#propX').value = Math.round(r.x);
+    $('#propY').value = Math.round(r.y);
+    $('#propW').value = Math.round(r.w);
+    $('#propH').value = Math.round(r.h);
+  }
+  $('#propName').addEventListener('input', e=>{ const r=rois.find(x=>x.id===activeId); if(r){ r.name=e.target.value; refreshRoiList(); }});
+  $('#propType').addEventListener('change', e=>{ const r=rois.find(x=>x.id===activeId); if(r){ r.type=e.target.value; refreshRoiList(); }});
+  ['propX','propY','propW','propH'].forEach(id=>{
+    $('#'+id).addEventListener('change', e=>{
+      const r=rois.find(x=>x.id===activeId); if(!r) return; r[id.slice(-1).toLowerCase()] = parseFloat(e.target.value)||0; clampRoi(r); drawOverlay();
+    });
+  });
+  $('#btnDelete').addEventListener('click', ()=>{ rois = rois.filter(x=>x.id!==activeId); activeId=null; refreshRoiList(); refreshProps(); });
+
+  // Exportar/Importar plantillas (coordenadas relativas)
+  $('#exportTpl').addEventListener('click', ()=>{
+    if(!baseImg) return log('⚠️ Carga una imagen antes de exportar plantilla.');
+    const rel = rois.map(r=>({id:r.id, name:r.name, type:r.type, x:r.x/baseImg.naturalW, y:r.y/baseImg.naturalH, w:r.w/baseImg.naturalW, h:r.h/baseImg.naturalH}));
+    const blob = new Blob([JSON.stringify({imageW:baseImg.naturalW,imageH:baseImg.naturalH, rois:rel},null,2)], {type:'application/json'});
+    const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='plantilla_rois.json'; a.click();
+  });
+  $('#importTpl').addEventListener('change', async()=>{
+    const f = $('#importTpl').files?.[0]; if(!f) return; if(!baseImg) return log('⚠️ Carga una imagen antes de importar.');
+    const txt = await f.text(); const json = JSON.parse(txt);
+    rois = json.rois.map(r=>({id:crypto.randomUUID(), name:r.name, type:r.type, x:r.x*baseImg.naturalW, y:r.y*baseImg.naturalH, w:r.w*baseImg.naturalW, h:r.h*baseImg.naturalH}));
+    activeId = rois[0]?.id||null; refreshRoiList(); refreshProps();
+  });
+
+  // Extracciones
+  $('#btnExtract').addEventListener('click', ()=>{ const r=rois.find(x=>x.id===activeId); if(r) extractROI(r); });
+  $('#btnExtractAll').addEventListener('click', async()=>{
+    for(const r of rois){ await extractROI(r); }
+  });
+
+  async function extractROI(r){
+    if(!baseImg) return log('⚠️ No hay imagen.');
+    const crop = cropCanvas(r);
+    if(r.type==='image'){
+      const data = crop.toDataURL('image/png');
+      log(`🖼️ ${r.name}: captura base64 (${data.length} chars)`);
+      return data;
+    }
+    if(r.type==='text'){
+      const { data: { text } } = await Tesseract.recognize(crop, 'eng+spa', { logger: m=>{} });
+      log(`🔤 ${r.name}:\n${text.trim()}`);
+      return text;
+    }
+    if(r.type==='barcode' || r.type==='pdf417'){
+      try{
+        const img = await canvasToImage(crop);
+        const res = await ensureZXing().decodeFromImage(img);
+        log(`🏷️ ${r.name}: ${res.text}`);
+        if(r.type==='pdf417'){
+          try{ const parsed = parseDUISV(res.text||''); if(parsed && Object.keys(parsed).length){ fillTable(duiTable, parsed); } }catch{}
+        }
+        return res.text;
+      }catch(e){ log(`❌ ${r.name}: ${e}`); return ''; }
+    }
+    if(r.type==='mrz'){
+      // MRZ: OCR + parseo
+      const { data: { text } } = await Tesseract.recognize(crop, 'eng', { logger:m=>{} });
+      const lines = text.split(/\r?\n/).map(s=>s.replace(/\s+/g,'').toUpperCase()).filter(Boolean);
+      const parsed = parseMRZ(lines);
+      if(parsed) { fillTable(mrzTable, parsed); log(`🛄 ${r.name}: MRZ parseado.`); }
+      else { log(`ℹ️ ${r.name}: MRZ no reconocido.\n${lines.join('\n')}`); }
+      return parsed;
+    }
+  }
+
+  function cropCanvas(r){
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(r.w)); c.height = Math.max(1, Math.round(r.h));
+    const cctx = c.getContext('2d');
+    // Dibujar en coordenadas NATURALES → escalar a crop
+    cctx.drawImage(baseImg.image, r.x, r.y, r.w, r.h, 0,0, c.width, c.height);
+    return c;
+  }
+  async function canvasToImage(c){
+    return await new Promise(res=>{ const img = new Image(); img.onload=()=>res(img); img.src = c.toDataURL('image/png'); });
+  }
+
+  // Redibujar cuando cambia tamaño contenedor
+  const ro = new ResizeObserver(()=> render()); ro.observe(wrap);
+
+  /*************************
+   * PARSEADORES (DUI/MRZ) *
+   *************************/
+  // ⚠️ Heurístico para PDF417 del DUI de El Salvador. Ajusta si tu fuente difiere.
+  function parseDUISV(raw){
+    if(!raw) return null;
+    const s = raw.replace(/[\u0000-\u001f]/g,' ').replace(/[\s\|]+/g,' ').trim();
+    // Tokens potenciales separados por '^', '/', ',' o espacio múltiple
+    const tokens = raw.split(/[\^\|,\n\r]+/).map(t=>t.trim()).filter(Boolean);
+    // Buscar número DUI (7–9 dígitos)
+    let numero = (s.match(/\b\d{7,9}\b/)||[])[0]||'';
+    // Buscar número de emisión (1–3)
+    let emision = (s.match(/\b(\d{1,3})\b(?!.*\b\d{1,3}\b)/)||[])[1]||'';
+    // Heurística de nombres/apellidos: busca 2 apellidos seguidos de nombres
+    let primerApellido='', segundoApellido='', nombres='';
+    // Encuentra secuencia de 2-3 tokens alfabéticos largos en mayúsculas
+    const alpha = tokens.filter(t=>/^[A-ZÁÉÍÓÚÑ ]{2,}$/.test(t));
+    if(alpha.length>=3){ primerApellido=alpha[0]; segundoApellido=alpha[1]; nombres=alpha.slice(2).join(' '); }
+    // Firma digital: último bloque largo base64/ASCII extendido si existe
+    let firma = (raw.match(/[A-Za-z0-9+\/]{16,}={0,2}/g)||[]).slice(-1)[0]||'';
+
+    const out = {};
+    if(numero) out["Número de DUI"] = numero;
+    if(primerApellido) out["Primer Apellido"] = primerApellido;
+    if(segundoApellido||nombres) out["Segundo Apellido y Nombres"] = [segundoApellido,nombres].filter(Boolean).join(' ');
+    if(emision) out["Número de Emisión"] = emision;
+    if(firma) out["Firma Digital"] = firma;
+    // Si está muy vacío, no retornes nada
+    return Object.keys(out).length? out : null;
+  }
+
+  // MRZ genérico TD3 (2×44) y TD1 (3×30)
+  function parseMRZ(lines){
+    if(!lines || !lines.length) return null;
+    // TD3 pasaporte: 2 líneas de 44
+    if(lines.length>=2 && lines[0].length>=40 && lines[1].length>=40){
+      const l1 = lines[0].padEnd(44,'<'); const l2 = lines[1].padEnd(44,'<');
+      if(l1[0]==='P'){
+        const issuing = l1.slice(2,5).replace(/</g,'');
+        const namesRaw = l1.slice(5).replace(/</g,' ').trim();
+        const doc = l2.slice(0,9).replace(/</g,'');
+        const nationality = l2.slice(10,13).replace(/</g,'');
+        const birth = l2.slice(13,19);
+        const sex = l2.slice(20,21);
+        const expiry = l2.slice(21,27);
+        const personal = l2.slice(28,42).replace(/</g,'');
+        return { Tipo:'TD3', PaísEmisor:issuing, Documento:doc, Nacionalidad:nationality, Nacimiento:fmtDateYYMMDD(birth), Sexo:sex, Expira:fmtDateYYMMDD(expiry), Nombre: namesRaw, Extra: personal };
+      }
+    }
+    // TD1 ID: 3×30
+    if(lines.length>=3 && lines[0].length>=28 && lines[1].length>=28 && lines[2].length>=28){
+      const a = lines[0].padEnd(30,'<'); const b = lines[1].padEnd(30,'<'); const c = lines[2].padEnd(30,'<');
+      const doc = a.slice(5,14).replace(/</g,'');
+      const issuing = a.slice(2,5).replace(/</g,'');
+      const birth = b.slice(0,6);
+      const sex = b.slice(7,8);
+      const expiry = b.slice(8,14);
+      const nationality = b.slice(15,18).replace(/</g,'');
+      const namesRaw = c.replace(/</g,' ').trim();
+      return { Tipo:'TD1', PaísEmisor:issuing, Documento:doc, Nacionalidad:nationality, Nacimiento:fmtDateYYMMDD(birth), Sexo:sex, Expira:fmtDateYYMMDD(expiry), Nombre:namesRaw };
+    }
+    return null;
+  }
+  function fmtDateYYMMDD(s){ if(!/^[0-9]{6}$/.test(s)) return s; const yy=s.slice(0,2), mm=s.slice(2,4), dd=s.slice(4,6); return `20${yy}-${mm}-${dd}`; }
+
+  </script>
 </body>
 </html>
