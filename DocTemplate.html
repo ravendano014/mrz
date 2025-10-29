@@ -75,10 +75,10 @@
 <body>
   <div class="app">
     <h1>PDF417 & MRZ – Scanner y Lector de Imagen + Editor de ROIs</h1>
-    <p class="hint">Escanea PDF417 con cámara, procesa imagen para <b>PDF417</b>/<b>MRZ</b> o pega <b>Texto Crudo (DUI)</b>. Ahora también puedes crear y gestionar <b>ROIs</b> para extraer por zonas con diferentes tipos.</p>
+    <p class="hint">Escanea PDF417 con cámara, procesa imagen para <b>PDF417</b>/<b>MRZ</b> o pega <b>Texto Crudo (DUI)</b>. Ahora también puedes crear y gestionar <b>ROIs</b> para extraer por zonas con diferentes tipos, y <b>capturar una foto</b> desde la cámara para procesarla como imagen.</p>
 
     <div class="grid">
-      <!-- Columna izquierda (cámara + imagen + DUI) -->
+      <!-- Columna izquierda -->
       <div>
         <!-- CÁMARA PDF417 -->
         <div class="card section">
@@ -86,6 +86,7 @@
           <div class="button-group">
             <button id="startButton">Iniciar Cámara</button>
             <button id="resetButton" class="secondary">Detener Cámara</button>
+            <button id="capturePhotoButton" class="ghost">Capturar Foto</button>
           </div>
           <div class="beep-option">
             <input type="checkbox" id="beepCheckbox" checked />
@@ -103,7 +104,7 @@
 
         <!-- IMAGEN -->
         <div class="card section">
-          <h2>2. Cargar Imagen</h2>
+          <h2>2. Cargar o Capturar Imagen</h2>
           <div class="button-group">
             <input type="file" id="fileInput" accept="image/*" class="hidden" />
             <button id="selectImageButton" class="secondary">Seleccionar Imagen</button>
@@ -133,7 +134,7 @@
         </div>
       </div>
 
-      <!-- Columna derecha (Resultados + ROI Panel) -->
+      <!-- Columna derecha -->
       <div>
         <div class="card section">
           <h2>Resultados</h2>
@@ -405,6 +406,8 @@
     const ctx = canvas.getContext("2d");
     let scaleX = 1, scaleY = 1; // display -> natural scaling
 
+    const videoEl = document.getElementById("video"); // para captura de foto
+
     /* ========= Inicialización ========= */
     (async () => {
       try {
@@ -439,6 +442,9 @@
       document.getElementById("processMRZButton").addEventListener("click", processImageMRZ);
       document.getElementById("parseRawButton").addEventListener("click", handleParseRawDUI);
 
+      // NUEVO: Capturar foto desde la cámara
+      document.getElementById("capturePhotoButton").addEventListener("click", capturePhotoFromCamera);
+
       // ROI: botones gestión
       document.getElementById("btnAddROI").addEventListener("click", addNewROI);
       document.getElementById("btnDeleteROI").addEventListener("click", deleteSelectedROI);
@@ -455,8 +461,6 @@
       canvas.addEventListener("mousedown", onMouseDown);
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
-
-      // Sin interferir: nada cambia IDs ni flujos existentes
     }
 
     function handleParseRawDUI() {
@@ -515,48 +519,90 @@
     function resetCamera() {
       if (codeReader) codeReader.reset();
       isScanning = false;
-      document.getElementById("result").textContent = "";
-      document.getElementById("result2").textContent = "";
-      document.getElementById("extractedDataTable").classList.add("hidden");
       updateStatus("Cámara detenida","info");
+    }
+
+    /* ========= NUEVO: Captura desde cámara -> imagen ========= */
+    async function capturePhotoFromCamera() {
+      try {
+        // Tomar frame actual del video
+        const vw = videoEl.videoWidth;
+        const vh = videoEl.videoHeight;
+        if (!vw || !vh) {
+          updateStatus("La cámara no está lista para capturar. Inicia la cámara y espera un momento.", "error");
+          return;
+        }
+        const shot = document.createElement("canvas");
+        shot.width = vw; shot.height = vh;
+        const sctx = shot.getContext("2d");
+        sctx.drawImage(videoEl, 0, 0, vw, vh);
+        const dataUrl = shot.toDataURL("image/png");
+
+        // Cargarla como si fuese una imagen seleccionada
+        await applyLoadedImage(dataUrl, /*fromCapture*/ true);
+        updateStatus("Foto capturada y cargada como imagen.","success");
+        playBeep();
+      } catch (e) {
+        console.error(e);
+        updateStatus("No se pudo capturar la foto: " + e.message, "error");
+      }
     }
 
     /* ========= Imagen: manejo común ========= */
     function handleImageSelection(e) {
       const file = e.target.files?.[0];
       if (!file) return;
-      selectedImageFile = file;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        imgEl.src = ev.target.result;
-        imgEl.onload = () => {
-          // Mostrar stage y canvas ajustados al tamaño mostrado de la imagen
-          stageWrap.classList.remove("hidden");
-          imgEl.style.display = 'block';
-          // Ajustar canvas al tamaño visual actual de la imagen
-          canvas.width = imgEl.clientWidth;
-          canvas.height = imgEl.clientHeight;
-          canvas.style.width = imgEl.clientWidth + "px";
-          canvas.style.height = imgEl.clientHeight + "px";
-          canvas.style.left = imgEl.offsetLeft + "px";
-          canvas.style.top = imgEl.offsetTop + "px";
-
-          // calcular escalas natural -> display
-          scaleX = imgEl.naturalWidth / imgEl.clientWidth;
-          scaleY = imgEl.naturalHeight / imgEl.clientHeight;
-
-          drawCanvas();
-        };
-        document.getElementById("processImageButton").disabled = false;
-        document.getElementById("processMRZButton").disabled = false;
-        updateStatus("Imagen cargada. Lista para procesar.","info");
+        applyLoadedImage(ev.target.result, /*fromCapture*/ false, file);
       };
       reader.readAsDataURL(file);
     }
 
+    // Carga un dataURL en la vista previa, ajusta canvas/escala y, si viene de captura, crea un File para mantener compatibilidad
+    async function applyLoadedImage(dataURL, fromCapture=false, originalFile=null) {
+      // 1) Poner imagen
+      imgEl.src = dataURL;
+      await new Promise(res => { imgEl.onload = res; });
+
+      // 2) Mostrar stage y dimensionar canvas al tamaño mostrado
+      stageWrap.classList.remove("hidden");
+      imgEl.style.display = 'block';
+      canvas.width = imgEl.clientWidth;
+      canvas.height = imgEl.clientHeight;
+      canvas.style.width = imgEl.clientWidth + "px";
+      canvas.style.height = imgEl.clientHeight + "px";
+      canvas.style.left = imgEl.offsetLeft + "px";
+      canvas.style.top = imgEl.offsetTop + "px";
+
+      // 3) Recalcular escalas natural->display
+      scaleX = imgEl.naturalWidth / imgEl.clientWidth;
+      scaleY = imgEl.naturalHeight / imgEl.clientHeight;
+
+      // 4) Habilitar botones de procesamiento
+      document.getElementById("processImageButton").disabled = false;
+      document.getElementById("processMRZButton").disabled = false;
+
+      // 5) Asegurar selectedImageFile (algunos flujos lo requieren)
+      if (fromCapture || !originalFile) {
+        // Crear un File a partir del dataURL
+        const blob = await (await fetch(dataURL)).blob();
+        selectedImageFile = new File([blob], `captura_${Date.now()}.png`, { type: 'image/png' });
+      } else {
+        selectedImageFile = originalFile;
+      }
+
+      // 6) Limpiar resultados previos visuales
+      document.getElementById("result").textContent = "";
+      document.getElementById("result2").textContent = "";
+      document.getElementById("extractedDataTable").classList.add("hidden");
+
+      drawCanvas();
+    }
+
     /* ========= Proceso: PDF417 desde imagen ========= */
     function processImagePDF417() {
-      if (!selectedImageFile) { updateStatus("Selecciona una imagen primero.","error"); return; }
+      if (!selectedImageFile) { updateStatus("Selecciona o captura una imagen primero.","error"); return; }
       const img = document.getElementById("imagePreview");
       updateStatus("Procesando imagen (PDF417)...","info");
 
@@ -597,7 +643,7 @@
 
     /* ========= Proceso: MRZ desde imagen (OCR) ========= */
     async function processImageMRZ() {
-      if (!selectedImageFile) { updateStatus("Selecciona una imagen primero.","error"); return; }
+      if (!selectedImageFile) { updateStatus("Selecciona o captura una imagen primero.","error"); return; }
       const img = document.getElementById("imagePreview");
       updateStatus("Ejecutando OCR (MRZ)...","info");
 
@@ -638,14 +684,13 @@
 
     /* ========= ROI Editor ========= */
     function addNewROI() {
-      if (!imgEl.src) { updateStatus("Primero carga una imagen para crear ROIs.","error"); return; }
+      if (!imgEl.src) { updateStatus("Primero carga o captura una imagen para crear ROIs.","error"); return; }
       const w = Math.max(40, Math.floor(canvas.width * 0.25));
       const h = Math.max(40, Math.floor(canvas.height * 0.18));
       const roi = {
         id: "roi_" + (roiCounter++),
         name: "roi_" + (roiCounter-1),
         type: "text",
-        // coordenadas en espacio display (canvas)
         x: Math.floor((canvas.width - w)/2),
         y: Math.floor((canvas.height - h)/2),
         w, h
@@ -708,14 +753,13 @@
     const HANDLE_SIZE = 8;
     function drawCanvas(){
       if (!imgEl.src) { ctx.clearRect(0,0,canvas.width, canvas.height); return; }
-      // Ajustar canvas a tamaño visual actual de la imagen (si el usuario cambió zoom CSS)
+      // Ajustar canvas a tamaño visual actual de la imagen
       canvas.width = imgEl.clientWidth;
       canvas.height = imgEl.clientHeight;
       scaleX = imgEl.naturalWidth / imgEl.clientWidth;
       scaleY = imgEl.naturalHeight / imgEl.clientHeight;
 
       ctx.clearRect(0,0,canvas.width, canvas.height);
-      // Semi overlay
       ctx.save();
       ctx.fillStyle = "rgba(0,0,0,0.15)";
       ctx.fillRect(0,0,canvas.width, canvas.height);
@@ -723,7 +767,6 @@
 
       ROIs.forEach(roi => {
         const active = roi.id === activeROIId;
-        // fondo
         ctx.save();
         ctx.strokeStyle = active ? "#2a6df5" : "#0f6";
         ctx.lineWidth = active ? 2.5 : 2;
@@ -732,11 +775,11 @@
         ctx.rect(roi.x, roi.y, roi.w, roi.h);
         ctx.fill();
         ctx.stroke();
-        // asas
+
         const handles = getHandles(roi);
         ctx.fillStyle = active ? "#2a6df5" : "#0f6";
         handles.forEach(h => { ctx.fillRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE); });
-        // etiqueta
+
         ctx.fillStyle = "#e7ecf5";
         ctx.font = "12px ui-monospace,monospace";
         ctx.fillText(`${roi.name} [${roi.type}]`, roi.x + 6, Math.max(12, roi.y - 6));
@@ -745,12 +788,11 @@
     }
     function getHandles(roi){
       const {x,y,w,h} = roi;
-      const pts = [
+      return [
         {x:x,y:y, pos:"nw"}, {x:x+w/2,y:y, pos:"n"}, {x:x+w,y:y, pos:"ne"},
         {x:x,y:y+h/2, pos:"w"}, {x:x+w,y:y+h/2, pos:"e"},
         {x:x,y:y+h, pos:"sw"}, {x:x+w/2,y:y+h, pos:"s"}, {x:x+w,y:y+h, pos:"se"}
       ];
-      return pts;
     }
     function ptInRect(px,py, x,y,w,h){ return px>=x && py>=y && px<=x+w && py<=y+h; }
     function hitHandle(roi, mx,my){
@@ -771,7 +813,7 @@
       if (!imgEl.src) return;
       const {x,y} = canvasToLocal(evt);
 
-      // ¿click en algún handle?
+      // ¿handle?
       for (let i=ROIs.length-1; i>=0; i--){
         const r = ROIs[i];
         const handle = hitHandle(r, x,y);
@@ -781,7 +823,7 @@
           drawCanvas(); return;
         }
       }
-      // ¿click dentro de un ROI? (selección / mover)
+      // ¿dentro de ROI?
       for (let i=ROIs.length-1; i>=0; i--){
         const r = ROIs[i];
         if (ptInRect(x,y, r.x,r.y,r.w,r.h)){
@@ -790,7 +832,7 @@
           drawCanvas(); return;
         }
       }
-      // click vacío: deseleccionar
+      // deselección
       activeROIId = null; refreshROIList(); clearPropEditor(); drawCanvas();
     }
     function onMouseMove(evt){
@@ -812,7 +854,6 @@
         if (h.includes("e")) { nw = clamp(sw + dx, 10, canvas.width - sx); }
         roi.x=nx; roi.y=ny; roi.w=nw; roi.h=nh;
       }
-      // actualizar propiedades en vivo
       fillPropEditor(roi);
       drawCanvas();
     }
@@ -830,7 +871,6 @@
         },
         rois: ROIs.map(r => ({
           id: r.id, name: r.name, type: r.type,
-          // Guardar en coordenadas relativas (0..1) para reescalado fiable
           relX: r.x / canvas.width,
           relY: r.y / canvas.height,
           relW: r.w / canvas.width,
@@ -879,14 +919,11 @@
     }
 
     /* ========= Extracción por ROI ========= */
-    // recorta ROI a un canvas natural-size (para alimentar OCR/ZXing)
     function cropROIToCanvas(roi){
-      // convertir display -> natural
       const sx = Math.round(roi.x * scaleX);
       const sy = Math.round(roi.y * scaleY);
       const sw = Math.max(1, Math.round(roi.w * scaleX));
       const sh = Math.max(1, Math.round(roi.h * scaleY));
-
       const c = document.createElement("canvas");
       c.width = sw; c.height = sh;
       const cctx = c.getContext("2d");
@@ -897,7 +934,7 @@
 
     async function extractFromROI(roi){
       if (!roi) { updateStatus("Selecciona una ROI.","error"); return; }
-      if (!imgEl.src) { updateStatus("Primero carga una imagen.","error"); return; }
+      if (!imgEl.src) { updateStatus("Primero carga o captura una imagen.","error"); return; }
 
       try {
         let out = {};
@@ -1022,7 +1059,3 @@
   </script>
 </body>
 </html>
-
-
-
-
