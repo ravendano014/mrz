@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lector MRZ con Tesseract.js — Cámara + Parser + Autodetección</title>
+  <title>Lector MRZ con Tesseract.js — Cámara + Parser (Auto)</title>
   <style>
     :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --text:#e5e7eb; }
     *{box-sizing:border-box}
@@ -23,8 +23,6 @@
     .primary{background:var(--accent);border-color:transparent;color:#052e16;font-weight:700}
     .danger{background:var(--danger);color:#fff;border-color:transparent}
     .muted{color:var(--muted)}
-    .success{color:#22c55e}
-    .warning{color:#f59e0b}
 
     .stage{position:relative;border-radius:16px;overflow:hidden;background:#000}
     video{width:100%;display:block;max-height:60vh;object-fit:cover}
@@ -32,8 +30,19 @@
 
     /* Marco verde del MRZ */
     .frame{position:absolute;inset:auto 10% 10% 10%; height:26%;
-           border:4px solid #22c55e;border-radius:8px;box-shadow:0 0 0 3px rgba(34,197,94,.15) inset}
+           border:4px solid #22c55e;border-radius:8px;box-shadow:0 0 0 3px rgba(34,197,94,.15) inset; transition: box-shadow .2s ease}
     .frame::after{content:""; position:absolute; left:6px; right:6px; top:50%; height:2px; background:#22c55e66}
+
+    /* Glow feedback */
+    .glow-ok{box-shadow:0 0 0 3px rgba(34,197,94,.35) inset, 0 0 24px 4px rgba(34,197,94,.3)}
+    .glow-fail{box-shadow:0 0 0 3px rgba(239,68,68,.35) inset, 0 0 24px 4px rgba(239,68,68,.25)}
+
+    /* Chip de estado */
+    .chip{position:absolute;top:.6rem;right:.6rem;background:#0b1220;border:1px solid #1f2937;border-radius:999px;
+          padding:.25rem .6rem;font-size:.8rem;display:flex;align-items:center;gap:.4rem;opacity:.95}
+    .chip-ok{color:#16a34a;border-color:#14532d}
+    .chip-fail{color:#ef4444;border-color:#7f1d1d}
+    .chip i{font-style:normal}
 
     .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
     .out{white-space:pre-wrap; word-break:break-word; background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:.75rem; min-height:3.5rem}
@@ -45,7 +54,7 @@
     footer{opacity:.7;text-align:center;padding:1rem}
     a{color:#93c5fd}
     
-    /* Estilos para la tabla de resultados */
+    /* Tabla de resultados */
     .results-table {width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.875rem}
     .results-table th, .results-table td {padding:.5rem;text-align:left;border-bottom:1px solid #1f2937}
     .results-table th {color:#9ca3af;font-weight:600;width:40%}
@@ -55,14 +64,6 @@
     .format-guide {background:#0b1220;border:1px solid #1f2937;border-radius:8px;padding:.5rem .75rem;margin:.5rem 0;font-size:.85rem}
     .json-container {position:relative}
     .copy-json-btn {position:absolute;top:.5rem;right:.5rem}
-    
-    /* Indicador de autodetección */
-    .auto-detected {border-color:#22c55e; box-shadow:0 0 0 2px rgba(34,197,94,.3)}
-    .flash {animation: flash 0.5s ease-in-out;}
-    @keyframes flash {
-      0% { background-color: rgba(34,197,94,0.1); }
-      100% { background-color: transparent; }
-    }
   </style>
 </head>
 <body>
@@ -75,10 +76,11 @@
     <section class="grid">
       <div class="card pad">
         <h2>Vista de cámara</h2>
-        <p class="hint">Alinea la MRZ dentro del recuadro verde. Puedes iniciar/detener la cámara y tomar una captura para extraer el texto. <span class="success">La detección y parseo son automáticos.</span></p>
+        <p class="hint">Alinea la MRZ dentro del recuadro verde. Puedes iniciar/detener la cámara y tomar una captura para extraer el texto.</p>
         <div id="stage" class="stage">
           <video id="video" playsinline muted></video>
           <div class="frame" aria-label="Área objetivo para MRZ"></div>
+          <span id="mrz-chip" class="chip" style="display:none"><i>⏳</i><span>Esperando…</span></span>
           <canvas id="snapshot" class="hidden"></canvas>
         </div>
         <div class="controls">
@@ -93,9 +95,7 @@
         <div id="results-table-container" style="display:none; margin-top:1rem">
           <h3>Resultados parseados</h3>
           <table class="results-table">
-            <tbody id="results-body">
-              <!-- Los resultados se insertarán aquí dinámicamente -->
-            </tbody>
+            <tbody id="results-body"></tbody>
           </table>
         </div>
         
@@ -140,7 +140,7 @@
         <li>Haz clic en <strong>Iniciar cámara</strong> y permite el acceso.</li>
         <li>Coloca el documento de forma que la MRZ quede <em>dentro</em> del <strong>recuadro verde</strong>.</li>
         <li>Pulsa <strong>Capturar y extraer MRZ</strong>. El sistema recorta esa zona y ejecuta OCR con Tesseract.js.</li>
-        <li><strong>La detección y parseo son automáticos</strong> cuando se identifica un MRZ válido.</li>
+        <li>Si el texto tiene formato válido, el sistema <strong>detecta y parsea automáticamente</strong>. También puedes presionar <strong>Parsear MRZ</strong> manualmente.</li>
       </ol>
     </section>
   </main>
@@ -154,6 +154,9 @@
     const video = $('#video');
     const canvas = $('#snapshot');
     const stage = $('#stage');
+    const frameEl = stage.querySelector('.frame');
+    const chipEl = $('#mrz-chip');
+
     const startBtn = $('#start');
     const stopBtn = $('#stop');
     const capBtn = $('#capture');
@@ -169,13 +172,13 @@
     const copyJsonBtn = $('#copy-json');
 
     let stream = null;
-    let autoDetectionEnabled = true;
 
     function setBusy(isBusy, msg = '') {
       statusEl.textContent = isBusy ? (msg || 'Procesando…') : (msg || 'Listo.');
       startBtn.disabled = isBusy || !!stream;
       stopBtn.disabled = isBusy || !stream;
       capBtn.disabled = isBusy || !stream;
+
       const has = outputEl.textContent.trim().length > 0;
       copyBtn.disabled = !has;
       clearBtn.disabled = !has;
@@ -186,6 +189,25 @@
         resultsContainer.style.display = 'none';
         copyJsonBtn.disabled = true;
       }
+    }
+
+    function setChip(state, text){
+      // state: 'idle' | 'ok' | 'fail' | 'working'
+      chipEl.style.display = 'inline-flex';
+      chipEl.className = 'chip';
+      chipEl.querySelector('i').textContent = '⏳';
+      if(state==='ok'){
+        chipEl.classList.add('chip-ok');
+        chipEl.querySelector('i').textContent = '✔';
+      }else if(state==='fail'){
+        chipEl.classList.add('chip-fail');
+        chipEl.querySelector('i').textContent = '✖';
+      }else if(state==='working'){
+        // keep default
+      }else{
+        chipEl.style.display = 'none';
+      }
+      if(typeof text==='string') chipEl.lastChild.textContent = ' ' + text;
     }
 
     async function startCamera(){
@@ -216,6 +238,8 @@
         video.srcObject = null;
       }
       setBusy(false, 'Cámara detenida.');
+      setChip('idle');
+      frameEl.classList.remove('glow-ok','glow-fail');
     }
 
     function getMRZCrop(){
@@ -236,100 +260,108 @@
       return canvas;
     }
 
+    // ---------- Normalización mejorada ----------
+    function mapSimilarChars(str){
+      // Sustituciones típicas en OCR para MRZ
+      return str
+        .replace(/[«‹›»]/g,'<')        // variantes de chevrón
+        .replace(/[\u2013\u2014]/g,'-')// guiones largos -> '-'
+        .replace(/[|!]/g,'I')          // tubos/exclamaciones como 'I'
+        .replace(/[\u00D8\u00F8]/g,'O')// O tachada -> O
+        .replace(/[\u00A0]/g,' ')      // nbsp -> espacio
+        .replace(/_/g,'<');            // a veces subrayado por <
+    }
+
     function normalizeMRZ(text){
       const allowed = /[A-Z0-9<]/g;
-      const lines = text
-        .toUpperCase()
-        .replace(/\s+/g, '\n')
+      const cleanedRaw = mapSimilarChars((text||'').toUpperCase());
+      // dividir por saltos / espacios largos y filtrar líneas pobres
+      const cand = cleanedRaw
+        .replace(/\r/g,'\n')
         .split(/\n+/)
         .map(l => (l.match(allowed)||[]).join(''))
-        .filter(l => l.length >= 20); // Reducido el umbral para mayor flexibilidad
+        .map(l => l.replace(/-+/g,'-'))
+        .filter(l => l.length >= 25);
 
-      const take = (n, len) => {
-        for(let i=0; i + n - 1 < lines.length; i++){
-          const group = lines.slice(i, i+n);
-          // Permitir mayor variación en la longitud
-          if(group.every(l => Math.abs(l.length - len) <= 4)) return group;
+      // Heurística: buscar TD1 (3x30), TD3 (2x44), TD2 (2x36) por proximidad ±2
+      const takeGroup = (n, len) => {
+        for(let i=0;i+n-1<cand.length;i++){
+          const g = cand.slice(i, i+n);
+          if(g.every(l => Math.abs(l.length - len) <= 2)) return g;
         }
         return null;
       };
-      
-      // Intentar detectar los formatos más comunes
-      let group = take(3,30) || take(2,44) || take(2,36);
+      let group = takeGroup(3,30) || takeGroup(2,44) || takeGroup(2,36);
       if(group){
-        return group.map((l)=> l.padEnd(group[0].length,'<')).join('\n');
+        const targetLen = group.length===3 ? 30 : (group[0].length>=43?44:36);
+        return group.map(l => adjustLen(l, targetLen)).join('\n');
       }
-      
-      // Si no se encuentra un grupo exacto, devolver las líneas más largas
-      const top = lines.sort((a,b)=>b.length-a.length).slice(0,3);
+      // fallback: escoger las más largas (hasta 3)
+      const top = cand.sort((a,b)=>b.length-a.length).slice(0,3);
+      if(top.length===2){ // intentar TD3 por pad
+        return top.map(l=>adjustLen(l, 44)).join('\n');
+      }
+      if(top.length===3){
+        return top.map(l=>adjustLen(l, 30)).join('\n');
+      }
       return top.join('\n');
     }
 
-    // Función mejorada para verificar si el texto normalizado es un MRZ válido
-    function isValidMRZ(text) {
-      const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) return false;
-      
-      // Verificar longitudes típicas de MRZ
-      const lengths = lines.map(l => l.length);
-      const hasTypicalLength = lengths.some(len => 
-        (len >= 28 && len <= 32) || // TD1
-        (len >= 35 && len <= 37) || // TD2
-        (len >= 43 && len <= 45)    // TD3
-      );
-      
-      // Verificar que contenga caracteres válidos
-      const validChars = /^[A-Z0-9<]+$/;
-      const hasValidChars = lines.every(line => validChars.test(line));
-      
-      // Verificar que tenga al menos un dígito de control (número seguido de un dígito)
-      const hasCheckDigit = lines.some(line => /\d[0-9]/.test(line));
-      
-      return hasTypicalLength && hasValidChars && hasCheckDigit;
+    function adjustLen(line, len){
+      // recorta o paddea con '<' hasta la longitud esperada
+      if(line.length>len) return line.slice(0,len);
+      if(line.length<len) return line.padEnd(len,'<');
+      return line;
     }
 
-    // Función para mostrar indicador de autodetección
-    function showAutoDetectionIndicator() {
-      outputEl.classList.add('auto-detected', 'flash');
-      setTimeout(() => {
-        outputEl.classList.remove('flash');
-      }, 500);
-    }
-
+    // ---------- OCR + Auto-detección ----------
     async function captureAndOCR(){
       try{
         setBusy(true, 'Reconociendo MRZ…');
+        setChip('working','Reconociendo…');
+        frameEl.classList.remove('glow-ok','glow-fail');
+
         const crop = getMRZCrop();
         const { data } = await Tesseract.recognize(crop, 'eng', {
           logger: m => { if(m.status === 'recognizing text'){ statusEl.textContent = `Reconociendo… ${(m.progress*100).toFixed(0)}%`; } },
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ<0123456789'
         });
-        
+
         const cleaned = normalizeMRZ(data.text||'');
         outputEl.textContent = cleaned.trim();
-        
-        // Verificar si es un MRZ válido y proceder con el parseo automático
-        if (cleaned.trim() && isValidMRZ(cleaned) && autoDetectionEnabled) {
-          showAutoDetectionIndicator();
-          setTimeout(() => {
-            parseMRZAndDisplay(cleaned);
-            statusEl.textContent = 'MRZ detectada y parseada automáticamente.';
-          }, 300);
-        } else {
-          setBusy(false, outputEl.textContent ? 'MRZ extraída.' : 'No se detectó MRZ clara. Intenta otra vez.');
+        const has = !!outputEl.textContent;
+        setBusy(false, has ? 'MRZ extraída.' : 'No se detectó MRZ clara. Intenta otra vez.');
+
+        if(has){
+          // Autodetección y parseo automático
+          const parsed = parseMRZ(outputEl.textContent);
+          const valid = isMRZValid(parsed);
+          if(valid){
+            decodedEl.textContent = JSON.stringify(parsed, null, 2);
+            displayResults(parsed);
+            copyJsonBtn.disabled = false;
+            statusEl.textContent = `MRZ detectada y parseada automáticamente (${parsed.format}).`;
+            setChip('ok','MRZ válida');
+            frameEl.classList.add('glow-ok');
+          }else{
+            resultsContainer.style.display = 'none';
+            decodedEl.textContent = '';
+            copyJsonBtn.disabled = true;
+            statusEl.textContent = 'Texto OCR no cumple con un MRZ válido. Puedes corregir y pulsar "Parsear MRZ".';
+            setChip('fail','MRZ no válida');
+            frameEl.classList.add('glow-fail');
+          }
+        }else{
+          setChip('fail','Sin MRZ');
+          frameEl.classList.add('glow-fail');
         }
+
       }catch(err){
         console.error(err);
         setBusy(false, 'Error durante OCR: ' + (err.message||err));
+        setChip('fail','Error OCR');
+        frameEl.classList.add('glow-fail');
       }
-    }
-
-    function parseMRZAndDisplay(text) {
-      const parsed = parseMRZ(text);
-      decodedEl.textContent = JSON.stringify(parsed, null, 2);
-      displayResults(parsed);
-      copyJsonBtn.disabled = false;
-      setBusy(false, parsed && parsed.format ? `MRZ parseada (${parsed.format}).` : 'No se pudo parsear.');
     }
 
     startBtn.addEventListener('click', startCamera);
@@ -355,13 +387,14 @@
 
     clearBtn.addEventListener('click', ()=>{
       outputEl.textContent='';
-      outputEl.classList.remove('auto-detected');
       decodedEl.textContent='';
       resultsContainer.style.display = 'none';
       setBusy(false,'Listo.');
+      setChip('idle');
+      frameEl.classList.remove('glow-ok','glow-fail');
     });
 
-    // ====== MRZ Parser ======
+    // ====== Utilidades MRZ ======
     function mrzCharValue(ch){
       if(ch>='0' && ch<='9') return ch.charCodeAt(0)-48;
       if(ch>='A' && ch<='Z') return ch.charCodeAt(0)-55;
@@ -388,39 +421,116 @@
       if(lines.length===2 && L.every(n=>n>=35 && n<=37)) return 'TD2'; // también MRV-B
       return 'UNKNOWN';
     }
-    
     function formatDateDisplay(dateObj) {
       if (!dateObj || !dateObj.yy) return '';
-      const year = parseInt(dateObj.yy) < 50 ? `20${dateObj.yy}` : `19${dateObj.yy}`;
+      const year = parseInt(dateObj.yy,10) < 50 ? `20${dateObj.yy}` : `19${dateObj.yy}`;
       return `${dateObj.yy}${dateObj.mm}${dateObj.dd} (${year}-${dateObj.mm}-${dateObj.dd})`;
     }
-    
+
+    // Dígito final compuesto por formato
+    function td3FinalOK(L2){
+      // L2: 44 chars
+      const doc = L2.slice(0,9);        // 0..8
+      const docC = L2.slice(9,10);      // 9
+      const birth = L2.slice(13,19);    // 13..18
+      const birthC = L2.slice(19,20);   // 19
+      const exp = L2.slice(21,27);      // 21..26
+      const expC = L2.slice(27,28);     // 27
+      const opt = L2.slice(28,42);      // 28..41
+      const finalC = L2.slice(43,44);   // 43
+      const concat = doc + docC + birth + birthC + exp + expC + opt;
+      return mrzCheckDigit(concat) === finalC;
+    }
+    function td2FinalOK(L2){
+      // L2: 36 chars
+      const doc = L2.slice(0,9);
+      const docC = L2.slice(9,10);
+      const birth = L2.slice(13,19);
+      const birthC = L2.slice(19,20);
+      const exp = L2.slice(21,27);
+      const expC = L2.slice(27,28);
+      const opt = L2.slice(28,35);
+      const finalC = L2.slice(35,36);
+      const concat = doc + docC + birth + birthC + exp + expC + opt;
+      return mrzCheckDigit(concat) === finalC;
+    }
+    function td1FinalOK(A,B){
+      // A,B: 30 chars cada uno
+      const doc = A.slice(5,14);
+      const docC = A.slice(14,15);
+      const birth = B.slice(0,6);
+      const birthC = B.slice(6,7);
+      const exp = B.slice(8,14);
+      const expC = B.slice(14,15);
+      const opt2 = B.slice(18,29);
+      const finalC = B.slice(29,30);
+      const concat = doc + docC + birth + birthC + exp + expC + opt2;
+      return mrzCheckDigit(concat) === finalC;
+    }
+
+    function isMRZValid(parsed){
+      if(!parsed || parsed.format==='UNKNOWN' || !parsed.raw) return false;
+      try{
+        if(parsed.format==='TD3'){
+          const [L1,L2] = parsed.raw.map(l=>adjustLen(l,44));
+          const checks = {
+            doc: mrzCheckDigit(L2.slice(0,9)) === L2.slice(9,10),
+            birth: mrzCheckDigit(L2.slice(13,19)) === L2.slice(19,20),
+            exp: mrzCheckDigit(L2.slice(21,27)) === L2.slice(27,28),
+            final: td3FinalOK(L2)
+          };
+          // válido si final es OK o al menos 3/4 checks
+          return checks.final || (checks.doc + checks.birth + checks.exp) >= 2;
+        }
+        if(parsed.format==='TD2'){
+          const [L1,L2] = parsed.raw.map(l=>adjustLen(l,36));
+          const checks = {
+            doc: mrzCheckDigit(L2.slice(0,9)) === L2.slice(9,10),
+            birth: mrzCheckDigit(L2.slice(13,19)) === L2.slice(19,20),
+            exp: mrzCheckDigit(L2.slice(21,27)) === L2.slice(27,28),
+            final: td2FinalOK(L2)
+          };
+          return checks.final || (checks.doc + checks.birth + checks.exp) >= 2;
+        }
+        if(parsed.format==='TD1'){
+          const [A,B,C] = parsed.raw.map(l=>adjustLen(l,30));
+          const checks = {
+            doc: mrzCheckDigit(A.slice(5,14)) === A.slice(14,15),
+            birth: mrzCheckDigit(B.slice(0,6)) === B.slice(6,7),
+            exp: mrzCheckDigit(B.slice(8,14)) === B.slice(14,15),
+            final: td1FinalOK(A,B)
+          };
+          return checks.final || (checks.doc + checks.birth + checks.exp) >= 2;
+        }
+      }catch(_e){ return false; }
+      return false;
+    }
+
+    // ====== Parser ======
+    function addTableRow(label, value, isValid) {
+      const row = document.createElement('tr');
+      const labelCell = document.createElement('td');
+      const valueCell = document.createElement('td');
+      labelCell.textContent = label;
+      valueCell.textContent = value;
+      if (isValid !== undefined) valueCell.className = isValid ? 'check-ok' : 'check-fail';
+      row.appendChild(labelCell); row.appendChild(valueCell); resultsBody.appendChild(row);
+    }
+
     function displayResults(parsed) {
       resultsBody.innerHTML = '';
-      
-      if (!parsed.format || parsed.format === 'UNKNOWN') {
-        resultsContainer.style.display = 'none';
-        return;
-      }
-      
-      // Contar checks válidos
-      let validChecks = 0;
-      let totalChecks = 0;
-      
+      if (!parsed.format || parsed.format === 'UNKNOWN') { resultsContainer.style.display = 'none'; return; }
+
+      // resumen
+      let validChecks = 0, totalChecks = 0;
       if (parsed.checks) {
         Object.values(parsed.checks).forEach(check => {
-          if (check !== undefined) {
-            totalChecks++;
-            if (check) validChecks++;
-          }
+          if (check !== undefined) { totalChecks++; if (check) validChecks++; }
         });
       }
-      
-      // Mostrar resumen de formato y checks
       addTableRow('Formato detectado', parsed.format);
       addTableRow('Checksums', `${validChecks} de ${totalChecks} OK`, validChecks === totalChecks);
-      
-      // Mostrar campos específicos según el formato
+
       if (parsed.documentCode) addTableRow('Document Type', parsed.documentCode);
       if (parsed.issuingState) addTableRow('Issuing Country', parsed.issuingState);
       if (parsed.nationality) addTableRow('Nationality', parsed.nationality);
@@ -446,25 +556,8 @@
       if (parsed.optionalData2) addTableRow('Optional 2', parsed.optionalData2);
       if (parsed.optionalData) addTableRow('Optional Data', parsed.optionalData);
       if (parsed.optionalNumber) addTableRow('Optional Number', parsed.optionalNumber);
-      
+
       resultsContainer.style.display = 'block';
-    }
-    
-    function addTableRow(label, value, isValid) {
-      const row = document.createElement('tr');
-      const labelCell = document.createElement('td');
-      const valueCell = document.createElement('td');
-      
-      labelCell.textContent = label;
-      valueCell.textContent = value;
-      
-      if (isValid !== undefined) {
-        valueCell.className = isValid ? 'check-ok' : 'check-fail';
-      }
-      
-      row.appendChild(labelCell);
-      row.appendChild(valueCell);
-      resultsBody.appendChild(row);
     }
 
     function parseMRZ(text){
@@ -473,7 +566,7 @@
       const res = { format, raw: lines };
       try{
         if(format==='TD3'){
-          const [L1,L2] = lines.map(l=>l.padEnd(44,'<'));
+          const [L1,L2] = lines.map(l=>adjustLen(l,44));
           res.documentCode = L1.slice(0,2);
           res.issuingState = L1.slice(2,5);
           Object.assign(res, splitNames(L1.slice(5,44)));
@@ -490,12 +583,13 @@
           res.checks = {
             documentNumber: mrzCheckDigit(L2.slice(0,9)) === res.documentNumberCheck,
             birthDate: mrzCheckDigit(L2.slice(13,19)) === res.birthDateCheck,
-            expiryDate: mrzCheckDigit(L2.slice(21,27)) === res.expiryDateCheck
+            expiryDate: mrzCheckDigit(L2.slice(21,27)) === res.expiryDateCheck,
+            final: td3FinalOK(L2)
           };
           return res;
         }
         if(format==='TD2'){
-          const [L1,L2] = lines.map(l=>l.padEnd(36,'<'));
+          const [L1,L2] = lines.map(l=>adjustLen(l,36));
           res.documentCode = L1.slice(0,2);
           res.issuingState = L1.slice(2,5);
           Object.assign(res, splitNames(L1.slice(5,36)));
@@ -512,12 +606,13 @@
           res.checks = {
             documentNumber: mrzCheckDigit(L2.slice(0,9)) === res.documentNumberCheck,
             birthDate: mrzCheckDigit(L2.slice(13,19)) === res.birthDateCheck,
-            expiryDate: mrzCheckDigit(L2.slice(21,27)) === res.expiryDateCheck
+            expiryDate: mrzCheckDigit(L2.slice(21,27)) === res.expiryDateCheck,
+            final: td2FinalOK(L2)
           };
           return res;
         }
         if(format==='TD1'){
-          const [A,B,C] = lines.map(l=>l.padEnd(30,'<'));
+          const [A,B,C] = lines.map(l=>adjustLen(l,30));
           res.documentCode = A.slice(0,2);
           res.issuingState = A.slice(2,5);
           res.documentNumber = A.slice(5,14).replace(/<+/g,'');
@@ -535,7 +630,8 @@
           res.checks = {
             documentNumber: mrzCheckDigit(A.slice(5,14)) === res.documentNumberCheck,
             birthDate: mrzCheckDigit(B.slice(0,6)) === res.birthDateCheck,
-            expiryDate: mrzCheckDigit(B.slice(8,14)) === res.expiryDateCheck
+            expiryDate: mrzCheckDigit(B.slice(8,14)) === res.expiryDateCheck,
+            final: td1FinalOK(A,B)
           };
           return res;
         }
@@ -548,8 +644,17 @@
     parseBtn.addEventListener('click', ()=>{
       const raw = outputEl.textContent.trim();
       if(!raw) return;
-      parseMRZAndDisplay(raw);
+      const parsed = parseMRZ(raw);
+      decodedEl.textContent = JSON.stringify(parsed, null, 2);
+      displayResults(parsed);
+      copyJsonBtn.disabled = false;
+      const valid = isMRZValid(parsed);
+      statusEl.textContent = valid ? `MRZ parseada (${parsed.format}).` : 'Parseado, pero MRZ no válido.';
+      frameEl.classList.remove('glow-ok','glow-fail');
+      frameEl.classList.add(valid ? 'glow-ok' : 'glow-fail');
+      setChip(valid?'ok':'fail', valid?'MRZ válida':'MRZ no válida');
     });
   </script>
 </body>
 </html>
+
