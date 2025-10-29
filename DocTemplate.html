@@ -37,13 +37,14 @@
     .roi-item.active{background:#162139;border-left:3px solid var(--accent)}
     .pill{background:#2b3b60;border-radius:999px;padding:2px 8px;font-size:.75rem}
     .prop-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
     /* Scanner overlay */
     #video{width:100%;height:300px;border-radius:12px;border:1px solid var(--line);background:#000}
     .scanner-overlay{position:relative}
-    .scanner-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:70%;height:50%;border:3px solid var(--ok);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.5)}
-    .scanner-label{position:absolute;top:-26px;left:50%;transform:translateX(-50%);color:var(--ok);font-size:.9rem}
+    .scanner-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:85%;height:60%;border:3px solid var(--ok);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.5)}
+
     /* Lupa */
-    #magnifier{position:absolute;display:none;width:180px;height:180px;border-radius:50%;border:2px solid var(--accent);overflow:hidden;pointer-events:none;box-shadow:0 0 0 3px rgba(42,109,245,.25)}
+    #magnifier{position:absolute;display:none;width:200px;height:200px;border-radius:50%;border:2px solid var(--accent);overflow:hidden;pointer-events:none;box-shadow:0 0 0 3px rgba(42,109,245,.25); background:#000;}
     #magnifier canvas{position:absolute;top:0;left:0}
     .range-row{display:grid;grid-template-columns:120px 1fr 60px;gap:8px;align-items:center}
   </style>
@@ -51,7 +52,7 @@
 <body>
 <div class="app">
   <h1>PDF417 & MRZ – Scanner + Editor de ROIs</h1>
-  <p class="hint">Cámara con controles pro (resolución, torch, zoom, exposición…), mejoras de imagen (sharpen/contraste/binarización), **lupa circular**, ROIs táctiles, y extracción/parseo por tipo.</p>
+  <p class="hint">Cámara con controles pro, alternar entre cámaras, mejoras de imagen, **lupa circular** y ROIs táctiles.</p>
 
   <div class="grid">
     <div>
@@ -63,6 +64,11 @@
             <option value="1280x720">1280×720 (720p)</option>
             <option value="1920x1080">1920×1080 (1080p)</option>
           </select>
+
+          <!-- NUEVO: selector de cámaras y cambiar -->
+          <select id="cameraSelect" title="Cámara" style="min-width:200px"></select>
+          <button id="switchCamButton" class="ghost">Cambiar cámara</button>
+
           <button id="startButton">Iniciar Cámara</button>
           <button id="resetButton" class="secondary">Detener</button>
           <button id="capturePhotoButton" class="ghost">Capturar Foto</button>
@@ -74,7 +80,8 @@
         </div>
         <div class="scanner-overlay" style="margin-top:10px;position:relative">
           <video id="video" playsinline muted></video>
-          <div class="scanner-frame"><div class="scanner-label">Enfoque el PDF417 dentro del marco</div></div>
+          <!-- Marco más grande, sin leyenda -->
+          <div class="scanner-frame"></div>
         </div>
         <div class="row" style="margin-top:8px">
           <label class="hint"><input type="checkbox" id="beepCheckbox" checked /> Sonido al detectar</label>
@@ -106,21 +113,21 @@
             <input type="range" id="rngIntensity" min="0" max="100" value="40" />
             <span id="lblIntensity" class="hint">40</span>
           </div>
-          <p class="hint" style="margin:6px 0 0">Estas mejoras se aplican a los **recortes ROI** y a la imagen completa cuando usas “Procesar MRZ/PDF417”.</p>
+          <p class="hint" style="margin:6px 0 0">Se aplican a los **recortes ROI** y a la imagen completa cuando usas “Procesar MRZ/PDF417”.</p>
         </div>
 
         <div id="stageWrap" class="img-stage" style="margin-top:10px;display:none">
           <img id="imagePreview" alt="Vista previa" />
           <canvas id="roiCanvas"></canvas>
-          <div id="magnifier"><canvas id="magCanvas" width="360" height="360"></canvas></div>
+          <div id="magnifier"><canvas id="magCanvas" width="400" height="400"></canvas></div>
         </div>
-        <p class="hint" style="margin-top:8px">La imagen **permanece** después de cualquier extracción/parseo, hasta que cargues o captures otra.</p>
+        <p class="hint" style="margin-top:8px">La imagen **permanece** después de extraer/parsear, hasta cargar o capturar otra.</p>
       </div>
 
       <!-- DUI RAW -->
       <div class="card" style="margin-top:16px">
         <h2>4) Parsear Texto Crudo (DUI)</h2>
-        <p class="hint">Usa por defecto el texto crudo más reciente de PDF417; si no existe, tomará lo que pegues aquí.</p>
+        <p class="hint">Usa por defecto el texto crudo más reciente de PDF417; si no existe, usa el cuadro de abajo.</p>
         <textarea id="rawInput" placeholder="Pega aquí el texto crudo con separadores '||' si no proviene del PDF417."></textarea>
         <div class="row" style="margin-top:8px">
           <button id="parseRawButton">Parsear Texto Crudo (DUI)</button>
@@ -218,7 +225,7 @@ let codeReader = new ZXing.BrowserMultiFormatReader();
 let selectedDeviceId = null;
 let isScanning = false;
 let lastPDF417Raw = "";
-let track = null; // MediaStreamTrack para controles pro
+let track = null; // MediaStreamTrack
 let stream = null;
 
 const imgEl = $('#imagePreview');
@@ -233,13 +240,7 @@ const HANDLE_SIZE = IS_TOUCH ? 18 : 8;
 /* ==========================
    Mejoras (pre-procesado)
 ========================== */
-const enhance = {
-  grayscale: false,
-  binarize: false,
-  sharpen: false,
-  boost: false,
-  intensity: 40
-};
+const enhance = { grayscale:false, binarize:false, sharpen:false, boost:false, intensity:40 };
 $('#chkGrayscale').addEventListener('change', e=> enhance.grayscale = e.target.checked);
 $('#chkBinarize').addEventListener('change', e=> enhance.binarize = e.target.checked);
 $('#chkSharpen').addEventListener('change', e=> enhance.sharpen = e.target.checked);
@@ -251,39 +252,32 @@ function applyEnhancementsToCanvas(cnv){
   const w=cnv.width,h=cnv.height; const cx=cnv.getContext('2d');
   let img = cx.getImageData(0,0,w,h); let d=img.data;
 
-  // Escala de grises
   if (enhance.grayscale || enhance.binarize) {
     for(let i=0;i<d.length;i+=4){ const y=0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]; d[i]=d[i+1]=d[i+2]=y; }
   }
-  // Aumento de contraste (lineal)
   if (enhance.boost) {
-    const k = 1 + (enhance.intensity/100)*1.25; // 1..2.25
+    const k = 1 + (enhance.intensity/100)*1.25;
     for(let i=0;i<d.length;i+=4){
       d[i]=Math.max(0,Math.min(255,(d[i]-128)*k+128));
       d[i+1]=Math.max(0,Math.min(255,(d[i+1]-128)*k+128));
       d[i+2]=Math.max(0,Math.min(255,(d[i+2]-128)*k+128));
     }
   }
-  // Binarización (Sauvola simplificado)
   if (enhance.binarize) {
-    const win = Math.max(9, Math.floor(Math.min(w,h)/20)|1); // ventana proporcional
-    // simple aproximación: umbral global + ajuste por intensidad
     let sum=0; for(let i=0;i<d.length;i+=4) sum+=d[i];
     const avg = sum/(d.length/4);
-    const k = 0.2 + (enhance.intensity/100)*0.6; // 0.2..0.8
+    const k = 0.2 + (enhance.intensity/100)*0.6;
     const thr = avg*(0.9 + k*0.2);
     for(let i=0;i<d.length;i+=4){ const v=d[i]>=thr?255:0; d[i]=d[i+1]=d[i+2]=v; }
   }
   cx.putImageData(img,0,0);
 
-  // Sharpen (Unsharp con kernel Laplaciano)
   if (enhance.sharpen) {
-    const k = 0.5 + (enhance.intensity/100)*1.5; // 0.5..2.0
+    const k = 0.5 + (enhance.intensity/100)*1.5;
     const tmp = document.createElement('canvas'); tmp.width=w; tmp.height=h;
     const tx = tmp.getContext('2d'); tx.drawImage(cnv,0,0);
     const src = tx.getImageData(0,0,w,h); const sd=src.data;
     const out = cx.getImageData(0,0,w,h); const od=out.data;
-    // Laplaciano 3x3
     const idx = (x,y)=> (y*w+x)*4;
     for(let y=1;y<h-1;y++){
       for(let x=1;x<w-1;x++){
@@ -293,7 +287,6 @@ function applyEnhancementsToCanvas(cnv){
             - sd[idx(x-1,y-1)+ch]-sd[idx(x,y-1)+ch]-sd[idx(x+1,y-1)+ch]
             - sd[idx(x-1,y)+ch]    -sd[idx(x+1,y)+ch]
             - sd[idx(x-1,y+1)+ch]-sd[idx(x,y+1)+ch]-sd[idx(x+1,y+1)+ch];
-          // Unsharp: original + amount*(original - blur) ~ original + k*laplaciano
           od[p] = Math.max(0, Math.min(255, sd[p] + k*v/8 ));
         }
         od[idx(x,y)+3]=255;
@@ -305,26 +298,45 @@ function applyEnhancementsToCanvas(cnv){
 }
 
 /* ==========================
-   Cámara y controles pro
+   Cámara y controles pro + alternar cámaras
 ========================== */
+async function enumerateCameras(){
+  try{
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const vids = devices.filter(d=>d.kind==='videoinput');
+    const sel = $('#cameraSelect'); sel.innerHTML='';
+    vids.forEach((d,i)=>{
+      const o=document.createElement('option');
+      o.value=d.deviceId; o.textContent=d.label || `Cámara ${i+1}`;
+      sel.appendChild(o);
+    });
+    if (!selectedDeviceId && vids[0]) selectedDeviceId = vids[0].deviceId;
+    if (selectedDeviceId) sel.value = selectedDeviceId;
+  }catch(e){ /* puede requerir permiso previo */ }
+}
+
 async function startCamera(){
   if (isScanning) { setStatus("La cámara ya está activa."); return; }
   try{
     const [w,h] = ($('#resSelect').value||'1280x720').split('x').map(Number);
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal:w }, height:{ ideal:h },
-        facingMode: { ideal: 'environment' },
-        focusMode: 'continuous' // hint
-      },
+    const camId = $('#cameraSelect').value || selectedDeviceId || undefined;
+
+    const constraints = {
+      video: camId ? { deviceId:{ exact: camId }, width:{ ideal:w }, height:{ ideal:h } }
+                   : { width:{ ideal:w }, height:{ ideal:h }, facingMode:{ ideal:'environment' } },
       audio:false
-    });
+    };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
     const v = $('#video'); v.srcObject = stream; await v.play();
     isScanning = true; setStatus(`Cámara iniciada (${w}×${h}).`);
+    // actualizar lista (ya con permisos)
+    await enumerateCameras();
+    selectedDeviceId = stream.getVideoTracks()[0]?.getSettings?.().deviceId || selectedDeviceId;
+
     // Guardar track y capacidades
     track = stream.getVideoTracks()[0];
     setupCameraControls(track);
-    // Decodificar en vivo PDF417 (igual que antes)
+    // Decodificar en vivo PDF417
     codeReader.decodeFromVideoElementContinuously(v, (result, err) => {
       if (result) {
         lastPDF417Raw = result.text || "";
@@ -334,7 +346,7 @@ async function startCamera(){
           $('#result').textContent = JSON.stringify(parsed,null,2);
           tableOut(parsed); setStatus("DUI (PDF417 cámara) parseado.", "ok"); beep(); return;
         }
-        if (result.format === 10){ // PDF417
+        if (result.format === 10){
           const parsed = parseUSDL(result.text);
           $('#result').textContent = JSON.stringify(parsed,null,2);
           tableOut(parsed); setStatus("PDF417 detectado (cámara).", "ok"); beep();
@@ -359,17 +371,27 @@ $('#startButton').addEventListener('click', startCamera);
 $('#resetButton').addEventListener('click', resetCamera);
 $('#capturePhotoButton').addEventListener('click', capturePhotoFromCamera);
 
-async function capturePhotoFromCamera(){
-  const v = $('#video');
-  if (!v.videoWidth) { setStatus("Inicia la cámara antes de capturar.",'fail'); return; }
-  const shot = document.createElement('canvas');
-  shot.width=v.videoWidth; shot.height=v.videoHeight;
-  shot.getContext('2d').drawImage(v,0,0,shot.width,shot.height);
-  const dataURL = shot.toDataURL('image/png');
-  await loadImageToStage(dataURL, true);
-  setStatus("Foto capturada y cargada.","ok"); beep();
-}
+// Cambiar cámara (ciclo)
+$('#switchCamButton').addEventListener('click', async ()=>{
+  try{
+    const sel = $('#cameraSelect');
+    if (!sel.options.length){ await enumerateCameras(); }
+    if (!sel.options.length){ setStatus('No se encontraron cámaras.','fail'); return; }
+    // avanzar al siguiente índice
+    const idx = sel.selectedIndex >= 0 ? sel.selectedIndex : 0;
+    const next = (idx + 1) % sel.options.length;
+    selectedDeviceId = sel.options[next].value;
+    sel.selectedIndex = next;
+    // reiniciar con la nueva
+    if (isScanning) { resetCamera(); }
+    await startCamera();
+    setStatus('Cámara cambiada.','ok');
+  }catch(e){ setStatus('No se pudo cambiar de cámara: '+e.message,'fail'); }
+});
+// Rellenar lista al cargar (siempre que sea posible)
+if (navigator.mediaDevices?.enumerateDevices) enumerateCameras();
 
+/* Controles de cámara (zoom/torch/exposición...) */
 function setupCameraControls(track){
   const cap = track.getCapabilities?.(); if (!cap) return;
   const sliders = $('#camSliders'); sliders.innerHTML='';
@@ -399,13 +421,12 @@ function setupCameraControls(track){
     }catch(e){ setStatus("No se pudo cambiar la linterna: "+e.message,'fail'); }
   };
 
-  // Zoom
+  // Sliders disponibles
   if (cap.zoom) addSlider('Zoom','zoom',cap.zoom.min, cap.zoom.max, cap.zoom.step||0.1, track.getSettings?.().zoom ?? cap.zoom.min);
   if (cap.exposureCompensation) addSlider('Exposición','exposureCompensation', cap.exposureCompensation.min, cap.exposureCompensation.max, cap.exposureCompensation.step||0.1, track.getSettings?.().exposureCompensation ?? 0);
   if (cap.brightness) addSlider('Brillo','brightness', cap.brightness.min, cap.brightness.max, cap.brightness.step||1, track.getSettings?.().brightness ?? 0);
   if (cap.contrast) addSlider('Contraste','contrast', cap.contrast.min, cap.contrast.max, cap.contrast.step||1, track.getSettings?.().contrast ?? 0);
   if (cap.whiteBalanceMode && cap.whiteBalanceMode.length){
-    // Intentar 'continuous'
     track.applyConstraints({ advanced:[{ whiteBalanceMode:'continuous' }] }).catch(()=>{});
   }
 }
@@ -421,27 +442,23 @@ $('#fileInput').addEventListener('change', e=>{
   fr.readAsDataURL(f);
 });
 
-async function loadImageToStage(dataURL, fromCapture=false){
+async function loadImageToStage(dataURL){
   imgEl.src = dataURL;
   await new Promise(res=> imgEl.onload = res);
   stageWrap.style.display='block';
   imgEl.style.display='block';
-  // Ajustar canvas
   canvas.width = imgEl.clientWidth; canvas.height = imgEl.clientHeight;
   canvas.style.width = imgEl.clientWidth+'px'; canvas.style.height = imgEl.clientHeight+'px';
   canvas.style.left = imgEl.offsetLeft+'px'; canvas.style.top = imgEl.offsetTop+'px';
   scaleX = imgEl.naturalWidth / imgEl.clientWidth;
   scaleY = imgEl.naturalHeight / imgEl.clientHeight;
-
-  // No limpiar la imagen ni ROIs al procesar -> la imagen persiste hasta ser sustituida
   $('#processImageButton').disabled=false;
   $('#processMRZButton').disabled=false;
-
-  drawCanvas(); // repintar ROIs
+  drawCanvas();
 }
 
 /* ==========================
-   Lupa circular
+   Lupa circular (mejorada: llena todo el círculo)
 ========================== */
 const mag = $('#magnifier'), magCanvas = $('#magCanvas'), mgx = magCanvas.getContext('2d');
 let magOn = false, magZoom = 2.0;
@@ -454,33 +471,35 @@ function updateMagnifier(clientX, clientY){
   if (!magOn || !imgEl.src) return;
   const rect = stageWrap.getBoundingClientRect();
   const x = clientX - rect.left, y = clientY - rect.top;
+
+  // posicionar el contenedor circular
   mag.style.left = (x - mag.clientWidth/2) + 'px';
   mag.style.top  = (y - mag.clientHeight/2) + 'px';
 
+  // limpiar y recortar en círculo (relleno completo)
   const r = magCanvas.width/2;
   mgx.clearRect(0,0,magCanvas.width,magCanvas.height);
   mgx.save();
   mgx.beginPath(); mgx.arc(r,r,r,0,Math.PI*2); mgx.clip();
 
-  // dibujar la imagen ampliada
-  const sx = (x - (magCanvas.width/(2*magZoom))) * scaleX;
-  const sy = (y - (magCanvas.height/(2*magZoom))) * scaleY;
-  const sw = (magCanvas.width / magZoom) * scaleX;
-  const sh = (magCanvas.height / magZoom) * scaleY;
+  // calcular fuente en coordenadas NATURALES para que el zoom sea nítido
+  const srcW = (magCanvas.width / magZoom) * scaleX;
+  const srcH = (magCanvas.height / magZoom) * scaleY;
+  const srcX = (x*scaleX) - srcW/2;
+  const srcY = (y*scaleY) - srcH/2;
 
-  mgx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, magCanvas.width, magCanvas.height);
+  // dibujar de forma que LLENE el círculo (canvas completo)
+  mgx.drawImage(imgEl, srcX, srcY, srcW, srcH, 0, 0, magCanvas.width, magCanvas.height);
   mgx.restore();
 }
 stageWrap.addEventListener('mousemove', e=> updateMagnifier(e.clientX, e.clientY));
 stageWrap.addEventListener('wheel', e=>{ if(!magOn) return; e.preventDefault(); magZoom = Math.max(1, Math.min(8, magZoom + (e.deltaY<0?0.2:-0.2))); updateMagnifier(e.clientX,e.clientY); }, {passive:false});
-// Pinch para la lupa en móviles (si está activa)
 stageWrap.addEventListener('touchmove', e=>{
   if (!magOn) return;
   if (e.touches.length===2){
     const dx = e.touches[1].clientX - e.touches[0].clientX;
     const dy = e.touches[1].clientY - e.touches[0].clientY;
     const dist = Math.hypot(dx,dy);
-    // usar dist normalizada (simple): aumentar/reducir ligeramente
     magZoom = Math.max(1, Math.min(8, dist/80));
     updateMagnifier(e.touches[0].clientX, e.touches[0].clientY);
     e.preventDefault();
@@ -490,7 +509,7 @@ stageWrap.addEventListener('touchmove', e=>{
 }, {passive:false});
 
 /* ==========================
-   Parser / DUI / MRZ (igual base)
+   Parser / DUI / MRZ
 ========================== */
 function tableOut(obj){
   const tbody = $('#dataTableBody'); tbody.innerHTML='';
@@ -500,8 +519,7 @@ function tableOut(obj){
   });
   $('#extractedDataTable').style.display='block';
 }
-// USDL/Genérico
-function parseUSDL(str){ /* igual que versión previa abreviada (mapas estándar AAMVA) */
+function parseUSDL(str){
   const CodeToKey = { DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes",
     DBA:"dateOfExpiry", DCS:"lastName", DAC:"firstName", DAD:"middleName", DBD:"dateOfIssue", DBB:"dateOfBirth",
     DBC:"sex", DAY:"eyeColor", DAU:"height", DAG:"addressStreet", DAI:"addressCity", DAJ:"addressState",
@@ -516,10 +534,8 @@ function parseUSDL(str){ /* igual que versión previa abreviada (mapas estándar
     props[key]=v;
   }); return props;
 }
-// DUI raw
 const DUI_FIELDS=["Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Número de Emisión","Firma Digital","Lugar de Nacimiento","Municipio","Profesión u Oficio","Sexo","Fecha de Nacimiento","Fecha de Emisión","Código de Zona","Categoría","Estdo Familiar","Nacionalidad","Segunda Firma Digital","Código de Verificación"];
 function parseRawDUI(raw){ const parts=(raw||'').trim().replace(/\r/g,'').split('||').map(s=>s.trim()); const out={}; DUI_FIELDS.forEach((l,i)=> out[l]=parts[i]??""); return out; }
-// MRZ helpers (idénticos a versión anterior)
 function mrzCheckDigit(data){const w=[7,3,1];const map=c=>c==='<'?0:(c>='0'&&c<='9')?c.charCodeAt(0)-48:(c>='A'&&c<='Z')?c.charCodeAt(0)-55:0;let s=0;for(let i=0;i<data.length;i++)s+=map(data[i])*w[i%3];return String(s%10);}
 function normalizeMRZLines(text){
   const clean=text.toUpperCase().replace(/[^\nA-Z0-9<]/g,'').split(/\n+/).map(l=>l.replace(/ /g,'').trim()).filter(l=>l.length>=24);
@@ -615,7 +631,7 @@ $('#parseRawButton').addEventListener('click', ()=>{
 });
 
 /* ==========================
-   ROI Editor (mismo motor + táctil)
+   ROI Editor (táctil)
 ========================== */
 const ROIs=[]; let activeROIId=null; let roiCounter=1;
 function drawCanvas(){
@@ -630,10 +646,8 @@ function drawCanvas(){
     ctx.strokeStyle=active? '#2a6df5':'#0f6'; ctx.lineWidth=active?2.5:2;
     ctx.fillStyle='rgba(42,109,245,.10)';
     ctx.beginPath(); ctx.rect(r.x,r.y,r.w,r.h); ctx.fill(); ctx.stroke();
-    // asas
     const hs=getHandles(r); ctx.fillStyle=active?'#2a6df5':'#0f6';
     hs.forEach(h=> ctx.fillRect(h.x-HANDLE_SIZE/2,h.y-HANDLE_SIZE/2,HANDLE_SIZE,HANDLE_SIZE));
-    // etiqueta
     ctx.fillStyle='#e7ecf5'; ctx.font='12px ui-monospace,monospace';
     ctx.fillText(`${r.name} [${r.type}]`, r.x+6, Math.max(12, r.y-6));
     ctx.restore();
@@ -692,7 +706,6 @@ $('#btnAddROI').addEventListener('click', addROI);
 $('#btnDeleteROI').addEventListener('click', delROI);
 $('#btnApplyProps').addEventListener('click', applyProps);
 
-/* Interacción mouse/táctil */
 let dragState = { mode:null, startX:0, startY:0, startRect:null, handle:null };
 let pinchState = null;
 function canvasToLocal(clientX,clientY){ const r=canvas.getBoundingClientRect(); return {x:clientX-r.left, y:clientY-r.top}; }
@@ -730,13 +743,11 @@ canvas.addEventListener('touchmove', e=>{
 canvas.addEventListener('touchend', ()=>{ if(pinchState && event.touches?.length===0) pinchState=null; endInteract(); }, {passive:false});
 
 function startInteract(x,y){
-  // asas
   for(let i=ROIs.length-1;i>=0;i--){
     const r=ROIs[i]; const h=hitHandle(r,x,y);
     if(h){ activeROIId=r.id; refreshROIList(); fillProp(r);
       dragState={mode:'resize',startX:x,startY:y,startRect:{...r},handle:h}; drawCanvas(); return; }
   }
-  // mover
   for(let i=ROIs.length-1;i>=0;i--){
     const r=ROIs[i]; if(ptIn(x,y,r.x,r.y,r.w,r.h)){ activeROIId=r.id; refreshROIList(); fillProp(r);
       dragState={mode:'move',startX:x,startY:y,startRect:{...r},handle:null}; drawCanvas(); return; }
@@ -791,7 +802,7 @@ $('#tplFile').addEventListener('change', e=>{
 });
 
 /* ==========================
-   Extracción por ROI (con mejoras)
+   Extracción por ROI
 ========================== */
 $('#btnExtractSelected').addEventListener('click', ()=> extractFromROI(getActive()));
 $('#btnExtractAll').addEventListener('click', async ()=>{
@@ -852,9 +863,24 @@ async function extractFromROI(r){
 }
 
 /* ==========================
-   Eventos restantes
+   Captura desde cámara a imagen
 ========================== */
-$('#torchButton').addEventListener('click', ()=>{/* handler se define en setupCameraControls si es soportado */});
+async function capturePhotoFromCamera(){
+  const v = $('#video');
+  if (!v.videoWidth) { setStatus("Inicia la cámara antes de capturar.",'fail'); return; }
+  const shot = document.createElement('canvas');
+  shot.width=v.videoWidth; shot.height=v.videoHeight;
+  shot.getContext('2d').drawImage(v,0,0,shot.width,shot.height);
+  const dataURL = shot.toDataURL('image/png');
+  await loadImageToStage(dataURL);
+  setStatus("Foto capturada y cargada.","ok"); beep();
+}
+
+/* ==========================
+   Otros
+========================== */
+$('#torchButton').addEventListener('click', ()=>{/* handler real en setupCameraControls() */});
 </script>
 </body>
 </html>
+
