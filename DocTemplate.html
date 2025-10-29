@@ -792,6 +792,33 @@ canvas.addEventListener('touchmove', e=>{
     fillProp(roi); drawCanvas(); e.preventDefault();
   }
 },{passive:false});
+
+/* === Pointer Events para Crop (mouse + touch unificados) === */
+(function(){
+  if (!('onpointerdown' in window)) return; // fallback a mouse/touch ya existentes
+  function canvasToLocal(clientX,clientY){ const r=canvas.getBoundingClientRect(); return {x:clientX-r.left, y:clientY-r.top}; }
+  canvas.addEventListener('pointerdown', (e)=>{
+    if(!cropState.active) return;
+    const p = canvasToLocal(e.clientX, e.clientY);
+    startCropInteract(p.x, p.y);
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault();
+  }, {passive:false});
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!cropState.active) return;
+    if (!cropState.mode && !canvas.hasPointerCapture?.(e.pointerId)) return;
+    const p = canvasToLocal(e.clientX, e.clientY);
+    moveCropInteract(p.x, p.y);
+    e.preventDefault();
+  }, {passive:false});
+  function endPtr(e){
+    if(!cropState.active) return;
+    try{ canvas.releasePointerCapture?.(e.pointerId); }catch(_){}
+    endCropInteract();
+  }
+  canvas.addEventListener('pointerup', endPtr, {passive:false});
+  canvas.addEventListener('pointercancel', endPtr, {passive:false});
+})();
 canvas.addEventListener('touchend', (e)=>{ if(pinchState && (!e.touches || e.touches.length===0)) pinchState=null; endInteract(); }, {passive:false});
 
 function startInteract(x,y){
@@ -1007,6 +1034,8 @@ function moveCropInteract(x,y){
   }
   drawCanvas();
 }
+function endCropInteract(){ cropState.mode=null; cropState.handle=null; cropState.startRect=null; }
+
 function setCropUI(enabled){
   $('#btnCropApply').disabled = !enabled;
   $('#btnCropCancel').disabled = !enabled;
@@ -1081,3 +1110,5 @@ $('#torchButton').addEventListener('click', ()=>{/* handler real en setupCameraC
 </script>
 </body>
 </html>
+
+
