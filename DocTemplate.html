@@ -3,64 +3,82 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>PDF417 & MRZ – Scanner y Lector de Imagen</title>
+  <title>PDF417 & MRZ – Scanner y Lector de Imagen + Editor de ROIs</title>
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
-    body { margin: 0; padding: 24px; background: #0b1220; color: #e7ecf5; }
-    h1 { font-size: 1.4rem; margin: 0 0 8px; }
-    h2 { font-size: 1.2rem; margin: 0 0 12px; color: #cfe0ff; }
-    h3 { font-size: 1.1rem; margin: 0 0 10px; color: #cfe0ff; }
-    p { margin: 6px 0 14px; color:#b9c2d0 }
-    .app { max-width: 1080px; margin: 0 auto; }
-    .card { background: #121a2b; border: 1px solid #1e2a44; border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
-    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-    @media (min-width: 1100px){ .grid { grid-template-columns: 480px 1fr; } }
-    label.inline { display: inline-flex; align-items: center; gap: 8px; background:#0f1726; border:1px dashed #2b3b60; padding: 10px 12px; border-radius: 12px; cursor: pointer; }
+    body { margin:0; padding:24px; background:#0b1220; color:#e7ecf5 }
+    h1 { font-size:1.4rem; margin:0 0 8px }
+    h2 { font-size:1.2rem; margin:0 0 12px; color:#cfe0ff }
+    h3 { font-size:1.1rem; margin:0 0 10px; color:#cfe0ff }
+    p { margin:6px 0 14px; color:#b9c2d0 }
+    .app { max-width: 1240px; margin:0 auto }
+    .card { background:#121a2b; border:1px solid #1e2a44; border-radius:16px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25) }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px }
+    @media (min-width: 1200px){ .grid { grid-template-columns: 520px 1fr } }
+    label.inline { display:inline-flex; align-items:center; gap:8px; background:#0f1726; border:1px dashed #2b3b60; padding:10px 12px; border-radius:12px; cursor:pointer }
     input[type=file]{ display:none }
-    button { appearance: none; border: 0; background: #2a6df5; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
-    button.secondary { background: #2b3b60 }
-    button.success { background: #0a6; }
-    button.warn { background: #bb6f00; }
-    img { max-width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120 }
-    .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .92rem; }
-    textarea { width: 100%; min-height: 120px; resize: vertical; border-radius: 12px; padding: 10px; border:1px solid #1e2a44; background:#0f1726; color:#e7ecf5 }
+    button { appearance:none; border:0; background:#2a6df5; color:white; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600 }
+    button.secondary { background:#2b3b60 }
+    button.success { background:#0a6 }
+    button.warn { background:#bb6f00 }
+    button.ghost { background:transparent; border:1px solid #2b3b60 }
+    img { max-width:100%; height:auto; border-radius:12px; border:1px solid #1e2a44; background:#0b1120 }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size:.92rem }
+    textarea { width:100%; min-height:120px; resize:vertical; border-radius:12px; padding:10px; border:1px solid #1e2a44; background:#0f1726; color:#e7ecf5 }
     pre { background:#0f1726; border:1px solid #1e2a44; padding:12px; border-radius:12px; overflow:auto }
-    .badge { font-size: .75rem; background:#0f6; color:#021; padding:3px 8px; border-radius:999px; }
-    .hint { font-size: .85rem; color:#9fb0cb }
-    .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px; }
-    .kv b{color:#cfe0ff}
-    .mrz-guide { background: #0f1726; border: 1px solid #1e2a44; border-radius: 8px; padding: 8px 12px; margin: 8px 0 16px; font-size: 0.85rem; }
-    .result-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    .result-table th, .result-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #1e2a44; }
-    .result-table th { background: #0f1726; color: #cfe0ff; font-weight: 600; }
-    .result-table tr:last-child td { border-bottom: none; }
-    .check-ok { color: #0f6; }
-    .check-fail { color: #f06; }
-    .result-summary { background: #0f1726; border: 1px solid #1e2a44; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
-    .json-container { margin-top: 16px; }
-    .json-container h4 { margin: 0 0 8px; }
-    .json-pre { background: #0f1726; border: 1px solid #1e2a44; border-radius: 12px; padding: 12px; max-height: 300px; overflow-y: auto; font-size: 0.85rem; }
-    .hidden { display: none; }
-    #video { width: 100%; height: 300px; border-radius: 12px; border: 1px solid #1e2a44; background: #0b1120; position: relative; }
-    #imagePreview { max-width: 100%; max-height: 300px; display: none; margin-top: 10px; }
-    .section { margin-bottom: 24px; }
-    .button-group { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-    select { background: #0f1726; border: 1px solid #1e2a44; border-radius: 10px; padding: 10px 12px; color: #e7ecf5; width: 100%; max-width: 400px; }
-    #sourceSelectPanel { margin-bottom: 16px; }
-    .scanner-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-    .scanner-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 50%; border: 3px solid #0f6; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; }
-    .scanner-frame::before { content: "Coloque el código PDF417 dentro de este marco"; position: absolute; top: -30px; color: #0f6; font-size: 14px; text-align: center; width: 100%; }
-    .beep-option { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-    .beep-option input[type="checkbox"] { width: 18px; height: 18px; accent-color: #2a6df5; }
+    .badge { font-size:.75rem; background:#0f6; color:#021; padding:3px 8px; border-radius:999px }
+    .hint { font-size:.85rem; color:#9fb0cb }
+    .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px }
+    .kv b{ color:#cfe0ff }
+    .mrz-guide { background:#0f1726; border:1px solid #1e2a44; border-radius:8px; padding:8px 12px; margin:8px 0 16px; font-size:.85rem }
+    .result-table { width:100%; border-collapse:collapse; margin-top:8px }
+    .result-table th, .result-table td{ padding:8px 12px; text-align:left; border-bottom:1px solid #1e2a44 }
+    .result-table th { background:#0f1726; color:#cfe0ff; font-weight:600 }
+    .result-table tr:last-child td{ border-bottom:none }
+    .check-ok { color:#0f6 }
+    .check-fail { color:#f06 }
+    .result-summary { background:#0f1726; border:1px solid #1e2a44; border-radius:8px; padding:12px; margin-bottom:16px }
+    .json-container { margin-top:16px }
+    .json-container h4 { margin:0 0 8px }
+    .json-pre { background:#0f1726; border:1px solid #1e2a44; border-radius:12px; padding:12px; max-height:300px; overflow-y:auto; font-size:.85rem }
+    .hidden { display:none }
+    #video { width:100%; height:300px; border-radius:12px; border:1px solid #1e2a44; background:#0b1120; position:relative }
+    #imagePreview { max-width:100%; max-height:680px; display:none; margin-top:10px }
+    .section { margin-bottom:24px }
+    .button-group { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap }
+    select, input[type="text"], input[type="number"] { background:#0f1726; border:1px solid #1e2a44; border-radius:10px; padding:10px 12px; color:#e7ecf5 }
+    #sourceSelectPanel { margin-bottom:16px }
+    .scanner-overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:10 }
+    .scanner-frame { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; height:50%; border:3px solid #0f6; border-radius:12px; box-shadow:0 0 0 9999px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center }
+    .scanner-frame::before{ content:"Coloque el código PDF417 dentro de este marco"; position:absolute; top:-30px; color:#0f6; font-size:14px; text-align:center; width:100% }
+    .beep-option { display:flex; align-items:center; gap:8px; margin-top:12px }
+    .beep-option input[type="checkbox"]{ width:18px; height:18px; accent-color:#2a6df5 }
+
+    /* === ROI Editor === */
+    .img-stage { position:relative; overflow:auto; border-radius:12px; border:1px solid #1e2a44; background:#0b1120; padding:8px }
+    #roiCanvas { position:absolute; top:0; left:0; pointer-events:auto; }
+    .sidegrid { display:grid; grid-template-columns: 1fr; gap:12px }
+    .panel { background:#0f1726; border:1px solid #1e2a44; border-radius:12px; padding:12px }
+    .panel h4 { margin:0 0 8px }
+    .roi-list { max-height:240px; overflow:auto; border:1px solid #1e2a44; border-radius:10px }
+    .roi-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-bottom:1px solid #1e2a44; cursor:pointer }
+    .roi-item:last-child{ border-bottom:none }
+    .roi-item.active{ background:#162139; border-left:3px solid #2a6df5 }
+    .pill { padding:2px 8px; border-radius:999px; background:#2b3b60; font-size:.75rem }
+    .prop-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px }
+    .prop-grid label { font-size:.85rem; color:#9fb0cb }
+    .prop-grid input, .prop-grid select { width:100% }
+    .mini { font-size:.75rem; color:#9fb0cb }
   </style>
 </head>
 <body>
   <div class="app">
-    <h1>PDF417 & MRZ – Scanner y Lector de Imagen</h1>
-    <p class="hint">Escanea PDF417 con cámara, procesa una imagen para <b>PDF417</b>/<b>MRZ</b> o pega el <b>Texto Crudo (DUI)</b> para parsear directamente.</p>
+    <h1>PDF417 & MRZ – Scanner y Lector de Imagen + Editor de ROIs</h1>
+    <p class="hint">Escanea PDF417 con cámara, procesa imagen para <b>PDF417</b>/<b>MRZ</b> o pega <b>Texto Crudo (DUI)</b>. Ahora también puedes crear y gestionar <b>ROIs</b> para extraer por zonas con diferentes tipos.</p>
 
     <div class="grid">
+      <!-- Columna izquierda (cámara + imagen + DUI) -->
       <div>
         <!-- CÁMARA PDF417 -->
         <div class="card section">
@@ -79,9 +97,7 @@
           </div>
           <div style="position: relative;">
             <video id="video" muted playsinline></video>
-            <div class="scanner-overlay">
-              <div class="scanner-frame"></div>
-            </div>
+            <div class="scanner-overlay"><div class="scanner-frame"></div></div>
           </div>
         </div>
 
@@ -97,18 +113,19 @@
           <div class="mrz-guide">
             <b>Sugerencias MRZ:</b> recorta o carga una imagen donde las líneas MRZ estén rectas y legibles. El OCR se limita a caracteres <span class="mono">A–Z, 0–9, &lt;</span>.
           </div>
-          <div>
-            <img id="imagePreview" alt="Vista previa de la imagen" />
+
+          <!-- Escenario Imagen + Canvas para ROIs -->
+          <div id="stageWrap" class="img-stage hidden">
+            <img id="imagePreview" alt="Vista previa" />
+            <canvas id="roiCanvas"></canvas>
           </div>
+          <p class="mini">Consejo: crea una plantilla de ROIs y reutilízala con documentos del mismo formato.</p>
         </div>
 
         <!-- TEXTO CRUDO DUI -->
         <div class="card section">
           <h2>3. Parsear Texto Crudo (DUI)</h2>
-          <p class="hint">
-            Este botón usa automáticamente el <b>texto crudo detectado del PDF417</b> (Procesar Imagen o Cámara).
-            Si no hay texto crudo disponible, se usará lo que pegues abajo.
-          </p>
+          <p class="hint">Este botón usa automáticamente el <b>texto crudo detectado del PDF417</b> (Procesar Imagen o Cámara). Si no hay, usará lo que pegues abajo.</p>
           <textarea id="rawInput" placeholder="Opcional: Pega texto crudo si no proviene del PDF417 (formato con '||')"></textarea>
           <div class="button-group" style="margin-top:10px;">
             <button id="parseRawButton">Parsear Texto Crudo (DUI)</button>
@@ -116,22 +133,18 @@
         </div>
       </div>
 
-      <!-- RESULTADOS -->
+      <!-- Columna derecha (Resultados + ROI Panel) -->
       <div>
         <div class="card section">
           <h2>Resultados</h2>
           <div class="result-summary">
-            <div class="kv">
-              <b>Estado:</b> <span id="status">Esperando...</span>
-            </div>
+            <div class="kv"><b>Estado:</b> <span id="status">Esperando...</span></div>
           </div>
 
           <div id="extractedDataTable" class="hidden">
             <h4>Datos Extraídos (Parseados):</h4>
             <table class="result-table">
-              <thead>
-                <tr><th>Campo</th><th>Valor</th></tr>
-              </thead>
+              <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
               <tbody id="dataTableBody"></tbody>
             </table>
           </div>
@@ -146,33 +159,80 @@
             <pre class="json-pre" id="result2"></pre>
           </div>
         </div>
+
+        <!-- PANEL ROI -->
+        <div class="card section">
+          <h2>4. Editor de ROIs</h2>
+          <div class="sidegrid">
+            <div class="panel">
+              <h4>Gestión</h4>
+              <div class="row">
+                <button id="btnAddROI" class="ghost">+ Nueva ROI</button>
+                <button id="btnDeleteROI" class="ghost">Eliminar ROI seleccionada</button>
+                <button id="btnExtractSelected" class="secondary">Extraer Seleccionada</button>
+                <button id="btnExtractAll" class="success">Extraer Todas</button>
+              </div>
+              <div class="row">
+                <button id="btnExportTpl">Exportar Plantilla</button>
+                <button id="btnImportTpl" class="secondary">Importar Plantilla</button>
+                <input type="file" id="tplFile" accept=".json" />
+              </div>
+              <p class="mini">Tipos soportados: <b>text</b> (OCR), <b>image</b> (captura base64), <b>barcode</b> (1D/2D), <b>pdf417</b>, <b>mrz</b>.</p>
+            </div>
+
+            <div class="panel">
+              <h4>ROIs</h4>
+              <div id="roiList" class="roi-list"></div>
+            </div>
+
+            <div class="panel">
+              <h4>Propiedades</h4>
+              <div class="prop-grid">
+                <label>Nombre<br/><input id="propName" type="text" placeholder="roi_1" /></label>
+                <label>Tipo<br/>
+                  <select id="propType">
+                    <option>text</option>
+                    <option>image</option>
+                    <option>barcode</option>
+                    <option>pdf417</option>
+                    <option>mrz</option>
+                  </select>
+                </label>
+                <label>X (px)<br/><input id="propX" type="number" step="1" /></label>
+                <label>Y (px)<br/><input id="propY" type="number" step="1" /></label>
+                <label>Ancho (px)<br/><input id="propW" type="number" step="1" /></label>
+                <label>Alto (px)<br/><input id="propH" type="number" step="1" /></label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <button id="btnApplyProps" class="secondary">Aplicar Propiedades</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
 
-  <!-- ZXing para PDF417 -->
+  <!-- ZXing -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
-  <!-- Tesseract.js para OCR MRZ -->
+  <!-- Tesseract.js -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
 
   <script>
     /* ========= utilidades ========= */
     function playBeep() {
       const beepCheckbox = document.getElementById('beepCheckbox');
-      if (!beepCheckbox.checked) return;
+      if (!beepCheckbox || !beepCheckbox.checked) return;
       try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        oscillator.connect(gainNode); gainNode.connect(audioContext.destination);
-        oscillator.frequency.value = 800; oscillator.type = 'sine';
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-        oscillator.start(audioContext.currentTime); oscillator.stop(audioContext.currentTime + 0.5);
-      } catch (e) {
-        const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
-        audio.play().catch(()=>{});
-      }
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 800; osc.type = 'sine';
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start(); osc.stop(ctx.currentTime + 0.3);
+      } catch (e) { /* noop */ }
     }
     function updateStatus(message, type = "info") {
       const el = document.getElementById("status");
@@ -194,7 +254,7 @@
       container.classList.remove('hidden');
     }
 
-    /* ========= Parser PDF417 (USDL) ========= */
+    /* ========= Parser PDF417 (USDL/Genérico DUI) ========= */
     const parseUSDL = str => {
       const CodeToKey = {
         DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes",
@@ -230,37 +290,29 @@
 
     /* ========= MRZ OCR + Parser ========= */
     function mrzCheckDigit(data) {
-      const weights = [7, 3, 1];
+      const weights = [7,3,1];
       const mapChar = (c) => {
         if (c === '<') return 0;
         if (c >= '0' && c <= '9') return c.charCodeAt(0) - 48;
         if (c >= 'A' && c <= 'Z') return c.charCodeAt(0) - 55;
         return 0;
       };
-      let sum = 0;
-      for (let i = 0; i < data.length; i++) {
-        sum += mapChar(data[i]) * weights[i % 3];
-      }
-      return String(sum % 10);
+      let sum=0; for(let i=0;i<data.length;i++){ sum += mapChar(data[i])*weights[i%3]; }
+      return String(sum%10);
     }
     function normalizeMRZLines(text) {
-      const clean = text
-        .toUpperCase()
-        .replace(/[^\nA-Z0-9<]/g, '')
-        .split(/\n+/)
-        .map(l => l.replace(/ /g,'').trim())
-        .filter(l => l.length >= 24);
+      const clean = text.toUpperCase().replace(/[^\nA-Z0-9<]/g,'').split(/\n+/).map(l=>l.replace(/ /g,'').trim()).filter(l=>l.length>=24);
       const candidates = [];
       for (let i=0;i<clean.length;i++){
-        const l = clean[i];
-        if (l.length >= 40 && l.length <= 48 && i+1 < clean.length && clean[i+1].length >= 40 && clean[i+1].length <= 48) {
+        const l=clean[i];
+        if (l.length>=40 && l.length<=48 && i+1<clean.length && clean[i+1].length>=40 && clean[i+1].length<=48) {
           candidates.push({typeGuess:'TD3', lines:[l.padEnd(44,'<').slice(0,44), clean[i+1].padEnd(44,'<').slice(0,44)]});
         }
-        if (l.length >= 32 && l.length <= 40 && i+1 < clean.length && clean[i+1].length >= 32 && clean[i+1].length <= 40) {
+        if (l.length>=32 && l.length<=40 && i+1<clean.length && clean[i+1].length>=32 && clean[i+1].length<=40) {
           candidates.push({typeGuess:'TD2', lines:[l.padEnd(36,'<').slice(0,36), clean[i+1].padEnd(36,'<').slice(0,36)]});
         }
-        if (l.length >= 26 && l.length <= 34 && i+2 < clean.length && clean[i+1] && clean[i+2]) {
-          if (clean[i+1].length >= 26 && clean[i+1].length <= 34 && clean[i+2].length >= 26 && clean[i+2].length <= 34) {
+        if (l.length>=26 && l.length<=34 && i+2<clean.length && clean[i+1] && clean[i+2]) {
+          if (clean[i+1].length>=26 && clean[i+1].length<=34 && clean[i+2].length>=26 && clean[i+2].length<=34) {
             candidates.push({typeGuess:'TD1', lines:[
               l.padEnd(30,'<').slice(0,30),
               clean[i+1].padEnd(30,'<').slice(0,30),
@@ -270,166 +322,68 @@
         }
       }
       candidates.sort((a,b)=>{
-        const dens = s => (s.join('').match(/</g) || []).length;
+        const dens = s => (s.join('').match(/</g)||[]).length;
         return dens(b.lines)-dens(a.lines);
       });
-      return candidates.length ? candidates[0] : null;
+      return candidates.length? candidates[0] : null;
     }
     function parseTD3(lines) {
-      const L1 = lines[0], L2 = lines[1];
-      const docType = L1.slice(0,2).replace(/</g,'');
-      const issuingCountry = L1.slice(2,5).replace(/</g,'');
-      const namePart = L1.slice(5).split('<<');
-      const surname = namePart[0].replace(/</g,'');
-      const givenNames = (namePart[1]||'').replace(/</g,' ').trim();
-      const docNumber = L2.slice(0,9);
-      const docNumberCD = L2[9];
-      const nationality = L2.slice(10,13).replace(/</g,'');
-      const birth = L2.slice(13,19);
-      const birthCD = L2[19];
-      const sex = L2[20];
-      const expiry = L2.slice(21,27);
-      const expiryCD = L2[27];
-      const optional = L2.slice(28,42);
-      const compositeCheck = L2[43];
-      const docNumberOK = mrzCheckDigit(docNumber) === docNumberCD;
-      const birthOK = mrzCheckDigit(birth) === birthCD;
-      const expiryOK = mrzCheckDigit(expiry) === expiryCD;
-      const compositeOK = mrzCheckDigit(docNumber + docNumberCD + birth + birthCD + expiry + expiryCD + optional) === compositeCheck;
-      return {
-        mrzType: 'TD3',
-        documentType: docType,
-        issuingCountry,
-        surname,
-        givenNames,
-        documentNumber: docNumber.replace(/</g,''),
-        documentNumberCheck: docNumberOK,
-        nationality,
-        birthDate: birth,
-        birthDateCheck: birthOK,
-        sex,
-        expiryDate: expiry,
-        expiryDateCheck: expiryOK,
-        optional: optional.replace(/</g,'') || '',
-        compositeCheck: compositeOK
-      };
+      const L1=lines[0], L2=lines[1];
+      const docType=L1.slice(0,2).replace(/</g,''), issuingCountry=L1.slice(2,5).replace(/</g,'');
+      const namePart=L1.slice(5).split('<<');
+      const surname=namePart[0].replace(/</g,''), givenNames=(namePart[1]||'').replace(/</g,' ').trim();
+      const docNumber=L2.slice(0,9), docNumberCD=L2[9];
+      const nationality=L2.slice(10,13).replace(/</g,''), birth=L2.slice(13,19), birthCD=L2[19];
+      const sex=L2[20], expiry=L2.slice(21,27), expiryCD=L2[27], optional=L2.slice(28,42), compositeCheck=L2[43];
+      const docNumberOK=mrzCheckDigit(docNumber)===docNumberCD, birthOK=mrzCheckDigit(birth)===birthCD, expiryOK=mrzCheckDigit(expiry)===expiryCD;
+      const compositeOK = mrzCheckDigit(docNumber+docNumberCD+birth+birthCD+expiry+expiryCD+optional)===compositeCheck;
+      return { mrzType:'TD3', documentType:docType, issuingCountry, surname, givenNames, documentNumber:docNumber.replace(/</g,''), documentNumberCheck:docNumberOK, nationality, birthDate:birth, birthDateCheck:birthOK, sex, expiryDate:expiry, expiryDateCheck:expiryOK, optional:optional.replace(/</g,'')||'', compositeCheck:compositeOK };
     }
     function parseTD2(lines) {
-      const L1 = lines[0], L2 = lines[1];
-      const docType = L1.slice(0,2).replace(/</g,'');
-      const issuingCountry = L1.slice(2,5).replace(/</g,'');
-      const namePart = L1.slice(5).split('<<');
-      const surname = namePart[0].replace(/</g,'');
-      const givenNames = (namePart[1]||'').replace(/</g,' ').trim();
-      const docNumber = L2.slice(0,9);
-      const docNumberCD = L2[9];
-      const nationality = L2.slice(10,13).replace(/</g,'');
-      const birth = L2.slice(13,19);
-      const birthCD = L2[19];
-      const sex = L2[20];
-      const expiry = L2.slice(21,27);
-      const expiryCD = L2[27];
-      const optional = L2.slice(28,35);
-      const compositeCheck = L2[35];
-      const docNumberOK = mrzCheckDigit(docNumber) === docNumberCD;
-      const birthOK = mrzCheckDigit(birth) === birthCD;
-      const expiryOK = mrzCheckDigit(expiry) === expiryCD;
-      const compositeCheckOK = mrzCheckDigit(docNumber + docNumberCD + birth + birthCD + expiry + expiryCD + optional) === compositeCheck;
-      return {
-        mrzType: 'TD2',
-        documentType: docType,
-        issuingCountry,
-        surname,
-        givenNames,
-        documentNumber: docNumber.replace(/</g,''),
-        documentNumberCheck: docNumberOK,
-        nationality,
-        birthDate: birth,
-        birthDateCheck: birthOK,
-        sex,
-        expiryDate: expiry,
-        expiryDateCheck: expiryOK,
-        optional: optional.replace(/</g,'') || '',
-        compositeCheck: compositeCheckOK
-      };
+      const L1=lines[0], L2=lines[1];
+      const docType=L1.slice(0,2).replace(/</g,''), issuingCountry=L1.slice(2,5).replace(/</g,'');
+      const namePart=L1.slice(5).split('<<');
+      const surname=namePart[0].replace(/</g,''), givenNames=(namePart[1]||'').replace(/</g,' ').trim();
+      const docNumber=L2.slice(0,9), docNumberCD=L2[9];
+      const nationality=L2.slice(10,13).replace(/</g,''), birth=L2.slice(13,19), birthCD=L2[19];
+      const sex=L2[20], expiry=L2.slice(21,27), expiryCD=L2[27], optional=L2.slice(28,35), compositeCheck=L2[35];
+      const docNumberOK=mrzCheckDigit(docNumber)===docNumberCD, birthOK=mrzCheckDigit(birth)===birthCD, expiryOK=mrzCheckDigit(expiry)===expiryCD;
+      const compositeCheckOK=mrzCheckDigit(docNumber+docNumberCD+birth+birthCD+expiry+expiryCD+optional)===compositeCheck;
+      return { mrzType:'TD2', documentType:docType, issuingCountry, surname, givenNames, documentNumber:docNumber.replace(/</g,''), documentNumberCheck:docNumberOK, nationality, birthDate:birth, birthDateCheck:birthOK, sex, expiryDate:expiry, expiryDateCheck:expiryOK, optional:optional.replace(/</g,'')||'', compositeCheck:compositeCheckOK };
     }
     function parseTD1(lines) {
-      const L1 = lines[0], L2 = lines[1], L3 = lines[2];
-      const docType = L1.slice(0,2).replace(/</g,'');
-      const issuingCountry = L1.slice(2,5).replace(/</g,'');
-      const docNumber = L1.slice(5,14);
-      const docNumberCD = L1[14];
-      const optional1 = L1.slice(15,30);
-      const birth = L2.slice(0,6);
-      const birthCD = L2[6];
-      const sex = L2[7];
-      const expiry = L2.slice(8,14);
-      const expiryCD = L2[14];
-      const nationality = L2.slice(15,18).replace(/</g,'');
-      const optional2 = L2.slice(18,29);
-      const compositeCheck = L2[29];
-      const namePart = L3.split('<<');
-      const surname = namePart[0].replace(/</g,'');
-      const givenNames = (namePart[1]||'').replace(/</g,' ').trim();
-      const docNumberOK = mrzCheckDigit(docNumber) === docNumberCD;
-      const birthOK = mrzCheckDigit(birth) === birthCD;
-      const expiryOK = mrzCheckDigit(expiry) === expiryCD;
-      const compositeOK = mrzCheckDigit(docNumber + docNumberCD + birth + birthCD + expiry + expiryCD + optional1 + optional2) === compositeCheck;
-      return {
-        mrzType: 'TD1',
-        documentType: docType,
-        issuingCountry,
-        documentNumber: docNumber.replace(/</g,''),
-        documentNumberCheck: docNumberOK,
-        birthDate: birth,
-        birthDateCheck: birthOK,
-        sex,
-        expiryDate: expiry,
-        expiryDateCheck: expiryOK,
-        nationality,
-        optional: (optional1 + optional2).replace(/</g,'') || '',
-        surname,
-        givenNames,
-        compositeCheck: compositeOK
-      };
+      const L1=lines[0], L2=lines[1], L3=lines[2];
+      const docType=L1.slice(0,2).replace(/</g,''), issuingCountry=L1.slice(2,5).replace(/</g,'');
+      const docNumber=L1.slice(5,14), docNumberCD=L1[14], optional1=L1.slice(15,30);
+      const birth=L2.slice(0,6), birthCD=L2[6], sex=L2[7], expiry=L2.slice(8,14), expiryCD=L2[14];
+      const nationality=L2.slice(15,18).replace(/</g,''), optional2=L2.slice(18,29), compositeCheck=L2[29];
+      const namePart=L3.split('<<'); const surname=namePart[0].replace(/</g,''), givenNames=(namePart[1]||'').replace(/</g,' ').trim();
+      const docNumberOK=mrzCheckDigit(docNumber)===docNumberCD, birthOK=mrzCheckDigit(birth)===birthCD, expiryOK=mrzCheckDigit(expiry)===expiryCD;
+      const compositeOK=mrzCheckDigit(docNumber+docNumberCD+birth+birthCD+expiry+expiryCD+optional1+optional2)===compositeCheck;
+      return { mrzType:'TD1', documentType:docType, issuingCountry, documentNumber:docNumber.replace(/</g,''), documentNumberCheck:docNumberOK, birthDate:birth, birthDateCheck:birthOK, sex, expiryDate:expiry, expiryDateCheck:expiryOK, nationality, optional:(optional1+optional2).replace(/</g,'')||'', surname, givenNames, compositeCheck:compositeOK };
     }
     function parseMRZ(linesObj) {
-      if (!linesObj) return { error: "No se detectaron líneas MRZ válidas." };
-      const { typeGuess, lines } = linesObj;
-      if (typeGuess === 'TD3' && lines.length === 2) return parseTD3(lines);
-      if (typeGuess === 'TD2' && lines.length === 2) return parseTD2(lines);
-      if (typeGuess === 'TD1' && lines.length === 3) return parseTD1(lines);
-      if (lines.length === 2 && lines[0].length === 44 && lines[1].length === 44) return parseTD3(lines);
-      if (lines.length === 2 && lines[0].length === 36 && lines[1].length === 36) return parseTD2(lines);
-      if (lines.length === 3 && lines[0].length === 30 && lines[1].length === 30 && lines[2].length === 30) return parseTD1(lines);
-      return { error: "Formato MRZ no reconocido." };
+      if (!linesObj) return { error:"No se detectaron líneas MRZ válidas." };
+      const {typeGuess, lines} = linesObj;
+      if (typeGuess==='TD3' && lines.length===2) return parseTD3(lines);
+      if (typeGuess==='TD2' && lines.length===2) return parseTD2(lines);
+      if (typeGuess==='TD1' && lines.length===3) return parseTD1(lines);
+      if (lines.length===2 && lines[0].length===44 && lines[1].length===44) return parseTD3(lines);
+      if (lines.length===2 && lines[0].length===36 && lines[1].length===36) return parseTD2(lines);
+      if (lines.length===3 && lines[0].length===30 && lines[1].length===30 && lines[2].length===30) return parseTD1(lines);
+      return { error:"Formato MRZ no reconocido." };
     }
 
-      /* ========= DUI Texto Crudo ========= */
+    /* ========= DUI Texto Crudo ========= */
     const DUI_FIELDS = [
-      "Número de DUI",
-      "Primer Apellido",
-      "Segundo Apellido y Nombres",
-      "Número de Emisión",
-      "Firma Digital",
-      "Lugar de Nacimiento",
-      "Municipio",
-      "Profesión u Oficio",
-      "Sexo",
-      "Fecha de Nacimiento",
-      "Fecha de Emisión",
-      "Código de Zona",
-      "Categoría",
-      "Estdo Familiar",
-      "Nacionalidad",
-      "Segunda Firma Digital",
-      "Código de Verificación"
+      "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Número de Emisión","Firma Digital",
+      "Lugar de Nacimiento","Municipio","Profesión u Oficio","Sexo","Fecha de Nacimiento","Fecha de Emisión",
+      "Código de Zona","Categoría","Estdo Familiar","Nacionalidad","Segunda Firma Digital","Código de Verificación"
     ];
     function parseRawDUI(raw) {
       const text = (raw || "").trim().replace(/\r/g,'');
       const parts = text.split("||").map(s => s.trim());
-      const out = {};
-      DUI_FIELDS.forEach((label, idx) => { out[label] = (parts[idx] ?? ""); });
+      const out = {}; DUI_FIELDS.forEach((label, idx) => { out[label] = (parts[idx] ?? ""); });
       return out;
     }
 
@@ -438,7 +392,18 @@
     let codeReader;
     let selectedImageFile = null;
     let isScanning = false;
-    let lastPDF417Raw = ""; // guarda el texto crudo más reciente de PDF417
+    let lastPDF417Raw = ""; // guarda texto crudo más reciente
+    // ROI state
+    const ROIs = [];
+    let activeROIId = null;
+    let roiCounter = 1;
+
+    // Canvas/Layout refs y escalas
+    const imgEl = document.getElementById("imagePreview");
+    const stageWrap = document.getElementById("stageWrap");
+    const canvas = document.getElementById("roiCanvas");
+    const ctx = canvas.getContext("2d");
+    let scaleX = 1, scaleY = 1; // display -> natural scaling
 
     /* ========= Inicialización ========= */
     (async () => {
@@ -463,75 +428,87 @@
       }
     })();
 
+    /* ========= Listeners base existentes + nuevos ========= */
     function setupEventListeners() {
+      // existentes
       document.getElementById("startButton").addEventListener("click", startCamera);
       document.getElementById("resetButton").addEventListener("click", resetCamera);
-      document.getElementById("selectImageButton").addEventListener("click", () => {
-        document.getElementById("fileInput").click();
-      });
+      document.getElementById("selectImageButton").addEventListener("click", () => document.getElementById("fileInput").click());
       document.getElementById("fileInput").addEventListener("change", handleImageSelection);
       document.getElementById("processImageButton").addEventListener("click", processImagePDF417);
       document.getElementById("processMRZButton").addEventListener("click", processImageMRZ);
+      document.getElementById("parseRawButton").addEventListener("click", handleParseRawDUI);
 
-      // Botón Parsear DUI: usa primero el texto crudo proveniente de PDF417
-      document.getElementById("parseRawButton").addEventListener("click", () => {
-        const fallback = document.getElementById("rawInput").value;
-        const sourceRaw = (lastPDF417Raw && lastPDF417Raw.trim()) ? lastPDF417Raw : fallback;
+      // ROI: botones gestión
+      document.getElementById("btnAddROI").addEventListener("click", addNewROI);
+      document.getElementById("btnDeleteROI").addEventListener("click", deleteSelectedROI);
+      document.getElementById("btnExtractSelected").addEventListener("click", () => extractFromROI(getActiveROI()));
+      document.getElementById("btnExtractAll").addEventListener("click", extractFromAllROIs);
+      document.getElementById("btnApplyProps").addEventListener("click", applyPropEdits);
 
-        if (!sourceRaw || !sourceRaw.trim()) {
-          updateStatus("No hay texto crudo disponible (ni de PDF417 ni del textarea).", "error");
-          return;
-        }
-        const parsed = parseRawDUI(sourceRaw);
-        document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
-        document.getElementById("result2").textContent = sourceRaw;
-        displayDataInTable(parsed);
-        updateStatus(
-          (lastPDF417Raw && lastPDF417Raw.trim()) 
-            ? "Texto crudo (DUI) parseado desde PDF417."
-            : "Texto crudo (DUI) parseado desde textarea.",
-          "success"
-        );
-        document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
-        playBeep();
-      });
+      // Plantillas
+      document.getElementById("btnExportTpl").addEventListener("click", exportTemplate);
+      document.getElementById("btnImportTpl").addEventListener("click", () => document.getElementById("tplFile").click());
+      document.getElementById("tplFile").addEventListener("change", importTemplateFile);
+
+      // Canvas mouse interactions
+      canvas.addEventListener("mousedown", onMouseDown);
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+
+      // Sin interferir: nada cambia IDs ni flujos existentes
+    }
+
+    function handleParseRawDUI() {
+      const fallback = document.getElementById("rawInput").value;
+      const sourceRaw = (lastPDF417Raw && lastPDF417Raw.trim()) ? lastPDF417Raw : fallback;
+      if (!sourceRaw || !sourceRaw.trim()) {
+        updateStatus("No hay texto crudo disponible (ni de PDF417 ni del textarea).", "error");
+        return;
+      }
+      const parsed = parseRawDUI(sourceRaw);
+      document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
+      document.getElementById("result2").textContent = sourceRaw;
+      displayDataInTable(parsed);
+      updateStatus((lastPDF417Raw && lastPDF417Raw.trim()) ? "Texto crudo (DUI) parseado desde PDF417." : "Texto crudo (DUI) parseado desde textarea.","success");
+      document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
+      playBeep();
     }
 
     /* ========= Cámara PDF417 ========= */
     function startCamera() {
-      if (isScanning) { updateStatus("La cámara ya está en funcionamiento", "info"); return; }
+      if (isScanning) { updateStatus("La cámara ya está en funcionamiento","info"); return; }
       isScanning = true;
-      updateStatus("Escaneando con la cámara (PDF417)...", "info");
+      updateStatus("Escaneando con la cámara (PDF417)...","info");
       codeReader.decodeFromVideoDevice(selectedDeviceId, "video", (result, err) => {
         if (result) {
           lastPDF417Raw = result.text || "";
           document.getElementById("result2").textContent = lastPDF417Raw;
 
-          // << AUTO-PARSE DUI >>
+          // Preferir DUI crudo
           if (lastPDF417Raw.includes("||")) {
             const parsed = parseRawDUI(lastPDF417Raw);
             document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
             displayDataInTable(parsed);
-            updateStatus("Texto crudo (DUI) auto-parseado desde PDF417 (cámara).", "success");
+            updateStatus("Texto crudo (DUI) auto-parseado desde PDF417 (cámara).","success");
             document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
             playBeep();
-            return; // preferimos DUI si viene en crudo
+            return;
           }
-
           if (result.format === 10) { // PDF417
             const parsedData = parseUSDL(result.text);
             document.getElementById("result").textContent = JSON.stringify(parsedData, null, 2);
             displayDataInTable(parsedData);
-            updateStatus("Código PDF417 detectado y procesado", "success");
+            updateStatus("Código PDF417 detectado y procesado","success");
             document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
             playBeep();
           } else {
-            updateStatus("Formato detectado: " + result.format, "info");
+            updateStatus("Formato detectado: " + result.format,"info");
           }
         }
         if (err && !(err instanceof ZXing.NotFoundException)) {
           console.error(err);
-          updateStatus("Error: " + err.message, "error");
+          updateStatus("Error: " + err.message,"error");
         }
       });
     }
@@ -541,7 +518,7 @@
       document.getElementById("result").textContent = "";
       document.getElementById("result2").textContent = "";
       document.getElementById("extractedDataTable").classList.add("hidden");
-      updateStatus("Cámara detenida", "info");
+      updateStatus("Cámara detenida","info");
     }
 
     /* ========= Imagen: manejo común ========= */
@@ -551,64 +528,78 @@
       selectedImageFile = file;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const img = document.getElementById("imagePreview");
-        img.src = ev.target.result;
-        img.style.display = 'block';
+        imgEl.src = ev.target.result;
+        imgEl.onload = () => {
+          // Mostrar stage y canvas ajustados al tamaño mostrado de la imagen
+          stageWrap.classList.remove("hidden");
+          imgEl.style.display = 'block';
+          // Ajustar canvas al tamaño visual actual de la imagen
+          canvas.width = imgEl.clientWidth;
+          canvas.height = imgEl.clientHeight;
+          canvas.style.width = imgEl.clientWidth + "px";
+          canvas.style.height = imgEl.clientHeight + "px";
+          canvas.style.left = imgEl.offsetLeft + "px";
+          canvas.style.top = imgEl.offsetTop + "px";
+
+          // calcular escalas natural -> display
+          scaleX = imgEl.naturalWidth / imgEl.clientWidth;
+          scaleY = imgEl.naturalHeight / imgEl.clientHeight;
+
+          drawCanvas();
+        };
         document.getElementById("processImageButton").disabled = false;
         document.getElementById("processMRZButton").disabled = false;
-        updateStatus("Imagen cargada. Lista para procesar.", "info");
+        updateStatus("Imagen cargada. Lista para procesar.","info");
       };
       reader.readAsDataURL(file);
     }
 
     /* ========= Proceso: PDF417 desde imagen ========= */
     function processImagePDF417() {
-      if (!selectedImageFile) { updateStatus("Selecciona una imagen primero.", "error"); return; }
+      if (!selectedImageFile) { updateStatus("Selecciona una imagen primero.","error"); return; }
       const img = document.getElementById("imagePreview");
-      updateStatus("Procesando imagen (PDF417)...", "info");
+      updateStatus("Procesando imagen (PDF417)...","info");
 
       codeReader.decodeFromImageElement(img)
         .then(result => {
           lastPDF417Raw = result?.text || "";
           document.getElementById("result2").textContent = lastPDF417Raw;
 
-          // << AUTO-PARSE DUI >>
           if (lastPDF417Raw && lastPDF417Raw.includes("||")) {
             const parsedDUI = parseRawDUI(lastPDF417Raw);
             document.getElementById("result").textContent = JSON.stringify(parsedDUI, null, 2);
             displayDataInTable(parsedDUI);
-            updateStatus("Texto crudo (DUI) auto-parseado desde PDF417 (imagen).", "success");
+            updateStatus("Texto crudo (DUI) auto-parseado desde PDF417 (imagen).","success");
             document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
             playBeep();
-            return; // preferimos DUI si viene en crudo
+            return;
           }
-
           if (result && result.format === 10) {
             const parsed = parseUSDL(result.text);
             document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
             displayDataInTable(parsed);
-            updateStatus("Código PDF417 detectado y procesado", "success");
+            updateStatus("Código PDF417 detectado y procesado","success");
             document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
             playBeep();
           } else {
-            updateStatus("No se detectó PDF417 en la imagen.", "error");
+            updateStatus("No se detectó PDF417 en la imagen.","error");
             document.getElementById("extractedDataTable").classList.add("hidden");
           }
         })
         .catch(err => {
           console.error(err);
-          updateStatus("Error al procesar la imagen: " + err.message, "error");
+          updateStatus("Error al procesar la imagen: " + err.message,"error");
           document.getElementById("result2").textContent = "";
           document.getElementById("extractedDataTable").classList.add("hidden");
-          lastPDF417Raw = ""; // limpiar porque falló
+          lastPDF417Raw = "";
         });
     }
 
     /* ========= Proceso: MRZ desde imagen (OCR) ========= */
     async function processImageMRZ() {
-      if (!selectedImageFile) { updateStatus("Selecciona una imagen primero.", "error"); return; }
+      if (!selectedImageFile) { updateStatus("Selecciona una imagen primero.","error"); return; }
       const img = document.getElementById("imagePreview");
-      updateStatus("Ejecutando OCR (MRZ)...", "info");
+      updateStatus("Ejecutando OCR (MRZ)...","info");
 
       try {
         const { data } = await Tesseract.recognize(img, 'eng', {
@@ -620,34 +611,418 @@
 
         const linesObj = normalizeMRZLines(raw);
         if (!linesObj) {
-          updateStatus("No se localizaron líneas MRZ válidas en el OCR.", "error");
+          updateStatus("No se localizaron líneas MRZ válidas en el OCR.","error");
           document.getElementById("extractedDataTable").classList.add("hidden");
           document.getElementById("result").textContent = "";
           return;
         }
-
         const parsed = parseMRZ(linesObj);
         if (parsed.error) {
-          updateStatus("MRZ detectado, pero no se pudo parsear: " + parsed.error, "error");
+          updateStatus("MRZ detectado, pero no se pudo parsear: " + parsed.error,"error");
           document.getElementById("extractedDataTable").classList.add("hidden");
           document.getElementById("result").textContent = JSON.stringify({ mrzLines: linesObj.lines }, null, 2);
           return;
         }
-
         document.getElementById("result").textContent = JSON.stringify({ mrzLines: linesObj.lines, parsed }, null, 2);
         displayDataInTable(parsed);
-        updateStatus(`MRZ (${parsed.mrzType}) extraído y parseado`, "success");
+        updateStatus(`MRZ (${parsed.mrzType}) extraído y parseado`,"success");
         document.querySelectorAll('.json-container').forEach(el => el.style.display = 'block');
         playBeep();
       } catch (err) {
         console.error(err);
-        updateStatus("Error en OCR MRZ: " + err.message, "error");
+        updateStatus("Error en OCR MRZ: " + err.message,"error");
         document.getElementById("extractedDataTable").classList.add("hidden");
         document.getElementById("result").textContent = "";
       }
     }
+
+    /* ========= ROI Editor ========= */
+    function addNewROI() {
+      if (!imgEl.src) { updateStatus("Primero carga una imagen para crear ROIs.","error"); return; }
+      const w = Math.max(40, Math.floor(canvas.width * 0.25));
+      const h = Math.max(40, Math.floor(canvas.height * 0.18));
+      const roi = {
+        id: "roi_" + (roiCounter++),
+        name: "roi_" + (roiCounter-1),
+        type: "text",
+        // coordenadas en espacio display (canvas)
+        x: Math.floor((canvas.width - w)/2),
+        y: Math.floor((canvas.height - h)/2),
+        w, h
+      };
+      ROIs.push(roi);
+      activeROIId = roi.id;
+      refreshROIList();
+      drawCanvas();
+      fillPropEditor(roi);
+    }
+    function getActiveROI() { return ROIs.find(r => r.id === activeROIId) || null; }
+    function deleteSelectedROI() {
+      if (!activeROIId) return;
+      const idx = ROIs.findIndex(r => r.id === activeROIId);
+      if (idx>=0) { ROIs.splice(idx,1); }
+      activeROIId = ROIs.length ? ROIs[Math.max(0, idx-1)].id : null;
+      refreshROIList();
+      drawCanvas();
+      if (activeROIId) fillPropEditor(getActiveROI()); else clearPropEditor();
+    }
+    function refreshROIList() {
+      const list = document.getElementById("roiList");
+      list.innerHTML = "";
+      ROIs.forEach(roi => {
+        const row = document.createElement("div");
+        row.className = "roi-item" + (roi.id===activeROIId ? " active":"");
+        row.innerHTML = `
+          <div><b>${roi.name}</b> <span class="pill">${roi.type}</span></div>
+          <div class="mini">(${roi.x},${roi.y}) ${roi.w}×${roi.h}</div>
+        `;
+        row.addEventListener("click", ()=>{ activeROIId = roi.id; refreshROIList(); drawCanvas(); fillPropEditor(roi); });
+        list.appendChild(row);
+      });
+    }
+    function fillPropEditor(roi){
+      document.getElementById("propName").value = roi.name || "";
+      document.getElementById("propType").value = roi.type || "text";
+      document.getElementById("propX").value = Math.round(roi.x);
+      document.getElementById("propY").value = Math.round(roi.y);
+      document.getElementById("propW").value = Math.round(roi.w);
+      document.getElementById("propH").value = Math.round(roi.h);
+    }
+    function clearPropEditor(){
+      ["propName","propType","propX","propY","propW","propH"].forEach(id => { const el=document.getElementById(id); if (el) el.value = ""; });
+    }
+    function applyPropEdits(){
+      const roi = getActiveROI(); if (!roi) return;
+      roi.name = (document.getElementById("propName").value || roi.id).trim();
+      roi.type = document.getElementById("propType").value;
+      roi.x = clamp( parseInt(document.getElementById("propX").value||roi.x,10), 0, canvas.width-1);
+      roi.y = clamp( parseInt(document.getElementById("propY").value||roi.y,10), 0, canvas.height-1);
+      roi.w = clamp( parseInt(document.getElementById("propW").value||roi.w,10), 10, canvas.width - roi.x);
+      roi.h = clamp( parseInt(document.getElementById("propH").value||roi.h,10), 10, canvas.height - roi.y);
+      refreshROIList();
+      drawCanvas();
+    }
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+    // Dibujo y handles
+    const HANDLE_SIZE = 8;
+    function drawCanvas(){
+      if (!imgEl.src) { ctx.clearRect(0,0,canvas.width, canvas.height); return; }
+      // Ajustar canvas a tamaño visual actual de la imagen (si el usuario cambió zoom CSS)
+      canvas.width = imgEl.clientWidth;
+      canvas.height = imgEl.clientHeight;
+      scaleX = imgEl.naturalWidth / imgEl.clientWidth;
+      scaleY = imgEl.naturalHeight / imgEl.clientHeight;
+
+      ctx.clearRect(0,0,canvas.width, canvas.height);
+      // Semi overlay
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.15)";
+      ctx.fillRect(0,0,canvas.width, canvas.height);
+      ctx.restore();
+
+      ROIs.forEach(roi => {
+        const active = roi.id === activeROIId;
+        // fondo
+        ctx.save();
+        ctx.strokeStyle = active ? "#2a6df5" : "#0f6";
+        ctx.lineWidth = active ? 2.5 : 2;
+        ctx.fillStyle = "rgba(42,109,245,0.10)";
+        ctx.beginPath();
+        ctx.rect(roi.x, roi.y, roi.w, roi.h);
+        ctx.fill();
+        ctx.stroke();
+        // asas
+        const handles = getHandles(roi);
+        ctx.fillStyle = active ? "#2a6df5" : "#0f6";
+        handles.forEach(h => { ctx.fillRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE); });
+        // etiqueta
+        ctx.fillStyle = "#e7ecf5";
+        ctx.font = "12px ui-monospace,monospace";
+        ctx.fillText(`${roi.name} [${roi.type}]`, roi.x + 6, Math.max(12, roi.y - 6));
+        ctx.restore();
+      });
+    }
+    function getHandles(roi){
+      const {x,y,w,h} = roi;
+      const pts = [
+        {x:x,y:y, pos:"nw"}, {x:x+w/2,y:y, pos:"n"}, {x:x+w,y:y, pos:"ne"},
+        {x:x,y:y+h/2, pos:"w"}, {x:x+w,y:y+h/2, pos:"e"},
+        {x:x,y:y+h, pos:"sw"}, {x:x+w/2,y:y+h, pos:"s"}, {x:x+w,y:y+h, pos:"se"}
+      ];
+      return pts;
+    }
+    function ptInRect(px,py, x,y,w,h){ return px>=x && py>=y && px<=x+w && py<=y+h; }
+    function hitHandle(roi, mx,my){
+      const handles = getHandles(roi);
+      for (let h of handles){
+        if (ptInRect(mx,my, h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE)) return h.pos;
+      }
+      return null;
+    }
+
+    // Interacciones mouse
+    let dragState = { mode:null, startX:0, startY:0, startRect:null, handle:null };
+    function canvasToLocal(evt){
+      const rect = canvas.getBoundingClientRect();
+      return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+    }
+    function onMouseDown(evt){
+      if (!imgEl.src) return;
+      const {x,y} = canvasToLocal(evt);
+
+      // ¿click en algún handle?
+      for (let i=ROIs.length-1; i>=0; i--){
+        const r = ROIs[i];
+        const handle = hitHandle(r, x,y);
+        if (handle){
+          activeROIId = r.id; refreshROIList(); fillPropEditor(r);
+          dragState.mode = "resize"; dragState.handle = handle; dragState.startX=x; dragState.startY=y; dragState.startRect={...r};
+          drawCanvas(); return;
+        }
+      }
+      // ¿click dentro de un ROI? (selección / mover)
+      for (let i=ROIs.length-1; i>=0; i--){
+        const r = ROIs[i];
+        if (ptInRect(x,y, r.x,r.y,r.w,r.h)){
+          activeROIId = r.id; refreshROIList(); fillPropEditor(r);
+          dragState.mode = "move"; dragState.startX=x; dragState.startY=y; dragState.startRect={...r};
+          drawCanvas(); return;
+        }
+      }
+      // click vacío: deseleccionar
+      activeROIId = null; refreshROIList(); clearPropEditor(); drawCanvas();
+    }
+    function onMouseMove(evt){
+      if (!dragState.mode) return;
+      const roi = getActiveROI(); if (!roi) return;
+      const {x,y} = canvasToLocal(evt);
+      const dx = x - dragState.startX, dy = y - dragState.startY;
+
+      if (dragState.mode === "move"){
+        roi.x = clamp(dragState.startRect.x + dx, 0, canvas.width - roi.w);
+        roi.y = clamp(dragState.startRect.y + dy, 0, canvas.height - roi.h);
+      } else if (dragState.mode === "resize"){
+        let {x:sx,y:sy,w:sw,h:sh} = dragState.startRect;
+        let nx=sx, ny=sy, nw=sw, nh=sh;
+        const h = dragState.handle;
+        if (h.includes("n")) { ny = clamp(sy + dy, 0, sy+sh-10); nh = sh - (ny - sy); }
+        if (h.includes("s")) { nh = clamp(sh + dy, 10, canvas.height - sy); }
+        if (h.includes("w")) { nx = clamp(sx + dx, 0, sx+sw-10); nw = sw - (nx - sx); }
+        if (h.includes("e")) { nw = clamp(sw + dx, 10, canvas.width - sx); }
+        roi.x=nx; roi.y=ny; roi.w=nw; roi.h=nh;
+      }
+      // actualizar propiedades en vivo
+      fillPropEditor(roi);
+      drawCanvas();
+    }
+    function onMouseUp(){ dragState = { mode:null, startX:0, startY:0, startRect:null, handle:null }; }
+
+    /* ========= Export / Import Plantillas ========= */
+    function exportTemplate() {
+      if (!ROIs.length) { updateStatus("No hay ROIs para exportar.","error"); return; }
+      const name = prompt("Nombre de la plantilla a exportar:", "plantilla_rois");
+      const payload = {
+        templateName: name || "plantilla_rois",
+        imageInfo: {
+          naturalWidth: imgEl.naturalWidth || null,
+          naturalHeight: imgEl.naturalHeight || null
+        },
+        rois: ROIs.map(r => ({
+          id: r.id, name: r.name, type: r.type,
+          // Guardar en coordenadas relativas (0..1) para reescalado fiable
+          relX: r.x / canvas.width,
+          relY: r.y / canvas.height,
+          relW: r.w / canvas.width,
+          relH: r.h / canvas.height
+        }))
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (payload.templateName || "plantilla_rois") + ".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      updateStatus("Plantilla exportada.","success");
+    }
+    function importTemplateFile(e) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const fr = new FileReader();
+      fr.onload = () => {
+        try {
+          const tpl = JSON.parse(fr.result);
+          if (!tpl.rois || !Array.isArray(tpl.rois)) throw new Error("Plantilla inválida.");
+          ROIs.length = 0;
+          tpl.rois.forEach((r,i) => {
+            ROIs.push({
+              id: r.id || ("roi_"+(roiCounter++)),
+              name: r.name || ("roi_"+(roiCounter-1)),
+              type: r.type || "text",
+              x: Math.round((r.relX || 0)*canvas.width),
+              y: Math.round((r.relY || 0)*canvas.height),
+              w: Math.round((r.relW || 0.3)*canvas.width),
+              h: Math.round((r.relH || 0.2)*canvas.height)
+            });
+          });
+          activeROIId = ROIs[0]?.id || null;
+          refreshROIList(); drawCanvas();
+          if (activeROIId) fillPropEditor(getActiveROI());
+          updateStatus("Plantilla importada.","success");
+        } catch (err) {
+          console.error(err);
+          updateStatus("Error al importar plantilla: " + err.message,"error");
+        } finally {
+          e.target.value = "";
+        }
+      };
+      fr.readAsText(file);
+    }
+
+    /* ========= Extracción por ROI ========= */
+    // recorta ROI a un canvas natural-size (para alimentar OCR/ZXing)
+    function cropROIToCanvas(roi){
+      // convertir display -> natural
+      const sx = Math.round(roi.x * scaleX);
+      const sy = Math.round(roi.y * scaleY);
+      const sw = Math.max(1, Math.round(roi.w * scaleX));
+      const sh = Math.max(1, Math.round(roi.h * scaleY));
+
+      const c = document.createElement("canvas");
+      c.width = sw; c.height = sh;
+      const cctx = c.getContext("2d");
+      cctx.imageSmoothingEnabled = true;
+      cctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, sw, sh);
+      return c;
+    }
+
+    async function extractFromROI(roi){
+      if (!roi) { updateStatus("Selecciona una ROI.","error"); return; }
+      if (!imgEl.src) { updateStatus("Primero carga una imagen.","error"); return; }
+
+      try {
+        let out = {};
+        if (roi.type === "image") {
+          const c = cropROIToCanvas(roi);
+          const dataUrl = c.toDataURL("image/png");
+          out = { type:"image", name:roi.name, base64: dataUrl };
+          document.getElementById("result").textContent = JSON.stringify(out, null, 2);
+          displayDataInTable({ "ROI": roi.name, "Tipo": "image", "Base64 (preview)": dataUrl.slice(0,64)+"..." });
+          updateStatus(`Captura base64 generada (${roi.name})`,"success");
+          playBeep();
+          return out;
+        }
+
+        if (roi.type === "text") {
+          updateStatus(`OCR (text) en ${roi.name}...`,"info");
+          const c = cropROIToCanvas(roi);
+          const { data } = await Tesseract.recognize(c, 'eng', {
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789<>:/-.,#()@ ',
+            preserve_interword_spaces: '1'
+          });
+          const raw = (data.text || '').trim();
+          out = { type:"text", name:roi.name, raw };
+          document.getElementById("result2").textContent = raw;
+          displayDataInTable({ "ROI": roi.name, "Tipo": "text", "Texto": raw });
+          updateStatus(`OCR (text) completado (${roi.name})`,"success");
+          playBeep();
+          return out;
+        }
+
+        if (roi.type === "barcode") {
+          updateStatus(`Decodificando barcode en ${roi.name}...`,"info");
+          const c = cropROIToCanvas(roi);
+          const dataUrl = c.toDataURL("image/png");
+          const img = new Image();
+          const res = await new Promise((resolve,reject)=>{
+            img.onload = () => {
+              codeReader.decodeFromImageElement(img).then(resolve).catch(reject);
+            };
+            img.onerror = reject;
+            img.src = dataUrl;
+          });
+          out = { type:"barcode", name:roi.name, format: res?.format, text: res?.text || "" };
+          document.getElementById("result2").textContent = res?.text || "";
+          displayDataInTable({ "ROI": roi.name, "Tipo": "barcode", "Formato": res?.format, "Texto": res?.text || "" });
+          updateStatus(`Barcode extraído (${roi.name})`,"success");
+          playBeep();
+          return out;
+        }
+
+        if (roi.type === "pdf417") {
+          updateStatus(`Decodificando PDF417 en ${roi.name}...`,"info");
+          const c = cropROIToCanvas(roi);
+          const dataUrl = c.toDataURL("image/png");
+          const img = new Image();
+          const res = await new Promise((resolve,reject)=>{
+            img.onload = () => { codeReader.decodeFromImageElement(img).then(resolve).catch(reject); };
+            img.onerror = reject;
+            img.src = dataUrl;
+          });
+          const raw = res?.text || "";
+          lastPDF417Raw = raw; // para Parsear Texto Crudo (DUI)
+          let parsed = {};
+          if (raw.includes("||")) parsed = parseRawDUI(raw);
+          else if (res && res.format === 10) parsed = parseUSDL(raw);
+
+          out = { type:"pdf417", name:roi.name, raw, parsed };
+          document.getElementById("result").textContent = JSON.stringify(parsed, null, 2);
+          document.getElementById("result2").textContent = raw;
+          if (parsed && Object.keys(parsed).length) displayDataInTable(parsed);
+          updateStatus(`PDF417 extraído (${roi.name})`,"success");
+          playBeep();
+          return out;
+        }
+
+        if (roi.type === "mrz") {
+          updateStatus(`OCR (MRZ) en ${roi.name}...`,"info");
+          const c = cropROIToCanvas(roi);
+          const { data } = await Tesseract.recognize(c, 'eng', {
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
+            preserve_interword_spaces: '1'
+          });
+          const raw = (data.text || '').toUpperCase().replace(/[^\nA-Z0-9< ]/g,'');
+          const linesObj = normalizeMRZLines(raw);
+          let parsed = {};
+          if (linesObj) {
+            const p = parseMRZ(linesObj);
+            parsed = p.error ? { error:p.error, mrzLines: linesObj.lines } : { mrzLines: linesObj.lines, parsed:p };
+          } else {
+            parsed = { error:"No MRZ lines found." };
+          }
+          out = { type:"mrz", name:roi.name, raw, ...parsed };
+          document.getElementById("result").textContent = JSON.stringify(out, null, 2);
+          document.getElementById("result2").textContent = raw;
+          if (out.parsed) displayDataInTable(out.parsed);
+          updateStatus(`MRZ procesado (${roi.name})`,"success");
+          playBeep();
+          return out;
+        }
+
+        updateStatus(`Tipo de ROI no soportado: ${roi.type}`,"error");
+      } catch (err) {
+        console.error(err);
+        updateStatus("Error en extracción ROI: " + err.message,"error");
+      }
+    }
+
+    async function extractFromAllROIs(){
+      if (!ROIs.length) { updateStatus("No hay ROIs para extraer.","error"); return; }
+      const results = {};
+      for (const r of ROIs) {
+        const out = await extractFromROI(r);
+        results[r.name] = out || { error:"Sin resultado" };
+      }
+      document.getElementById("result").textContent = JSON.stringify(results, null, 2);
+      updateStatus("Extracción en lote terminada.","success");
+    }
+
+    /* ========= Helpers ========= */
+    function getActiveIndex(){ return ROIs.findIndex(r => r.id===activeROIId); }
+
   </script>
 </body>
 </html>
+
+
 
 
