@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>PDF417 — Cámara / Imagen, ROI preciso + Auto-captura + Zoom</title>
+  <title>PDF417 — Cámara / Imagen, ROI preciso + Capturar ROI (cámara) + Auto-captura</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- ====== Librerías por CDN ====== -->
@@ -26,7 +26,6 @@
     #stage{ position:fixed; inset:0; background:#000; z-index: 1; }
     #video{
       position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:block !important; z-index:1;
-      touch-action:none; /* para pinch */
     }
     #overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; z-index:2; }
 
@@ -51,14 +50,15 @@
     button:disabled{ opacity:.5; cursor:not-allowed }
     .ghost{ background:transparent }
     label.small{ font-size:12px; color:var(--muted) }
-    .mini{ font-size:12px; opacity:.9 }
 
-    input[type="range"]{ width:180px; }
-    textarea, pre, input[type="text"], input[type="number"]{
+    textarea, pre, input[type="text"], input[type="number"], input[type="range"]{
       width:100%; background:var(--card); color:var(--fg); border:1px solid var(--line);
       border-radius:10px; padding:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
     }
     input[type="number"]{ width:86px; }
+    input[type="range"]{
+      padding: 6px 8px; height: 36px; accent-color: #39d353; cursor: pointer;
+    }
     textarea{ min-height:110px; resize:vertical }
     .grid{ display:grid; gap:8px; }
     .split2{ grid-template-columns:1fr 1fr }
@@ -106,6 +106,12 @@
     }
     #roiPreview{ border:1px dashed #2b3b60; border-radius:10px; background:#0f1726 }
     .hintbox{ font-size:12px; color:#9fb3c8 }
+
+    /* Controles ROI */
+    .roi-controls{ display:grid; gap:8px; }
+    .roi-controls .row{ align-items:center }
+    .roi-controls .row .grow{ flex:1 }
+    .roi-controls .row .tight{ display:flex; gap:6px }
   </style>
 </head>
 <body>
@@ -122,8 +128,8 @@
 
   <!-- Panel -->
   <aside id="panel">
-    <h1>PDF417 — cámara e imagen (ROI preciso + Auto-captura + Zoom)</h1>
-    <p class="sub">Roboflow (InferenceJS), ROI (cámara/imagen), decodificación y parseo. Incluye beep al detectar y zoom (si el dispositivo lo soporta).</p>
+    <h1>PDF417 — cámara e imagen (ROI preciso + Auto-captura)</h1>
+    <p class="sub">Roboflow (InferenceJS), **Capturar ROI (cámara)** manual/automática desde bbox, ROI preciso en imagen, y parseo JSON.</p>
 
     <!-- Cámara -->
     <div class="row">
@@ -131,18 +137,7 @@
       <button id="btnStop" class="danger">■ Detener cámara</button>
       <button id="btnFlip">↺ Cambiar cámara</button>
       <button id="btnCaptureCamROI" class="success" disabled>⧉ Capturar ROI (cámara)</button>
-      <button id="btnCaptureCamROIRaw" class="" disabled>⎘ Extraer texto crudo (ROI cámara)</button>
       <span class="badge">Detección: InferenceJS</span>
-    </div>
-
-    <!-- Zoom cámara (si disponible) -->
-    <div class="row seg" id="zoomSeg">
-      <span class="mini">Zoom cámara:</span>
-      <button id="btnZoomOut">−</button>
-      <input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1" />
-      <button id="btnZoomIn">+</button>
-      <span id="zoomVal" class="mini">1.00×</span>
-      <span id="zoomUnsupported" class="mini hidden" style="opacity:.7">No soportado en este dispositivo/navegador</span>
     </div>
 
     <!-- Auto-captura -->
@@ -152,7 +147,7 @@
         <label class="small">Umbral conf. ≥ <input type="number" id="numThresh" min="0" max="1" step="0.01" value="0.60" /></label>
         <label class="small">Pausa (s) <input type="number" id="numCooldown" min="0" max="30" step="0.5" value="2.5" /></label>
       </div>
-      <p class="sub" style="margin-top:6px">Si la confianza supera el umbral, se captura el ROI automáticamente y se pausa por el tiempo indicado.</p>
+      <p class="sub" style="margin-top:6px">Si la confianza de la detección supera el umbral, se captura el ROI automáticamente y se pausa el disparo por el tiempo indicado.</p>
     </div>
 
     <!-- Imagen -->
@@ -167,8 +162,8 @@
         <div class="row">
           <input id="fileImage" type="file" accept="image/*" class="hidden" />
           <button id="btnPick" class="warn">🖼️ Cargar imagen</button>
-          <button id="btnDetectImg" class="">🔎 Detectar en imagen</button>
-          <button id="btnProcessFull" class="">⇣ Extraer (imagen completa)</button>
+          <button id="btnDetectImg">🔎 Detectar en imagen</button>
+          <button id="btnProcessFull">⇣ Extraer (imagen completa)</button>
           <button id="btnProcessROI" class="success">⧉ Extraer (ROI)</button>
           <span class="tag" id="tag-detector">Decoder: auto (BarcodeDetector/ZXing)</span>
         </div>
@@ -176,16 +171,50 @@
         <canvas id="imgCanvasPreview" class="hidden" tabindex="0" aria-label="Canvas de imagen con ROI"></canvas>
 
         <div class="hintbox">
-          Arrastra para mover y usa los 8 puntos para redimensionar el ROI. En móvil: un dedo mueve, pinch con dos dedos escala. Con el canvas enfocado: flechas y +/-.
+          Arrastra dentro del rectángulo para mover; usa los 8 puntos (esquinas/lados) para redimensionar.
+          Móvil: un dedo mueve; dos dedos (pinch) escalan. Con el canvas enfocado: flechas mueven (Shift = 5 px),
+          +/- cambia tamaño (Shift = x3).
         </div>
+
+        <!-- Controles de tamaño del ROI (ancho) -->
+        <div class="seg roi-controls">
+          <label class="small">Tamaño del ROI (ancho)</label>
+          <div class="row">
+            <div class="tight">
+              <button id="btnRoiMinus" aria-label="Reducir ancho ROI">−</button>
+              <button id="btnRoiReset" aria-label="Restablecer ambos sliders a 100%">100%</button>
+              <button id="btnRoiPlus" aria-label="Ampliar ancho ROI">+</button>
+            </div>
+            <div class="grow">
+              <input id="rngRoiScale" type="range" min="10" max="400" step="1" value="100" />
+            </div>
+            <div style="min-width:64px; text-align:right"><span id="lblRoiScale">100%</span></div>
+          </div>
+          <p class="sub">Ajusta el ancho alrededor del centro del ROI sin moverlo.</p>
+        </div>
+
+        <!-- NUEVO: Controles de altura del ROI -->
+        <div class="seg roi-controls">
+          <label class="small">Altura del ROI</label>
+          <div class="row">
+            <div class="tight">
+              <button id="btnRoiHMinus" aria-label="Reducir altura ROI">−</button>
+              <button id="btnRoiHReset" aria-label="Restablecer altura (100%)">100%</button>
+              <button id="btnRoiHPlus" aria-label="Ampliar altura ROI">+</button>
+            </div>
+            <div class="grow">
+              <input id="rngRoiHScale" type="range" min="10" max="400" step="1" value="100" />
+            </div>
+            <div style="min-width:64px; text-align:right"><span id="lblRoiHScale">100%</span></div>
+          </div>
+          <p class="sub">Ajusta <strong>solo</strong> la altura alrededor del centro del ROI.</p>
+        </div>
+        <!-- FIN NUEVO -->
 
         <div class="grid split2" style="margin-top:8px">
           <div>
             <label>Vista previa ROI (imagen o cámara)</label>
             <div class="preview"><canvas id="roiPreview" width="200" height="150"></canvas></div>
-            <div class="row" style="margin-top:8px">
-              <button id="btnProcessCurrentROI" class="success">▶ Procesar ROI actual (extraer y parsear)</button>
-            </div>
           </div>
           <div>
             <label>JSON parseado</label>
@@ -214,7 +243,7 @@
     </div>
 
     <div class="spacer"></div>
-    <p class="sub">Consejo: acerca el código al centro del encuadre, ajusta zoom (si está disponible) y evita reflejos.</p>
+    <p class="sub">Consejo: acerca el código al centro del encuadre y evita reflejos.</p>
   </aside>
 
   <div class="status" id="status">
@@ -247,13 +276,6 @@
     const roiPreview = document.getElementById('roiPreview');
     const roiCtx = roiPreview.getContext('2d');
 
-    // Zoom UI
-    const zoomRange = document.getElementById('zoomRange');
-    const zoomVal = document.getElementById('zoomVal');
-    const zoomUnsupported = document.getElementById('zoomUnsupported');
-    const btnZoomIn = document.getElementById('btnZoomIn');
-    const btnZoomOut = document.getElementById('btnZoomOut');
-
     // ====== Estado ======
     let facingMode = 'environment';
     let stream = null;
@@ -279,8 +301,11 @@
     let roi = { x:0.15, y:0.25, w:0.70, h:0.50 };
     let drawSize = { w:0, h:0 }; // tamaño dibujado en preview
 
+    // baseline del ROI para sliders
+    let baselineRoi = null;
+
     // Interacción ROI precisa (imagen)
-    const HANDLE = 12; // px
+    const HANDLE = 12; // px radio de detección
     const MIN_SIZE_PX = 16;
     let action = null; // 'move' | 'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'
     let start = {x:0,y:0}; // px en preview
@@ -296,12 +321,6 @@
     let nativePdf417Supported = false;
     let pdfReader = null; // ZXing BrowserPDF417Reader
 
-    // Zoom de cámara
-    let videoTrack = null;
-    let zoomCaps = null;
-    let currentZoom = 1, minZoom = 1, maxZoom = 1, stepZoom = 0.1;
-    let pinchCache = new Map(); // para pinch sobre el <video>
-
     // ====== Utilidades ======
     function setCanvasToVideoSize() {
       const vw = video.videoWidth || 1280;
@@ -312,6 +331,7 @@
     function updateFPS() {
       const now = performance.now();
       const delta = now - lastTS;
+      lastTS = now;
       const fps = 1000 / delta;
       fpsSMA.push(fps);
       if (fpsSMA.length > 20) fpsSMA.shift();
@@ -333,15 +353,8 @@
     }
 
     function setHit(ok){
-      if (ok){
-        sHit.removeClass('hidden'); sMiss.addClass('hidden');
-        $('#btnCaptureCamROI').prop('disabled', false);
-        $('#btnCaptureCamROIRaw').prop('disabled', false);
-      } else {
-        sMiss.removeClass('hidden'); sHit.addClass('hidden');
-        $('#btnCaptureCamROI').prop('disabled', true);
-        $('#btnCaptureCamROIRaw').prop('disabled', true);
-      }
+      if (ok){ sHit.removeClass('hidden'); sMiss.addClass('hidden'); $('#btnCaptureCamROI').prop('disabled', false); }
+      else { sMiss.removeClass('hidden'); sHit.addClass('hidden'); $('#btnCaptureCamROI').prop('disabled', true); }
     }
 
     function escapeHtml(str){
@@ -367,24 +380,6 @@
       else el.classList.add('info');
     }
 
-    // ====== Beep (Web Audio) ======
-    let audioCtx = null;
-    function playBeep(){
-      try{
-        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        o.type = 'sine';
-        o.frequency.value = 880; // A5
-        g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
-        o.connect(g).connect(audioCtx.destination);
-        o.start();
-        o.stop(audioCtx.currentTime + 0.2);
-      }catch(e){ /* ignore */ }
-    }
-
     // ====== Cámara ======
     async function startCamera(){
       stopCamera();
@@ -394,11 +389,6 @@
         video.srcObject = stream;
         await new Promise((resolve) => { video.onloadedmetadata = resolve; });
         await video.play();
-
-        // Track y zoom
-        videoTrack = stream.getVideoTracks()[0] || null;
-        await setupZoom(videoTrack);
-
         setCanvasToVideoSize();
         sCam.removeClass('bad info').addClass('ok').text(`Cámara: activa (${facingMode})`);
         sourceMode = 'video';
@@ -420,107 +410,6 @@
       helpMessage.classList.remove('hidden');
       octx.clearRect(0,0,overlay.width,overlay.height);
       setHit(false);
-      // reset zoom ui
-      zoomRange.disabled = true; btnZoomIn.disabled = true; btnZoomOut.disabled = true;
-      zoomUnsupported.classList.add('hidden');
-    }
-
-    // ====== Zoom de cámara (MediaTrackCapabilities.zoom) ======
-    async function setupZoom(track){
-      zoomCaps = null;
-      if (!track) { markZoomUnsupported(); return; }
-      const caps = track.getCapabilities ? track.getCapabilities() : {};
-      if (!caps || typeof caps.zoom === 'undefined'){
-        markZoomUnsupported();
-        return;
-      }
-      zoomCaps = caps.zoom; // puede ser {min,max,step} o número
-      const settings = track.getSettings ? track.getSettings() : {};
-      // Normaliza parámetros
-      if (typeof zoomCaps === 'number'){ minZoom = 1; maxZoom = zoomCaps || 1; stepZoom = 0.1; }
-      else {
-        minZoom = Math.max(1, zoomCaps.min ?? 1);
-        maxZoom = Math.max(minZoom, zoomCaps.max ?? minZoom);
-        stepZoom = Math.max(0.01, zoomCaps.step ?? 0.1);
-      }
-      currentZoom = Math.min(maxZoom, Math.max(minZoom, settings.zoom || minZoom));
-
-      zoomRange.min = String(minZoom);
-      zoomRange.max = String(maxZoom);
-      zoomRange.step = String(stepZoom);
-      zoomRange.value = String(currentZoom);
-      zoomVal.textContent = currentZoom.toFixed(2) + '×';
-      zoomRange.disabled = false; btnZoomIn.disabled = false; btnZoomOut.disabled = false;
-      zoomUnsupported.classList.add('hidden');
-
-      // Eventos UI
-      zoomRange.oninput = async () => { await applyZoom(parseFloat(zoomRange.value)); };
-      btnZoomIn.onclick = async ()=> { await applyZoom(clamp(currentZoom + stepZoom, minZoom, maxZoom)); };
-      btnZoomOut.onclick = async ()=> { await applyZoom(clamp(currentZoom - stepZoom, minZoom, maxZoom)); };
-
-      // Rueda del mouse sobre el video
-      video.addEventListener('wheel', onWheelZoom, {passive:false});
-
-      // Pinch sobre el video
-      video.addEventListener('pointerdown', onPointerDown);
-      video.addEventListener('pointermove', onPointerMove, {passive:false});
-      video.addEventListener('pointerup', onPointerUpCancel);
-      video.addEventListener('pointercancel', onPointerUpCancel);
-      video.addEventListener('pointerleave', onPointerUpCancel);
-    }
-
-    function markZoomUnsupported(){
-      zoomRange.disabled = true; btnZoomIn.disabled = true; btnZoomOut.disabled = true;
-      zoomUnsupported.classList.remove('hidden');
-    }
-
-    async function applyZoom(z){
-      if (!videoTrack) return;
-      try{
-        currentZoom = clamp(z, minZoom, maxZoom);
-        await videoTrack.applyConstraints({ advanced: [{ zoom: currentZoom }] });
-        zoomRange.value = String(currentZoom);
-        zoomVal.textContent = currentZoom.toFixed(2) + '×';
-      }catch(e){
-        // Si falla (algunos navegadores requieren exacto)
-        try{
-          await videoTrack.applyConstraints({ zoom: currentZoom });
-        }catch(_e){
-          markZoomUnsupported();
-        }
-      }
-    }
-
-    function onWheelZoom(e){
-      if (!zoomCaps){ return; }
-      e.preventDefault();
-      const delta = (e.deltaY < 0 ? stepZoom : -stepZoom) * (e.shiftKey ? 3 : 1);
-      applyZoom(currentZoom + delta);
-    }
-
-    function onPointerDown(e){
-      video.setPointerCapture?.(e.pointerId);
-      pinchCache.set(e.pointerId, {x:e.clientX, y:e.clientY});
-    }
-    function onPointerMove(e){
-      if (!pinchCache.has(e.pointerId)) return;
-      pinchCache.set(e.pointerId, {x:e.clientX, y:e.clientY});
-      if (pinchCache.size === 2){
-        e.preventDefault();
-        const pts = Array.from(pinchCache.values());
-        const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
-        if (!onPointerMove.lastD){ onPointerMove.lastD = d; return; }
-        const scale = d / onPointerMove.lastD;
-        if (Math.abs(scale - 1) > 0.02){
-          const delta = (scale > 1 ? stepZoom : -stepZoom);
-          applyZoom(currentZoom + delta);
-          onPointerMove.lastD = d;
-        }
-      }
-    }
-    function onPointerUpCancel(e){
-      pinchCache.delete(e.pointerId);
-      if (pinchCache.size < 2) onPointerMove.lastD = null;
     }
 
     // ====== Modelo Roboflow (InferenceJS) ======
@@ -592,7 +481,6 @@
         const preds = await engine.infer(workerId, image);
         octx.clearRect(0,0,overlay.width,overlay.height);
         if (preds && preds.length){
-          // Elige el PDF417 con mayor confianza
           const best = preds.reduce((a,b)=>{
             const ap = (a.class||'').toLowerCase().includes('pdf') ? a : null;
             const bp = (b.class||'').toLowerCase().includes('pdf') ? b : null;
@@ -603,21 +491,18 @@
           paintBox(octx, best.bbox, best.class || 'pdf417', best.confidence);
           lastBBox = best.bbox; setHit(true);
 
-          // --- Auto-captura ---
+          // Auto-captura
           if(isAuto && !captureCooldown){
             const thr = clamp(parseFloat($('#numThresh').val()) || 0.6, 0, 1);
             if(best.confidence >= thr){
               captureCooldown = true;
               setTimeout(async ()=>{
-                const ok = await captureRoiFromCamera(true);
-                if (ok) playBeep(); // beep en auto-captura exitosa
+                await captureRoiFromCamera();
                 const cooldownMs = Math.max(0, (parseFloat($('#numCooldown').val()) || 2.5) * 1000);
                 setTimeout(()=>{ captureCooldown = false; }, cooldownMs);
               }, 0);
             }
           }
-          // --- fin auto-captura ---
-
         } else { lastBBox = null; setHit(false); }
       }catch(e){ /* noop */ }
       updateFPS();
@@ -625,10 +510,10 @@
     }
 
     // ====== Capturar ROI (cámara) desde bbox detectado ======
-    async function captureRoiFromCamera(fromAuto=false){
+    async function captureRoiFromCamera(){
       if(!running || !lastBBox || !video.videoWidth) {
         setStatus('No hay detección activa para capturar','bad');
-        return false;
+        return;
       }
       const vw = video.videoWidth, vh = video.videoHeight;
       const frame = document.createElement('canvas');
@@ -656,98 +541,10 @@
 
       const raw = await decodeFromCanvas(crop);
       if(raw){
-        setStatus(fromAuto ? 'Auto-captura: código detectado en ROI (cámara)' : 'Código detectado en ROI (cámara)','ok');
+        setStatus('Código detectado en ROI (cámara)','ok');
         const parsed = smartParse(raw); renderResult(parsed, raw);
-        return true;
       }else{
         setStatus('No se pudo decodificar el ROI (cámara). Intenta acercar/enfocar.','bad');
-        return false;
-      }
-    }
-
-    // ====== Extraer TEXTO CRUDO (ROI cámara) ======
-    async function captureRoiRawFromCamera(){
-      if(!running || !lastBBox || !video.videoWidth) {
-        setStatus('No hay detección activa para capturar','bad');
-        return;
-      }
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const frame = document.createElement('canvas');
-      frame.width = vw; frame.height = vh;
-      const fctx = frame.getContext('2d', { willReadFrequently:true });
-      fctx.drawImage(video, 0, 0, vw, vh);
-
-      const { x, y, width, height } = lastBBox;
-      const rx = Math.max(0, Math.round(x - width/2));
-      const ry = Math.max(0, Math.round(y - height/2));
-      const rw = Math.max(1, Math.round(width));
-      const rh = Math.max(1, Math.round(height));
-
-      const crop = document.createElement('canvas');
-      crop.width = rw; crop.height = rh;
-      crop.getContext('2d').drawImage(frame, rx, ry, rw, rh, 0, 0, rw, rh);
-
-      const raw = await decodeFromCanvas(crop);
-      if(raw){
-        $('#txtRaw').val(String(raw));
-        $('#txtJson').val('');
-        renderTable({});
-        setStatus('Texto crudo del ROI (cámara) extraído','ok');
-      }else{
-        setStatus('No se pudo extraer texto crudo del ROI (cámara)','bad');
-      }
-    }
-
-    // ====== Procesar ROI ACTUAL (unifica cámara/imagen) ======
-    async function processCurrentROI(){
-      let roiCanvas = null;
-
-      if (sourceMode === 'video' && running && lastBBox && video.videoWidth){
-        const vw = video.videoWidth, vh = video.videoHeight;
-        const frame = document.createElement('canvas');
-        frame.width = vw; frame.height = vh;
-        frame.getContext('2d', { willReadFrequently:true }).drawImage(video, 0, 0, vw, vh);
-
-        const { x, y, width, height } = lastBBox;
-        const rx = Math.max(0, Math.round(x - width/2));
-        const ry = Math.max(0, Math.round(y - height/2));
-        const rw = Math.max(1, Math.round(width));
-        const rh = Math.max(1, Math.round(height));
-
-        roiCanvas = document.createElement('canvas');
-        roiCanvas.width = rw; roiCanvas.height = rh;
-        roiCanvas.getContext('2d').drawImage(frame, rx, ry, rw, rh, 0, 0, rw, rh);
-      } else if (sourceMode === 'image' && imgLoaded && imgCanvasFull.width){
-        const sx = Math.max(0, Math.round(roi.x * imgCanvasFull.width));
-        const sy = Math.max(0, Math.round(roi.y * imgCanvasFull.height));
-        const sw = Math.max(1, Math.round(roi.w * imgCanvasFull.width));
-        const sh = Math.max(1, Math.round(roi.h * imgCanvasFull.height));
-        roiCanvas = document.createElement('canvas');
-        roiCanvas.width = sw; roiCanvas.height = sh;
-        roiCanvas.getContext('2d').drawImage(imgCanvasFull, sx, sy, sw, sh, 0, 0, sw, sh);
-      } else {
-        setStatus('No hay ROI disponible. Inicia la cámara o carga una imagen.','info');
-        return;
-      }
-
-      // Actualiza vista previa
-      roiCtx.clearRect(0,0,roiPreview.width,roiPreview.height);
-      const scale = Math.min(roiPreview.width / roiCanvas.width, roiPreview.height / roiCanvas.height);
-      const dw = Math.round(roiCanvas.width * scale), dh = Math.round(roiCanvas.height * scale);
-      const dx = Math.round((roiPreview.width - dw)/2), dy = Math.round((roiPreview.height - dh)/2);
-      roiCtx.drawImage(roiCanvas, 0, 0, roiCanvas.width, roiCanvas.height, dx, dy, dw, dh);
-
-      // Decodificar y parsear
-      const raw = await decodeFromCanvas(roiCanvas);
-      if (raw){
-        const parsed = smartParse(raw);
-        $('#txtRaw').val(String(raw));
-        $('#txtJson').val(JSON.stringify(parsed?.data || {}, null, 2));
-        renderTable(parsed?.data || {});
-        setStatus('ROI actual procesado: texto crudo y datos parseados','ok');
-        playBeep(); // <-- beep en éxito de "Procesar ROI actual"
-      } else {
-        setStatus('No se pudo decodificar el ROI actual','bad');
       }
     }
 
@@ -762,6 +559,9 @@
             ifctx.drawImage(img, 0, 0);
             fitPreview(img);
             sourceMode = 'image'; imgLoaded = true;
+            baselineRoi = {...roi};
+            setRoiScaleUI(100);   // ancho
+            setRoiHeightUI(100);  // alto (nuevo)
             resolve();
           };
           img.onerror = reject;
@@ -847,23 +647,127 @@
     function drawHandles(rect){
       const ctx = imgCtx;
       const corners = [
-        {x:rect.x, y:rect.y},
-        {x:rect.x+rect.w, y:rect.y},
-        {x:rect.x, y:rect.y+rect.h},
-        {x:rect.x+rect.w, y:rect.y+rect.h},
+        {x:rect.x, y:rect.y, c:'nw'},
+        {x:rect.x+rect.w, y:rect.y, c:'ne'},
+        {x:rect.x, y:rect.y+rect.h, c:'sw'},
+        {x:rect.x+rect.w, y:rect.y+rect.h, c:'se'},
       ];
       const edges = [
-        {x:rect.x+rect.w/2, y:rect.y}, // n
-        {x:rect.x+rect.w/2, y:rect.y+rect.h}, // s
-        {x:rect.x, y:rect.y+rect.h/2}, // w
-        {x:rect.x+rect.w, y:rect.y+rect.h/2}, // e
+        {x:rect.x+rect.w/2, y:rect.y, c:'n'},
+        {x:rect.x+rect.w/2, y:rect.y+rect.h, c:'s'},
+        {x:rect.x, y:rect.y+rect.h/2, c:'w'},
+        {x:rect.x+rect.w, y:rect.y+rect.h/2, c:'e'},
       ];
       ctx.save();
-      ctx.fillStyle = '#0f6';
-      for(const p of corners){ ctx.fillRect(p.x-3, p.y-3, 6, 6); }
+      // Esquinas (verde)
+      ctx.fillStyle = '#17d47b';
+      for(const p of corners){ ctx.fillRect(p.x-4, p.y-4, 8, 8); }
+      // Lados (amarillo)
       ctx.fillStyle = '#ffd866';
-      for(const p of edges){ ctx.fillRect(p.x-3, p.y-3, 6, 6); }
+      for(const p of edges){ ctx.fillRect(p.x-4, p.y-4, 8, 8); }
       ctx.restore();
+    }
+
+    // ====== Redimensionado robusto por handler ======
+    function resizeFromHandlePx(startPx, handle, dx, dy){
+      let {x, y, w, h} = startPx;
+
+      const minW = MIN_SIZE_PX;
+      const minH = MIN_SIZE_PX;
+      const maxX = drawSize.w;
+      const maxY = drawSize.h;
+
+      const right = x + w;
+      const bottom = y + h;
+
+      function clampRect(){
+        if (x < 0){ w += x; x = 0; }
+        if (y < 0){ h += y; y = 0; }
+        if (x + w > maxX){ w = maxX - x; }
+        if (y + h > maxY){ h = maxY - y; }
+        if (w < minW){ w = minW; }
+        if (h < minH){ h = minH; }
+      }
+
+      switch(handle){
+        case 'e': {
+          let newRight = right + dx;
+          newRight = Math.min(newRight, maxX);
+          w = Math.max(minW, newRight - x);
+          break;
+        }
+        case 'w': {
+          let newLeft = x + dx;
+          newLeft = Math.max(0, Math.min(newLeft, right - minW));
+          w = right - newLeft;
+          x = newLeft;
+          break;
+        }
+        case 's': {
+          let newBottom = bottom + dy;
+          newBottom = Math.min(newBottom, maxY);
+          h = Math.max(minH, newBottom - y);
+          break;
+        }
+        case 'n': {
+          let newTop = y + dy;
+          newTop = Math.max(0, Math.min(newTop, bottom - minH));
+          h = bottom - newTop;
+          y = newTop;
+          break;
+        }
+        case 'ne': {
+          let newTop = y + dy;
+          newTop = Math.max(0, Math.min(newTop, bottom - minH));
+          h = bottom - newTop;
+          y = newTop;
+
+          let newRight = right + dx;
+          newRight = Math.min(newRight, maxX);
+          w = Math.max(minW, newRight - x);
+          break;
+        }
+        case 'nw': {
+          let newTop = y + dy;
+          newTop = Math.max(0, Math.min(newTop, bottom - minH));
+          h = bottom - newTop;
+          y = newTop;
+
+          let newLeft = x + dx;
+          newLeft = Math.max(0, Math.min(newLeft, right - minW));
+          w = right - newLeft;
+          x = newLeft;
+          break;
+        }
+        case 'se': {
+          let newBottom = bottom + dy;
+          newBottom = Math.min(newBottom, maxY);
+          h = Math.max(minH, newBottom - y);
+
+          let newRight = right + dx;
+          newRight = Math.min(newRight, maxX);
+          w = Math.max(minW, newRight - x);
+          break;
+        }
+        case 'sw': {
+          let newBottom = bottom + dy;
+          newBottom = Math.min(newBottom, maxY);
+          h = Math.max(minH, newBottom - y);
+
+          let newLeft = x + dx;
+          newLeft = Math.max(0, Math.min(newLeft, right - minW));
+          w = right - newLeft;
+          x = newLeft;
+          break;
+        }
+        default: {
+          x = Math.max(0, Math.min(maxX - w, x + dx));
+          y = Math.max(0, Math.min(maxY - h, y + dy));
+        }
+      }
+
+      clampRect();
+      return {x, y, w, h};
     }
 
     function drawROIOverlay(){
@@ -901,6 +805,9 @@
         const dw = Math.round(sw * scale), dh = Math.round(sh * scale);
         const dx = Math.round((roiPreview.width - dw)/2), dy = Math.round((roiPreview.height - dh)/2);
         roiCtx.drawImage(imgCanvasFull, sx, sy, sw, sh, dx, dy, dw, dh);
+
+        // sincronizar ambos sliders
+        updateRoiSlidersFromCurrent();
       };
       base.src = imgCanvasFull.toDataURL('image/png');
     }
@@ -913,7 +820,8 @@
       const sh = Math.max(1, Math.round(roi.h * imgCanvasFull.height));
       const temp = document.createElement('canvas');
       temp.width = sw; temp.height = sh;
-      temp.getContext('2d').drawImage(imgCanvasFull, sx, sy, sw, sh, 0, 0, sw, sh);
+      const tctx = temp.getContext('2d');
+      tctx.drawImage(imgCanvasFull, sx, sy, sw, sh, 0, 0, sw, sh);
       return temp;
     }
 
@@ -968,9 +876,7 @@
       facingMode = (facingMode==='environment')? 'user' : 'environment';
       if(running) startCamera();
     });
-    $('#btnCaptureCamROI').on('click', ()=>captureRoiFromCamera(false));
-    $('#btnCaptureCamROIRaw').on('click', captureRoiRawFromCamera);
-    $('#btnProcessCurrentROI').on('click', processCurrentROI);
+    $('#btnCaptureCamROI').on('click', captureRoiFromCamera);
 
     // Auto-captura toggles
     $('#chkAuto').on('change', function(){ isAuto = !!this.checked; setStatus(isAuto?'Auto-captura ON':'Auto-captura OFF','info'); });
@@ -1005,6 +911,7 @@
       const raw = await decodeFromCanvas(roiCanvas);
       if(raw){
         setStatus('Código detectado en ROI','ok');
+        // mostrar preview del ROI (imagen)
         roiCtx.clearRect(0,0,roiPreview.width,roiPreview.height);
         const scale = Math.min(roiPreview.width / roiCanvas.width, roiPreview.height / roiCanvas.height);
         const dw = Math.round(roiCanvas.width * scale), dh = Math.round(roiCanvas.height * scale);
@@ -1031,30 +938,43 @@
       start = {x:mx, y:my};
       startRoi = {...roi};
     });
+
     window.addEventListener('mousemove', (e)=>{
-      if(!imgLoaded || !action) return;
       const rect = imgCanvasPreview.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-      const dx = mx - start.x, dy = my - start.y;
-      let rpx = roiToPx(startRoi);
 
-      if(action==='move'){ rpx.x += dx; rpx.y += dy; }
-      else{
-        if(action?.includes('e')) rpx.w += dx;
-        if(action?.includes('s')) rpx.h += dy;
-        if(action?.includes('w')){ rpx.x += dx; rpx.w -= dx; }
-        if(action?.includes('n')){ rpx.y += dy; rpx.h -= dy; }
+      // Cursor contextual
+      if(!imgLoaded || !action){
+        const rpx = roiToPx(roi);
+        const h = getHandleAt(mx, my, rpx);
+        let cursor = 'crosshair';
+        if (h==='move') cursor = 'move';
+        else if (h==='n' || h==='s') cursor = 'ns-resize';
+        else if (h==='e' || h==='w') cursor = 'ew-resize';
+        else if (h==='ne' || h==='sw') cursor = 'nesw-resize';
+        else if (h==='nw' || h==='se') cursor = 'nwse-resize';
+        imgCanvasPreview.style.cursor = cursor;
       }
-      rpx.w = Math.max(MIN_SIZE_PX, rpx.w);
-      rpx.h = Math.max(MIN_SIZE_PX, rpx.h);
-      rpx.x = Math.max(0, Math.min(drawSize.w - rpx.w, rpx.x));
-      rpx.y = Math.max(0, Math.min(drawSize.h - rpx.h, rpx.y));
-      roi = pxToRoi(rpx);
+
+      if(!imgLoaded || !action) return;
+
+      const dx = mx - start.x, dy = my - start.y;
+      const startPx = roiToPx(startRoi);
+
+      let newPx;
+      if(action==='move'){
+        newPx = resizeFromHandlePx(startPx, 'move', dx, dy);
+      }else{
+        newPx = resizeFromHandlePx(startPx, action, dx, dy);
+      }
+
+      roi = pxToRoi(newPx);
       drawROIOverlay();
     });
+
     window.addEventListener('mouseup', ()=>{ action=null; });
 
-    // Touch (drag + pinch) en canvas de imagen
+    // Touch (drag + pinch)
     imgCanvasPreview.addEventListener('touchstart', (e)=>{
       if(!imgLoaded) return;
       e.preventDefault();
@@ -1074,29 +994,26 @@
         pinchStartRoi = {...roi};
       }
     }, {passive:false});
+
     imgCanvasPreview.addEventListener('touchmove', (e)=>{
       if(!imgLoaded) return;
       e.preventDefault();
       const touches = Array.from(e.touches);
+
       if(touches.length===1 && action){
         const rect = imgCanvasPreview.getBoundingClientRect();
         const mx = touches[0].clientX - rect.left, my = touches[0].clientY - rect.top;
         const dx = mx - start.x, dy = my - start.y;
-        let rpx = roiToPx(startRoi);
+        const startPx = roiToPx(startRoi);
 
-        if(action==='move'){ rpx.x += dx; rpx.y += dy; }
-        else{
-          if(action.includes('e')) rpx.w += dx;
-          if(action.includes('s')) rpx.h += dy;
-          if(action.includes('w')){ rpx.x += dx; rpx.w -= dx; }
-          if(action.includes('n')){ rpx.y += dy; rpx.h -= dy; }
+        let newPx;
+        if(action==='move'){
+          newPx = resizeFromHandlePx(startPx, 'move', dx, dy);
+        }else{
+          newPx = resizeFromHandlePx(startPx, action, dx, dy);
         }
 
-        rpx.w = Math.max(MIN_SIZE_PX, rpx.w);
-        rpx.h = Math.max(MIN_SIZE_PX, rpx.h);
-        rpx.x = Math.max(0, Math.min(drawSize.w - rpx.w, rpx.x));
-        rpx.y = Math.max(0, Math.min(drawSize.h - rpx.h, rpx.y));
-        roi = pxToRoi(rpx);
+        roi = pxToRoi(newPx);
         drawROIOverlay();
       } else if(touches.length===2 && pinchStartRoi){
         const d = dist2(touches[0], touches[1]);
@@ -1114,6 +1031,7 @@
         drawROIOverlay();
       }
     }, {passive:false});
+
     imgCanvasPreview.addEventListener('touchend', (e)=>{ e.preventDefault(); action=null; pinchStartRoi=null; activeTouches.clear(); }, {passive:false});
     function dist2(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
 
@@ -1150,6 +1068,90 @@
 
     // Enfocar el canvas al hacer click para habilitar teclado
     imgCanvasPreview.addEventListener('click', ()=> imgCanvasPreview.focus());
+
+    // ====== CONTROLES DE ANCHO (slider) ======
+    const $rng = $('#rngRoiScale');
+    const $lbl = $('#lblRoiScale');
+    $('#btnRoiMinus').on('click', ()=> { setRoiScaleUI(($rng.val()|0) - 10); });
+    $('#btnRoiPlus').on('click', ()=> { setRoiScaleUI(($rng.val()|0) + 10); });
+    $('#btnRoiReset').on('click', ()=> { baselineRoi = {...roi}; setRoiScaleUI(100); setRoiHeightUI(100); });
+    $rng.on('input', function(){ setRoiScaleUI(parseInt(this.value,10)); });
+
+    function setRoiScaleUI(perc){
+      if(!baselineRoi) baselineRoi = {...roi};
+      const p = clamp(perc, 10, 400);
+      $rng.val(String(p));
+      $lbl.text(`${p}%`);
+      scaleRoiWidthAroundCenterFromBaseline(p/100);
+      drawROIOverlay();
+    }
+
+    function scaleRoiWidthAroundCenterFromBaseline(mult){
+      const cy = roi.y + roi.h/2; // mantener centro vertical
+      const cx = roi.x + roi.w/2;
+      let w = baselineRoi.w * mult;
+      let h = roi.h; // no cambia altura aquí
+
+      const minW = MIN_SIZE_PX / drawSize.w;
+      const minH = MIN_SIZE_PX / drawSize.h;
+      w = Math.max(minW, Math.min(1, w));
+      h = Math.max(minH, Math.min(1, h));
+
+      let x = cx - w/2;
+      let y = cy - h/2;
+
+      x = Math.max(0, Math.min(1 - w, x));
+      y = Math.max(0, Math.min(1 - h, y));
+
+      roi = {x,y,w,h};
+    }
+
+    // ====== NUEVO: CONTROLES DE ALTURA (slider) ======
+    const $rngH = $('#rngRoiHScale');
+    const $lblH = $('#lblRoiHScale');
+    $('#btnRoiHMinus').on('click', ()=> { setRoiHeightUI(($rngH.val()|0) - 10); });
+    $('#btnRoiHPlus').on('click', ()=> { setRoiHeightUI(($rngH.val()|0) + 10); });
+    $('#btnRoiHReset').on('click', ()=> { baselineRoi = {...roi}; setRoiHeightUI(100); setRoiScaleUI(100); });
+    $rngH.on('input', function(){ setRoiHeightUI(parseInt(this.value,10)); });
+
+    function setRoiHeightUI(perc){
+      if(!baselineRoi) baselineRoi = {...roi};
+      const p = clamp(perc, 10, 400);
+      $rngH.val(String(p));
+      $lblH.text(`${p}%`);
+      scaleRoiHeightAroundCenterFromBaseline(p/100);
+      drawROIOverlay();
+    }
+
+    function scaleRoiHeightAroundCenterFromBaseline(mult){
+      const cx = roi.x + roi.w/2; // mantener centro horizontal
+      const cy = roi.y + roi.h/2;
+      let w = roi.w; // no cambia ancho aquí
+      let h = baselineRoi.h * mult;
+
+      const minW = MIN_SIZE_PX / drawSize.w;
+      const minH = MIN_SIZE_PX / drawSize.h;
+      w = Math.max(minW, Math.min(1, w));
+      h = Math.max(minH, Math.min(1, h));
+
+      let x = cx - w/2;
+      let y = cy - h/2;
+
+      x = Math.max(0, Math.min(1 - w, x));
+      y = Math.max(0, Math.min(1 - h, y));
+
+      roi = {x,y,w,h};
+    }
+    // ====== FIN NUEVO ======
+
+    // Sincronización de sliders desde el ROI actual
+    function updateRoiSlidersFromCurrent(){
+      if(!baselineRoi) return;
+      const percW = clamp(Math.round((roi.w / baselineRoi.w) * 100), 10, 400);
+      const percH = clamp(Math.round((roi.h / baselineRoi.h) * 100), 10, 400);
+      if(($rng.val()|0) !== percW){ $rng.val(String(percW)); $lbl.text(`${percW}%`); }
+      if(($rngH.val()|0) !== percH){ $rngH.val(String(percH)); $lblH.text(`${percH}%`); }
+    }
 
     // ====== Inicio ======
     loadModel();
