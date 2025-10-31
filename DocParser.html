@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Document Scanner — PDF417 & MRZ</title>
 
-  <script src="https://raw.githubusercontent.com/ravendano014/mrz/refs/heads/main/BigInteger.min.js"></script>
-  <script src="https://rutvikpanchal.github.io/PDF417CodeScanner/vendor/zxing/index.js"></script>
+  <!-- ZXing (UMD) expone window.ZXing.* para códigos de barras (incluye PDF417) -->
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <!-- Tesseract para OCR (MRZ) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
@@ -47,11 +48,6 @@
       --border:#e5e7eb;
       --chip:#eef2ff;
       --shadow: 0 8px 24px rgba(0,0,0,.08);
-    }
-
-    /* Respeta preferencia SO al inicio (se sobreescribe con JS si hay localStorage) */
-    @media (prefers-color-scheme: light){
-      :root:not([data-theme="dark"]) { data-theme: light; }
     }
 
     /* ===== BASE ===== */
@@ -160,7 +156,7 @@
 
     .grid{
       display:grid;
-      grid-template-columns: 1fr 1fr; /* Ambas tablas ocupan mitad de pantalla */
+      grid-template-columns: 1fr 1fr;
       gap:18px;
     }
     @media (max-width: 860px){
@@ -189,17 +185,17 @@
     /* ===== RESULT WRAPPERS (Scroll) ===== */
     .scroll-wrap{
       position: relative;
-      overflow: auto;             /* Scrollbars horizontales y verticales */
+      overflow: auto;
       border-radius:10px;
       border:1px solid var(--border);
       background:var(--panel-alt);
-      flex:1;                     /* Que crezca dentro del panel */
-      max-height: 300px;          /* Altura fija para ver ambos paneles completos */
+      flex:1;
+      max-height: 300px;
     }
 
     /* ===== TABLAS ===== */
     table.result-table{
-      width: max-content;         /* Mantén el ancho natural (inicial) de las columnas */
+      width: max-content;         /* Mantén el ancho natural de columnas */
       border-collapse: collapse;
       font-size:14px;
     }
@@ -212,7 +208,7 @@
     }
     .result-table th, .result-table td{
       padding:8px 10px; text-align:left;
-      white-space: nowrap;        /* No envolver: conserva el ancho "original" */
+      white-space: nowrap;        /* No envolver: conserva ancho "original" */
       border-bottom:1px dashed var(--border);
     }
     .result-table tbody tr:nth-child(odd){
@@ -410,7 +406,7 @@
     // ========= Decodificar =========
     decodeBtn.addEventListener('click', async () => {
       if (isProcessing) return;
-      if (!currentImageBlob && !preview.src.includes('reverse_side_sample.jpg')){
+      if (!currentImageBlob && !preview.src){
         alert('Primero selecciona una imagen.');
         return;
       }
@@ -428,21 +424,31 @@
       }
     });
 
-    // ========= PDF417 =========
+    // ========= PDF417 con @zxing/library (UMD) =========
     async function processPDF417(){
       pdf417Error.classList.add('hidden');
       try{
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = preview.naturalWidth;
-        canvas.height = preview.naturalHeight;
-        ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
+        // Asegúrate de que la imagen esté cargada completamente
+        await ensureImageLoaded(preview);
 
-        const source = new ZXing.BitmapLuminanceSource(ctx, preview);
-        const binarizer = new ZXing.Common.HybridBinarizer(source);
-        const bitmap = new ZXing.BinaryBitmap(binarizer);
-        const result = ZXing.PDF417.PDF417Reader.decode(bitmap, null, false);
+        // 1) Intento directo con el lector de alto nivel
+        const reader = new ZXing.BrowserPDF417Reader();
+        let result = null;
+        try{
+          result = await reader.decodeFromImageElement(preview);
+        }catch(e1){
+          // 2) Fallback: dibujar en canvas (por si el elemento <img> no está en el DOM visible)
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = preview.naturalWidth || preview.width;
+          canvas.height = preview.naturalHeight || preview.height;
+          if (!canvas.width || !canvas.height) throw e1;
 
+          ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
+          result = await reader.decodeFromCanvas(canvas);
+        }
+
+        // Extraer texto y parsear formato DUI
         tryAutoParseDUIFromPDF417(result);
       }catch(err){
         pdf417Error.classList.remove('hidden');
@@ -451,7 +457,15 @@
       }
     }
 
-    // ========= DUI Auto-Parse (desde JSON/Text de PDF417) =========
+    function ensureImageLoaded(img){
+      return new Promise((resolve, reject)=>{
+        if (img.complete && img.naturalWidth > 0) return resolve();
+        img.onload = ()=> resolve();
+        img.onerror = (e)=> reject(e);
+      });
+    }
+
+    // ========= DUI Auto-Parse (desde texto de PDF417) =========
     function tryAutoParseDUIFromPDF417(resultObj){
       const rawText = extractRawTextFromPdf417(resultObj);
       currentDuiRawText = rawText || null;
@@ -478,10 +492,23 @@
     }
 
     function extractRawTextFromPdf417(obj){
+      // Soporta:
+      // - ZXing Result (UMD) con getText()
+      // - objetos con .text / .rawText
+      // - cadenas JSON serializadas o arreglos de resultados
       try{
         if (!obj) return null;
+
+        if (typeof obj.getText === 'function'){
+          const t = obj.getText();
+          if (t && typeof t === 'string' && t.trim()) return t.trim();
+        }
         if (typeof obj === 'string'){
-          try { obj = JSON.parse(obj); } catch(e){ return null; }
+          try { obj = JSON.parse(obj); } catch(e){
+            // Si es una cadena que YA es el texto crudo con ||
+            if (obj.includes('||')) return obj.trim();
+            return null;
+          }
         }
         if (Array.isArray(obj)){
           for (const it of obj){
@@ -531,9 +558,7 @@
       ];
 
       const obj = {};
-      FIELDS.forEach((name, idx)=>{
-        obj[name] = (parts[idx] ?? '').trim();
-      });
+      FIELDS.forEach((name, idx)=>{ obj[name] = (parts[idx] ?? '').trim(); });
 
       return {
         fields: obj,
@@ -553,7 +578,7 @@
       return html;
     }
 
-    // ========= MRZ =========
+    // ========= MRZ (OCR + parseo) =========
     async function processMRZ(){
       mrzError.classList.add('hidden');
       statusEl.classList.remove('hidden');
@@ -582,7 +607,7 @@
         metaEl.innerHTML = toKV({
           'Confianza OCR': (result.data?.confidence != null) ? result.data.confidence.toFixed(1)+'%' : '—',
           'Tipo MRZ detectado': block?.type || 'Indeterminado',
-          'Líneas MRZ crudas': block ? block.lines.join(' | ') : '—' 
+          'Líneas MRZ crudas': block ? block.lines.join(' | ') : '—'
         });
 
         let parsed = {};
@@ -817,16 +842,6 @@
     function generateFormattedJSON(parsed, block){
       if (!parsed || Object.keys(parsed).length === 0) return { error:"Could not extract MRZ data" };
       const formatType = parsed.format ? parsed.format.split('-')[0] : 'Unknown';
-      const birthDateParts = parsed.birthDate ? {
-        yy: parsed.birthDate.slice(2,4),
-        mm: parsed.birthDate.slice(5,7),
-        dd: parsed.birthDate.slice(8,10)
-      } : null;
-      const expiryDateParts = parsed.expiryDate ? {
-        yy: parsed.expiryDate.slice(2,4),
-        mm: parsed.expiryDate.slice(5,7),
-        dd: parsed.expiryDate.slice(8,10)
-      } : null;
       return {
         format: formatType,
         raw: block ? block.lines : [],
@@ -913,5 +928,3 @@
   </script>
 </body>
 </html>
-
-
