@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MRZ OCR • Cámara / Imagen • ROIs • Tesseract + InferenceJS</title>
+
+<!-- ====== Librerías por CDN ====== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/inferencejs@1.1.3"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style>
+  :root{
+    --bg:#0b1220; --bg-soft:#0f1830; --panel:#121a33; --text:#e6ecff; --muted:#9fb2ff;
+    --accent:#5b8cff; --accent-2:#24d1b5; --danger:#ff5c7a; --ok:#41d17d; --warn:#ffd166;
+    --border:#22325a; --shadow:0 8px 24px rgba(0,10,40,.35); --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji;}
+  header{position:sticky; top:0; z-index:5; backdrop-filter: blur(8px); background:linear-gradient(180deg, rgba(11,18,32,.95), rgba(11,18,32,.7)); border-bottom:1px solid var(--border);}
+  .bar{display:flex; gap:.75rem; align-items:center; padding:.8rem 1rem; flex-wrap:wrap;}
+  .bar h1{font-size:1rem; margin:.25rem 0; color:var(--muted); font-weight:600}
+  .spacer{flex:1}
+  .btn{appearance:none; border:1px solid var(--border); color:var(--text); background:linear-gradient(180deg, var(--panel), #0d1530); padding:.55rem .9rem; border-radius:12px; cursor:pointer; box-shadow: var(--shadow); font-weight:600; font-size:.92rem;}
+  .btn:hover{border-color:#2a3e78}
+  .btn.ok{border-color:transparent; background:linear-gradient(180deg, #1b7d4f, #12633f)}
+  .btn.warn{background:linear-gradient(180deg, #7d6a1b, #635012)}
+  .btn.danger{background:linear-gradient(180deg, #8f1f36, #5b0f1f)}
+  .btn.small{padding:.4rem .65rem; font-size:.85rem}
+  .btn:disabled{opacity:.45; cursor:not-allowed}
+
+  .grid{display:grid; grid-template-columns: 1.1fr .9fr; gap:1rem; padding:1rem; height:calc(100% - 74px);}
+  @media (max-width: 1100px){ .grid{grid-template-columns:1fr; height:auto} }
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow: var(--shadow); overflow:hidden; min-height:300px;}
+  .card .card-h{padding:.75rem 1rem; display:flex; align-items:center; gap:.6rem; border-bottom:1px solid var(--border); background:linear-gradient(180deg, rgba(20,30,60,.45), rgba(5,10,30,.35));}
+  .card .card-h h2{font-size:1rem; margin:0; color:#cfe0ff}
+  .card .card-b{padding:0; position:relative}
+  .row{display:flex; gap:.75rem; flex-wrap:wrap}
+
+  /* Vista (cámara/imagen) */
+  .view{display:grid; grid-template-columns: 1fr 380px; gap:1rem; padding:1rem;}
+  @media (max-width:1200px){ .view{grid-template-columns: 1fr} }
+  .stage{position:relative; border:1px dashed var(--border); border-radius:12px; overflow:hidden; background:#0a1024; min-height:300px;}
+  .overlay{ position:absolute; inset:0; pointer-events:none; }
+  video, canvas.stage-canvas, img#imgLoaded{max-width:100%; width:100%; height:auto; display:block; user-select:none;}
+  canvas.stage-canvas{position:absolute; inset:0}
+  .panel{ display:flex; flex-direction:column; gap:.5rem; }
+  .panel .section{border:1px solid var(--border); border-radius:12px; padding:.75rem; background:#0d1530;}
+  .section h3{margin:.25rem 0 .5rem 0; font-size:.95rem; color:#cfe0ff}
+
+  /* Resultados */
+  .results{padding:1rem; display:grid; grid-template-rows:auto 1fr}
+  .tables{display:grid; grid-template-columns: 1.05fr .95fr; gap:1rem}
+  @media (max-width:1000px){ .tables{grid-template-columns:1fr} }
+  .tbl{border:1px solid var(--border); border-radius:12px; overflow:auto; max-height:480px; background:#0d1530;}
+  .tbl table{border-collapse:collapse; width:100%; min-width:640px}
+  .tbl th, .tbl td{border-bottom:1px solid #1d2a52; padding:.5rem .65rem; text-align:left; white-space:nowrap}
+  .tbl th{position:sticky; top:0; background:#12204a; color:#e6ecff}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.92rem}
+  .pill{display:inline-block; padding:.15rem .5rem; border-radius:999px; background:#14224c; border:1px solid var(--border); color:#cfe0ff}
+
+  /* ROIs */
+  .roi{ position:absolute; border:2px solid var(--accent); background:rgba(91,140,255,.08); }
+  .roi.selected{ border-color:var(--accent-2); box-shadow:0 0 0 2px rgba(36,209,181,.25) inset }
+  .handle{position:absolute; width:12px; height:12px; background:var(--accent-2); border:2px solid #0c162e; border-radius:2px; box-shadow: var(--shadow); touch-action:none;}
+  .handle.nw{top:-7px; left:-7px} .handle.n {top:-7px; left:calc(50% - 6px)} .handle.ne{top:-7px; right:-7px}
+  .handle.e {top:calc(50% - 6px); right:-7px} .handle.se{bottom:-7px; right:-7px} .handle.s {bottom:-7px; left:calc(50% - 6px)}
+  .handle.sw{bottom:-7px; left:-7px} .handle.w {top:calc(50% - 6px); left:-7px}
+
+  .legend{font-size:.85rem; color:var(--muted)}
+  .preview{width:100%; aspect-ratio: 4/1; object-fit:contain; border:1px solid var(--border); border-radius:10px; background:#0b1225;}
+  .status{font-size:.9rem; color:#b9c8ff}
+
+  /* Editable raw text area */
+  .raw-editor{width:100%; min-height:180px; max-height:400px; resize:vertical; background:#0b1225; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.6rem .75rem; font-size:.95rem; line-height:1.35;}
+</style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <h1>MRZ OCR & Parse • Cámara / Imagen • ROIs</h1>
+      <span id="modelState" class="pill">Modelo: cargando…</span>
+      <span id="camState" class="pill">Cámara: detenida</span>
+      <div class="spacer"></div>
+      <button id="btnCamStart" class="btn ok">Iniciar cámara</button>
+      <button id="btnCamStop"  class="btn danger" disabled>Detener cámara</button>
+      <button id="btnShot"     class="btn" disabled>Capturar imagen</button>
+      <button id="btnShotMRZ"  class="btn" disabled>Capturar solo MRZ</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- ====== Vista (Cámara / Imagen) ====== -->
+    <section class="card">
+      <div class="card-h"><h2>Vista / Edición</h2></div>
+      <div class="card-b view">
+        <div class="stage" id="stage">
+          <video id="video" autoplay muted playsinline style="display:none;"></video>
+          <img id="imgLoaded" alt="Imagen cargada" style="display:none;">
+          <canvas id="cvOverlay" class="stage-canvas"></canvas>
+          <div id="roiLayer" class="overlay" style="pointer-events:auto;"></div>
+        </div>
+
+        <aside class="panel">
+          <div class="section">
+            <h3>Cargar imagen</h3>
+            <div class="row">
+              <input id="fileInput" type="file" accept="image/*" class="btn" />
+              <button id="btnExtractAll" class="btn">Extraer y Parsear (Imagen Completa)</button>
+            </div>
+            <p class="legend">Sugerencia: usa fotos enfocadas y horizontales. Si hay MRZ, intenta que quede plano y nítido.</p>
+          </div>
+
+          <div class="section">
+            <h3>ROIs (Regiones de Interés)</h3>
+            <div class="row">
+              <button id="btnAddROI" class="btn small">Agregar ROI</button>
+              <button id="btnDelROI" class="btn small danger" disabled>Eliminar ROI</button>
+              <button id="btnOCRROI" class="btn small">Extraer & Parsear ROI</button>
+            </div>
+            <p class="legend">Arrastra para mover. Usa los 8 puntos para estirar. Toca/click para seleccionar.</p>
+          </div>
+
+          <div class="section">
+            <h3>Previo MRZ detectado</h3>
+            <img id="mrzPreview" class="preview" alt="MRZ recortado (previo)">
+            <div class="row" style="margin-top:.5rem;">
+              <button id="btnSavePreview" class="btn small">Guardar captura</button>
+            </div>
+            <p class="status" id="autoStatus">En espera…</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ====== Resultados ====== -->
+    <section class="card results">
+      <div class="card-h"><h2>Resultados</h2></div>
+      <div class="card-b" style="padding:1rem;">
+        <div class="tables">
+          <div class="tbl" style="padding: .6rem;">
+            <h3 style="margin:.25rem 0 .5rem 0;">Texto crudo (editable)</h3>
+            <textarea id="rawEdit" class="raw-editor mono" placeholder="Aquí aparecerá el OCR. Puedes editarlo."></textarea>
+            <div class="row" style="margin-top:.5rem;">
+              <button id="btnParseFromRaw" class="btn small ok">Parsear Texto Crudo</button>
+              <button id="btnCopyRaw" class="btn small">Copiar texto crudo</button>
+              <span id="copyHint" class="legend" style="align-self:center; display:none;">¡Copiado!</span>
+            </div>
+          </div>
+          <div class="tbl" id="tblParsed">
+            <table>
+              <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+              <tbody id="parsedBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+(function(){
+  // ====== Estado global ======
+  const $modelState = $("#modelState");
+  const $camState   = $("#camState");
+  const $video      = $("#video")[0];
+  const $img        = $("#imgLoaded")[0];
+  const $stage      = $("#stage");
+  const $roiLayer   = $("#roiLayer");
+  const $cv         = $("#cvOverlay")[0];
+  const ctx         = $cv.getContext("2d");
+  const mrzPreview  = $("#mrzPreview")[0];
+  const autoStatus  = $("#autoStatus");
+  const $rawEdit    = $("#rawEdit");
+
+  const $btnSavePreview  = $("#btnSavePreview");
+  const $btnParseFromRaw = $("#btnParseFromRaw");
+  const $btnCopyRaw      = $("#btnCopyRaw");
+  const $copyHint        = $("#copyHint");
+
+  let inferEngine, workerId = null;
+  let stream = null;
+  let usingCamera = false;
+  let detRAF = 0;
+  let scaleX = 1, scaleY = 1;
+  let mediaW = 1280, mediaH = 720;
+
+  // Firma de la última detección confirmada
+  let lastPromptSig = null;      // última firma preguntada
+  let lastConfirmedSig = null;   // última firma que reemplazó resultados
+
+  // ====== UI helpers ======
+  function setModelState(txt, cls){ $modelState.text(txt); $modelState[0].style.background = cls || '#14224c'; }
+  function setCamState(txt, color){ $camState.text(txt); $camState[0].style.background = color || '#14224c'; }
+  function printParsed(obj){
+    const $b = $("#parsedBody").empty();
+    for(const k of Object.keys(obj)){ $b.append(`<tr><td>${escapeHtml(k)}</td><td class="mono">${escapeHtml(obj[k] ?? "")}</td></tr>`); }
+  }
+  function escapeHtml(s){ return (s??"").toString().replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m])); }
+
+  // ====== Redimensionar canvas a contenedor ======
+  function fitCanvasToMedia(w, h){
+    $cv.width = w; $cv.height = h; mediaW = w; mediaH = h;
+    const rect = $stage[0].getBoundingClientRect();
+    const contW = rect.width, contH = rect.height;
+    const rMedia = w / h, rCont = contW / contH;
+    let drawW, drawH;
+    if(rCont > rMedia){ drawH = contH; drawW = drawH * rMedia; } else { drawW = contW; drawH = drawW / rMedia; }
+    Object.assign($cv.style, {width:drawW+"px", height:drawH+"px", left:((contW-drawW)/2)+"px", top:((contH-drawH)/2)+"px"});
+    $roiLayer.css({ width: drawW+"px", height: drawH+"px", left: ((contW-drawW)/2)+"px", top: ((contH-drawW)/2)+"px" });
+    scaleX = drawW / w; scaleY = drawH / h;
+  }
+
+  // ====== Cámara ======
+  async function startCamera(){
+    if(usingCamera) return;
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
+      $video.srcObject = stream; await $video.play();
+      usingCamera = true; $("#video").show(); $("#imgLoaded").hide();
+      setCamState("Cámara: activa", "#175a3c");
+      $("#btnCamStart").prop("disabled", true);
+      $("#btnCamStop, #btnShot, #btnShotMRZ").prop("disabled", false);
+      fitCanvasToMedia($video.videoWidth || 1280, $video.videoHeight || 720);
+      loopDetect();
+    }catch(e){ console.error(e); setCamState("Cámara: error", "#8f1f36"); }
+  }
+  function stopCamera(){
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+    usingCamera = false; cancelAnimationFrame(detRAF); $("#video").hide();
+    setCamState("Cámara: detenida"); $("#btnCamStart").prop("disabled", false);
+    $("#btnCamStop, #btnShot, #btnShotMRZ").prop("disabled", true);
+  }
+
+  // ====== InferenceJS (Roboflow) ======
+  async function loadModel(){
+    try{
+      setModelState("Modelo: cargando…");
+      const { InferenceEngine } = inferencejs;
+      inferEngine = new InferenceEngine();
+      workerId = await inferEngine.startWorker("mrz-ye7hu-5jxuj","1","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+      setModelState("Modelo: listo", "#175a3c");
+    }catch(e){ console.error(e); setModelState("Modelo: error", "#8f1f36"); }
+  }
+
+  function drawBoxes(preds){
+    ctx.clearRect(0,0,$cv.width,$cv.height);
+    for(const p of preds){
+      const {x,y,width,height} = p.bbox;
+      ctx.strokeStyle = "#5b8cff"; ctx.lineWidth = 4;
+      ctx.strokeRect(x - width/2, y - height/2, width, height);
+      ctx.fillStyle = "#5b8cff";
+      const txt = p.class || "mrz"; const tw = ctx.measureText(txt).width;
+      ctx.fillRect(x - width/2, y - height/2 - 22, tw+10, 20);
+      ctx.fillStyle = "#0b1220"; ctx.font = "bold 14px ui-sans-serif";
+      ctx.fillText(txt, x - width/2 + 5, y - height/2 - 7);
+    }
+  }
+
+  // Crea firma compacta para evitar preguntar en cada frame
+  function sigFromBBox(b){
+    if(!b) return "";
+    const x = Math.round(b.x), y = Math.round(b.y), w = Math.round(b.width), h = Math.round(b.height);
+    return `${x},${y},${w},${h}`;
+  }
+
+  async function loopDetect(){
+    if(!usingCamera || !workerId) return;
+    const { CVImage } = inferencejs;
+    try{
+      const preds = await inferEngine.infer(workerId, new CVImage($video));
+      drawBoxes(preds);
+
+      const best = chooseBestMRZ(preds);
+      if(best){
+        const sig = sigFromBBox(best.bbox);
+
+        if(sig && sig !== lastPromptSig){
+          lastPromptSig = sig;
+          autoStatus.text("MRZ detectado. Vista previa lista.");
+          const crop = cropFromMedia($video, best.bbox);
+          mrzPreview.src = crop.toDataURL("image/jpeg", .92);
+
+          const doIt = confirm("Se detectó un MRZ. ¿Deseas extraer el texto crudo y parsearlo?");
+          if(doIt){
+            if(sig !== lastConfirmedSig){
+              await ocrAndParse(crop);       // aplica nuevo resultado
+              lastConfirmedSig = sig;
+              autoStatus.text("MRZ extraído y parseado.");
+            }
+          }else{
+            autoStatus.text("Vista previa actualizada. Resultados previos preservados.");
+          }
+        }
+      }else{
+        autoStatus.text("En espera…");
+      }
+    }catch(e){ console.warn("Detect error", e); }
+    detRAF = requestAnimationFrame(loopDetect);
+  }
+
+  function chooseBestMRZ(preds){
+    if(!Array.isArray(preds) || !preds.length) return null;
+    let best=null,score=-1;
+    for(const p of preds){ const s = p.bbox.width * (p.class?.includes("mrz") ? 1.2 : 1); if(s>score){score=s; best=p;} }
+    return best;
+  }
+
+  // ====== Recortes ======
+  function cropFromMedia(mediaEl, bbox){
+    const c = document.createElement("canvas");
+    const w = Math.max(1, Math.floor(bbox.width)), h = Math.max(1, Math.floor(bbox.height));
+    c.width = w; c.height = h; c.getContext("2d").drawImage(
+      mediaEl, Math.max(0, Math.floor(bbox.x - bbox.width/2)), Math.max(0, Math.floor(bbox.y - bbox.height/2)), w, h, 0, 0, w, h
+    );
+    return c;
+  }
+  function cropFromImage(imgEl, roi){
+    const x = Math.round(roi.x / scaleX), y = Math.round(roi.y / scaleY);
+    const w = Math.round(roi.w / scaleX), h = Math.round(roi.h / scaleY);
+    const c = document.createElement("canvas"); c.width = Math.max(1,w); c.height = Math.max(1,h);
+    c.getContext("2d").drawImage(imgEl, x, y, w, h, 0, 0, w, h); return c;
+  }
+
+  // ====== OCR ======
+  async function ocrCanvas(canvas){
+    const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_blacklist: '{}[]|`~' });
+    return text.trim();
+  }
+
+  // ====== Normalización & Parseo MRZ (de tu código) ======
+  function normalizeRawMRZ(t){
+    return (t||'')
+      .replace(/[^\dA-Z<\n]/g,'')
+      .replace(/[ \t]+/g,'')
+      .toUpperCase()
+      .trim();
+  }
+  function splitNamesMRZ(s){
+    const parts = (s||'').split('<<');
+    const surname = (parts[0]||'').replace(/</g,' ').trim();
+    const given   = (parts[1]||'').replace(/</g,' ').trim();
+    return {surname, given};
+  }
+  function parseTD3(lines){
+    const L1 = (lines[0]||'').padEnd(44,'<').slice(0,44);
+    const L2 = (lines[1]||'').padEnd(44,'<').slice(0,44);
+    const docType = L1.slice(0,2).replace(/</g,'');
+    const issuer  = L1.slice(2,5).replace(/</g,'');
+    const namePart= L1.slice(5);
+    const {surname, given} = splitNamesMRZ(namePart);
+    const passportNumber = L2.slice(0,9).replace(/</g,'');
+    const nationality    = L2.slice(10,13).replace(/</g,'');
+    const birth          = L2.slice(13,19);
+    const sex            = L2.slice(20,21).replace(/</g,'<');
+    const expiry         = L2.slice(21,27);
+    const personal       = L2.slice(28,42).replace(/</g,'');
+    return {
+      Formato:'TD3 (Pasaporte)',
+      'Tipo de documento':docType,
+      'País emisor':issuer,
+      'Apellidos':surname,
+      'Nombres':given,
+      'Número de documento':passportNumber,
+      'Nacionalidad':nationality,
+      'Fecha de nacimiento (YYMMDD)':birth,
+      'Sexo':sex,
+      'Fecha de expiración (YYMMDD)':expiry,
+      'Número personal':personal
+    };
+  }
+  function parseTD1(lines){
+    const L1 = (lines[0]||'').padEnd(30,'<').slice(0,30);
+    const L2 = (lines[1]||'').padEnd(30,'<').slice(0,30);
+    const L3 = (lines[2]||'').padEnd(30,'<').slice(0,30);
+    const docType = L1.slice(0,2).replace(/</g,'');
+    const country = L1.slice(2,5).replace(/</g,'');
+    const number  = L1.slice(5,14).replace(/</g,'');
+    const birth   = L2.slice(0,6);
+    const sex     = L2.slice(7,8);
+    const expiry  = L2.slice(8,14);
+    const nationality = L2.slice(15,18).replace(/</g,'');
+    const optional = L3.slice(0,30).replace(/</g,' ').trim();
+    const {surname, given} = splitNamesMRZ(L3);
+    return {
+      Formato:'TD1 (ID 3 líneas)',
+      'Tipo de documento':docType,
+      'País emisor':country,
+      'Número de documento':number,
+      'Fecha de nacimiento (YYMMDD)':birth,
+      'Sexo':sex,
+      'Fecha de expiración (YYMMDD)':expiry,
+      'Nacionalidad':nationality,
+      'Apellidos':surname,
+      'Nombres':given,
+      'Dato opcional':optional
+    };
+  }
+  function parseTD2(lines){
+    const L1 = (lines[0]||'').padEnd(36,'<').slice(0,36);
+    const L2 = (lines[1]||'').padEnd(36,'<').slice(0,36);
+    const docType = L1.slice(0,2).replace(/</g,'');
+    const country = L1.slice(2,5).replace(/</g,'');
+    const namePart= L1.slice(5);
+    const {surname, given} = splitNamesMRZ(namePart);
+    const number  = L2.slice(0,9).replace(/</g,'');
+    const nationality = L2.slice(10,13).replace(/</g,'');
+    const birth   = L2.slice(13,19);
+    const sex     = L2.slice(20,21);
+    const expiry  = L2.slice(21,27);
+    const optional= L2.slice(28,35).replace(/</g,' ').trim();
+    return {
+      Formato:'TD2 (ID 2 líneas)',
+      'Tipo de documento':docType,
+      'País emisor':country,
+      'Apellidos':surname,
+      'Nombres':given,
+      'Número de documento':number,
+      'Nacionalidad':nationality,
+      'Fecha de nacimiento (YYMMDD)':birth,
+      'Sexo':sex,
+      'Fecha de expiración (YYMMDD)':expiry,
+      'Dato opcional':optional
+    };
+  }
+  function guessAndParseMRZ(raw){
+    const text  = normalizeRawMRZ(raw||'');
+    const lines = text.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+    if(lines.length>=2 && lines.every(l=>l.length>=36)){
+      const L = lines.map(l=>l.replace(/\s+/g,''));
+      if(L[0].length>=44 || L[1].length>=44) return parseTD3([L[0].slice(0,44), L[1].slice(0,44)]);
+      return parseTD2([L[0].slice(0,36), L[1].slice(0,36)]);
+    }else if(lines.length>=3){
+      const L = lines.slice(0,3).map(l=>l.replace(/\s+/g,''));
+      return parseTD1([L[0].slice(0,30), L[1].slice(0,30), L[2].slice(0,30)]);
+    }else{
+      throw new Error('No se reconoce el formato MRZ.');
+    }
+  }
+
+  // ====== OCR + Parse integrados ======
+  async function ocrAndParse(canvas){
+    const raw = await ocrCanvas(canvas);
+    $rawEdit.val(raw);
+    try{
+      const parsed = guessAndParseMRZ(raw);
+      printParsed(parsed);
+    }catch(e){
+      printParsed({Estado:"OCR completado", Aviso:"No se reconoce el formato MRZ en el texto crudo. Revisa las líneas y '<'."});
+    }
+  }
+
+  // ====== Controles top ======
+  $("#btnCamStart").on("click", startCamera);
+  $("#btnCamStop").on("click", stopCamera);
+
+  // Capturar cuadro completo (manual)
+  $("#btnShot").on("click", async ()=>{
+    if(usingCamera){
+      const c = document.createElement("canvas"); c.width = mediaW; c.height = mediaH;
+      c.getContext("2d").drawImage($video, 0, 0, mediaW, mediaH);
+      await ocrAndParse(c);
+    }
+  });
+
+  // Capturar solo MRZ (manual + confirm)
+  $("#btnShotMRZ").on("click", async ()=>{
+    if(!usingCamera || !workerId) return;
+    const { CVImage } = inferencejs;
+    const preds = await inferEngine.infer(workerId, new CVImage($video));
+    const best = chooseBestMRZ(preds);
+    if(!best){ autoStatus.text("Sin MRZ visible."); return; }
+    const crop = cropFromMedia($video, best.bbox);
+    const sig  = sigFromBBox(best.bbox);
+    mrzPreview.src = crop.toDataURL("image/jpeg", .92);
+    autoStatus.text("MRZ capturado en vista previa.");
+    const doIt = confirm("¿Deseas extraer el texto crudo y parsearlo?");
+    if(doIt){
+      await ocrAndParse(crop);
+      lastConfirmedSig = sig;
+      lastPromptSig    = sig;
+      autoStatus.text("MRZ extraído y parseado.");
+    }else{
+      autoStatus.text("Vista previa actualizada. Resultados previos preservados.");
+    }
+  });
+
+  // Guardar previo (opcional, manual)
+  $("#btnSavePreview").on("click", ()=>{
+    if(!mrzPreview.src) return;
+    const a = document.createElement('a'); a.href = mrzPreview.src; a.download = "mrz_captura.jpg";
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  // Parsear desde texto crudo editable
+  $btnParseFromRaw.on("click", ()=>{
+    const raw = ($rawEdit.val()||"").toString();
+    try{
+      const parsed = guessAndParseMRZ(raw);
+      printParsed(parsed);
+    }catch(e){
+      printParsed({Estado:"Error al parsear", Detalle:e.message});
+    }
+  });
+
+  // Copiar texto crudo
+  $btnCopyRaw.on("click", async ()=>{
+    const txt = ($rawEdit.val()||"").toString();
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(txt); }
+      else{
+        const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); ta.remove();
+      }
+      $copyHint.stop(true,true).fadeIn(120, ()=> setTimeout(()=> $copyHint.fadeOut(200), 900));
+    }catch(e){ console.warn("No se pudo copiar:", e); }
+  });
+
+  // ====== Cargar imagen / Extraer y Parsear (Completa) ======
+  $("#fileInput").on("change", async (e)=>{
+    const file = e.target.files?.[0]; if(!file) return;
+    stopCamera(); const url = URL.createObjectURL(file); await loadImage(url);
+    lastPromptSig = null; lastConfirmedSig = null;
+  });
+  $("#btnExtractAll").on("click", async ()=>{
+    if(!$img.src) return; const c = imageToCanvas($img); await ocrAndParse(c);
+  });
+
+  function imageToCanvas(img){ const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext("2d").drawImage(img, 0, 0); return c; }
+  async function loadImage(src){
+    return new Promise((res,rej)=>{
+      $img.onload = ()=>{ $("#imgLoaded").show(); $("#video").hide(); fitCanvasToMedia($img.naturalWidth, $img.naturalHeight); ctx.clearRect(0,0,$cv.width,$cv.height); res(); };
+      $img.onerror = rej; $img.src = src;
+    });
+  }
+
+  // ====== ROIs con 8 handles ======
+  let rois = []; let selected = null; let dragging = null; let idCounter = 1;
+  $("#btnAddROI").on("click", ()=>{
+    const rect = $roiLayer[0].getBoundingClientRect();
+    const w = Math.max(80, rect.width*0.4), h = Math.max(40, rect.height*0.18);
+    const x = Math.max(10, rect.width*0.3), y = Math.max(10, rect.height*0.4);
+    addROI({x,y,w,h});
+  });
+  $("#btnDelROI").on("click", ()=>{
+    if(!selected) return; selected.el.remove(); rois = rois.filter(r=>r!==selected); selected = null; $("#btnDelROI").prop("disabled", true);
+  });
+  $("#btnOCRROI").on("click", async ()=>{
+    if(!$img.src && !usingCamera){ return; }
+    let c;
+    if(selected && $img.src){
+      c = cropFromImage($img, selected);
+      await ocrAndParse(c); // parsea lo que sea que haya en el ROI (MRZ o no)
+    }else if(usingCamera){
+      const { CVImage } = inferencejs;
+      const preds = await inferEngine.infer(workerId, new CVImage($video));
+      const best = chooseBestMRZ(preds);
+      if(best){
+        c = cropFromMedia($video, best.bbox);
+        mrzPreview.src = c.toDataURL("image/jpeg", .92);
+        const doIt = confirm("¿Deseas extraer el texto crudo y parsearlo?");
+        if(doIt){
+          await ocrAndParse(c);
+          const sig = sigFromBBox(best.bbox);
+          lastConfirmedSig = sig; lastPromptSig = sig;
+          autoStatus.text("MRZ extraído y parseado (desde ROI/cámara).");
+        }else{
+          autoStatus.text("Vista previa actualizada. Resultados previos preservados.");
+        }
+        return;
+      }else{
+        // sin MRZ, captura cuadro completo
+        c = document.createElement("canvas"); c.width = mediaW; c.height = mediaH;
+        c.getContext("2d").drawImage($video,0,0,mediaW,mediaH);
+        await ocrAndParse(c);
+      }
+    }else{
+      c = imageToCanvas($img);
+      await ocrAndParse(c);
+    }
+  });
+
+  function addROI({x,y,w,h}){
+    const el = $(`
+      <div class="roi" data-id="">
+        <div class="handle nw"></div><div class="handle n"></div><div class="handle ne"></div>
+        <div class="handle e"></div><div class="handle se"></div><div class="handle s"></div>
+        <div class="handle sw"></div><div class="handle w"></div>
+      </div>
+    `);
+    const id = "roi-"+(idCounter++); el.attr("data-id", id); $roiLayer.append(el);
+    const roi = { id, x,y,w,h, el:el[0], selected:false }; rois.push(roi); placeROI(roi); bindROI(roi); selectROI(roi);
+  }
+  function placeROI(roi){ Object.assign(roi.el.style, { left:roi.x+"px", top:roi.y+"px", width:roi.w+"px", height:roi.h+"px" }); }
+  function selectROI(roi){
+    if(selected && selected!==roi){ selected.el.classList.remove("selected"); }
+    selected = roi;
+    if(roi){ roi.el.classList.add("selected"); $("#btnDelROI").prop("disabled", false); }
+    else{ $("#btnDelROI").prop("disabled", true); }
+  }
+  function bindROI(roi){
+    const el = roi.el;
+    function onPointerDown(e){
+      e.preventDefault(); e.stopPropagation(); selectROI(roi);
+      const layerRect = $roiLayer[0].getBoundingClientRect();
+      const px = (e.touches? e.touches[0].clientX : e.clientX) - layerRect.left;
+      const py = (e.touches? e.touches[0].clientY : e.clientY) - layerRect.top;
+      const hx = px - roi.x, hy = py - roi.y; const handle = getHandleAt(el, hx, hy);
+      if(handle){ dragging = { type:'handle', handle, sx:px, sy:py, ox:roi.x, oy:roi.y, ow:roi.w, oh:roi.h }; }
+      else{ dragging = { type:'move', sx:px, sy:py, ox:roi.x, oy:roi.y }; }
+      window.addEventListener("pointermove", onPointerMove, {passive:false});
+      window.addEventListener("pointerup", onPointerUp, {passive:false});
+      window.addEventListener("touchmove", onPointerMove, {passive:false});
+      window.addEventListener("touchend", onPointerUp, {passive:false});
+    }
+    function onPointerMove(e){
+      if(!dragging) return; e.preventDefault(); e.stopPropagation();
+      const layerRect = $roiLayer[0].getBoundingClientRect();
+      const px = (e.touches? e.touches[0].clientX : e.clientX) - layerRect.left;
+      const py = (e.touches? e.touches[0].clientY : e.clientY) - layerRect.top;
+      if(dragging.type==='move'){
+        const nx = clamp(dragging.ox + (px - dragging.sx), 0, layerRect.width - roi.w);
+        const ny = clamp(dragging.oy + (py - dragging.sy), 0, layerRect.height - roi.h);
+        roi.x = nx; roi.y = ny;
+      }else{
+        const minW=24, minH=16; let x = dragging.ox, y = dragging.oy, w = dragging.ow, h = dragging.oh;
+        const dx = (px - dragging.sx), dy = (py - dragging.sy);
+        if(/w/.test(dragging.handle)){ x = clamp(dragging.ox + dx, 0, dragging.ox + dragging.ow - minW); w = (dragging.ox + dragging.ow) - x; }
+        if(/e/.test(dragging.handle)){ w = clamp(dragging.ow + dx, minW, layerRect.width - dragging.ox); }
+        if(/n/.test(dragging.handle)){ y = clamp(dragging.oy + dy, 0, dragging.oy + dragging.oh - minH); h = (dragging.oy + dragging.oh) - y; }
+        if(/s/.test(dragging.handle)){ h = clamp(dragging.oh + dy, minH, layerRect.height - dragging.oy); }
+        roi.x = x; roi.y = y; roi.w = w; roi.h = h;
+      }
+      placeROI(roi);
+    }
+    function onPointerUp(){ dragging = null;
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("touchmove", onPointerMove);
+      window.removeEventListener("touchend", onPointerUp);
+    }
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("touchstart", onPointerDown);
+    el.addEventListener("click", (e)=>{ e.stopPropagation(); selectROI(roi); });
+    $roiLayer.on("click", (e)=>{ if(e.target===$roiLayer[0]) selectROI(null); });
+  }
+  function getHandleAt(el, x, y){
+    const handles = el.querySelectorAll(".handle");
+    for(const h of handles){
+      const r = h.getBoundingClientRect(), lr = $roiLayer[0].getBoundingClientRect();
+      const hx = r.left - lr.left, hy = r.top - lr.top;
+      if(x >= (hx - el.offsetLeft) - 6 && x <= (hx - el.offsetLeft) + 18 &&
+         y >= (hy - el.offsetTop) - 6 && y <= (hy - el.offsetTop) + 18){
+        return [...h.classList].find(cls=>"nw n ne e se s sw w".split(" ").includes(cls));
+      }
+    }
+    return null;
+  }
+  function clamp(v, min, max){ return Math.min(max, Math.max(min, v)); }
+
+  // ====== Responsivo ======
+  window.addEventListener("resize", ()=>{
+    if(usingCamera) fitCanvasToMedia($video.videoWidth||1280, $video.videoHeight||720);
+    else if($img.src) fitCanvasToMedia($img.naturalWidth, $img.naturalHeight);
+  });
+
+  // ====== Inicialización ======
+  loadModel();
+})();
+</script>
+</body>
+</html>
