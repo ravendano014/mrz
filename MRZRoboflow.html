@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>MRZ — Cámara / Imagen, ROI preciso + Capturar ROI (cámara) + Auto-captura</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- ====== Librerías por CDN ====== -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/inferencejs@1.1.3"></script>
+  <!-- ZXing (se conserva por si se desea usar otros decoders) -->
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
+  <!-- Tesseract.js para OCR MRZ -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b0f12; --fg:#e6edf3; --muted:#93a1ad; --accent:#39d353; --danger:#ff6b6b;
+      --panel:#0f1419; --card:#11161c; --line:#1b2631; --btn:#1a2633; --btn2:#14202b; --yellow:#ffd866;
+    }
+    *{ box-sizing:border-box }
+    html,body{height:100%;margin:0}
+    body{
+      background:linear-gradient(180deg,var(--bg),#050709 60%); color:var(--fg);
+      font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+      overflow:hidden;
+    }
+    #stage{ position:fixed; inset:0; background:#000; z-index: 1; }
+    #video{
+      position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:block !important; z-index:1;
+    }
+    #overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; z-index:2; }
+
+    #panel{
+      position:fixed; top:0; right:0; height:100%; width:min(520px, 44vw);
+      background:linear-gradient(180deg,var(--panel),#0b1117); border-left:1px solid var(--line);
+      padding:14px 14px 120px; overflow:auto; box-shadow:-8px 0 24px rgba(0,0,0,.35); z-index:3;
+    }
+    #panel h1{ font-size:16px; margin:0 0 8px; letter-spacing:.3px }
+    .sub{ color:var(--muted); font-size:12px; margin:0 0 12px }
+    .row{ display:flex; gap:8px; flex-wrap:wrap; margin:8px 0; align-items:center }
+    .seg{ padding:10px; border:1px solid var(--line); border-radius:12px; background:#0e141a }
+    button{
+      background:var(--btn); color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:8px 10px;
+      cursor:pointer; font-weight:600;
+    }
+    button:hover{ background:var(--btn2) }
+    button.primary{ border-color:#254a2f; background:#13281a }
+    button.success{ border-color:#224e37; background:#10261d }
+    button.warn{ border-color:#4a3b17; background:#241d0c }
+    button.danger{ border-color:#4f1f1f; background:#281012; color:#ffdede }
+    button:disabled{ opacity:.5; cursor:not-allowed }
+    .ghost{ background:transparent }
+    label.small{ font-size:12px; color:var(--muted) }
+
+    textarea, pre, input[type="text"], input[type="number"], input[type="range"]{
+      width:100%; background:var(--card); color:var(--fg); border:1px solid var(--line);
+      border-radius:10px; padding:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    input[type="number"]{ width:86px; }
+    input[type="range"]{
+      padding: 6px 8px; height: 36px; accent-color: #39d353; cursor: pointer;
+    }
+    textarea{ min-height:110px; resize:vertical }
+    .grid{ display:grid; gap:8px; }
+    .split2{ grid-template-columns:1fr 1fr }
+    .split3{ grid-template-columns:auto auto auto; align-items:center }
+    table{
+      width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line);
+      border-radius:10px; overflow:hidden; display:block; max-height:260px; overflow:auto;
+    }
+    th,td{ padding:8px; border-bottom:1px solid var(--line); text-align:left; font-size:13px }
+    th{ position:sticky; top:0; background:#0f1820; z-index:1 }
+
+    .status{
+      position:fixed; left:12px; right:calc(min(520px, 44vw) + 12px); bottom:12px;
+      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+      padding:10px 12px; border-radius:12px; background:#0d1318cc; backdrop-filter: blur(4px);
+      border:1px solid var(--line); z-index: 4;
+    }
+    .pill{ padding:4px 8px; border-radius:999px; font-weight:700; letter-spacing:.3px; border:1px solid var(--line); background:#0f161ccc }
+    .ok{ color:#c9ffd9; border-color:#1f4e2c; background:#0e2316 }
+    .bad{ color:#ffd3d3; border-color:#5a1f1f; background:#2a1010 }
+    .info{ color:#d2e8ff; border-color:#1d3f61; background:#0f1f2d }
+    .fps{ margin-left:auto }
+
+    .spacer{ height:6px }
+    .hidden{ display:none !important }
+    .preview{ width:100%; aspect-ratio:4/3; border:1px dashed #2a3b4d; border-radius:10px; background:#0b0f12; display:grid; place-items:center; overflow:hidden; }
+    .preview canvas, .preview img{ width:100%; height:100%; object-fit:contain }
+    .badge{ padding:2px 6px; border-radius:6px; border:1px solid var(--line); background:#0e141a; color:#ffd866; font-weight:700 }
+    .tag{ font-size:11px; color:#9fb3c8 }
+
+    .tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px }
+    .tab{ padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#0f1419; cursor:pointer; font-weight:600; }
+    .tab.active{ background:#122222; border-color:#214a33 }
+
+    .help-message {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(15, 20, 25, 0.9); border: 1px solid var(--line); border-radius: 12px;
+      padding: 20px; text-align: center; max-width: 320px; z-index: 5; backdrop-filter: blur(4px);
+    }
+
+    /* Canvas imagen con ROI (táctil/mouse) */
+    #imgCanvasPreview{
+      width:100%; height:auto; border-radius:10px; background:#0b0f12; border:1px solid var(--line);
+      cursor:crosshair; touch-action:none; -webkit-user-select:none; user-select:none; outline:none;
+    }
+    #roiPreview{ border:1px dashed #2b3b60; border-radius:10px; background:#0f1726 }
+    .hintbox{ font-size:12px; color:#9fb3c8 }
+
+    /* Controles ROI */
+    .roi-controls{ display:grid; gap:8px; }
+    .roi-controls .row{ align-items:center }
+    .roi-controls .row .grow{ flex:1 }
+    .roi-controls .row .tight{ display:flex; gap:6px }
+  </style>
+</head>
+<body>
+
+  <!-- Escenario cámara -->
+  <div id="stage">
+    <div class="help-message" id="helpMessage">
+      <h3>Inicia la cámara</h3>
+      <p>Haz clic en "▶ Iniciar cámara" para comenzar</p>
+    </div>
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <!-- Panel -->
+  <aside id="panel">
+    <h1>MRZ — cámara e imagen (ROI preciso + Auto-captura)</h1>
+    <p class="sub">Detección MRZ (Roboflow → InferenceJS para localizar campo MRZ) + OCR (Tesseract.js) + Parseo MRZ.</p>
+
+    <!-- Cámara -->
+    <div class="row">
+      <button id="btnStart" class="primary">▶ Iniciar cámara</button>
+      <button id="btnStop" class="danger">■ Detener cámara</button>
+      <button id="btnFlip">↺ Cambiar cámara</button>
+      <button id="btnCaptureCamROI" class="success" disabled>⧉ Capturar ROI (cámara)</button>
+      <span class="badge">Detección: InferenceJS</span>
+    </div>
+
+    <!-- Auto-captura -->
+    <div class="row seg">
+      <div class="grid split3" style="gap:10px">
+        <label class="small"><input type="checkbox" id="chkAuto" /> Auto-captura</label>
+        <label class="small">Umbral conf. ≥ <input type="number" id="numThresh" min="0" max="1" step="0.01" value="0.60" /></label>
+        <label class="small">Pausa (s) <input type="number" id="numCooldown" min="0" max="30" step="0.5" value="2.5" /></label>
+      </div>
+      <p class="sub" style="margin-top:6px">Si la confianza de la detección supera el umbral, se captura el ROI automáticamente y se pausa el disparo por el tiempo indicado.</p>
+    </div>
+
+    <!-- Imagen -->
+    <div class="row seg">
+      <div class="tabs">
+        <div class="tab active" data-pane="pane-img">Imagen</div>
+        <div class="tab" data-pane="pane-raw">Texto MRZ (raw)</div>
+      </div>
+
+      <!-- Pane: Imagen con ROI preciso -->
+      <div id="pane-img" style="width:100%">
+        <div class="row">
+          <input id="fileImage" type="file" accept="image/*" class="hidden" />
+          <button id="btnPick" class="warn">🖼️ Cargar imagen</button>
+          <button id="btnDetectImg">🔎 Detectar en imagen</button>
+          <button id="btnProcessFull">⇣ Extraer (imagen completa)</button>
+          <button id="btnProcessROI" class="success">⧉ Extraer (ROI)</button>
+          <span class="tag" id="tag-detector">Decoder: OCR MRZ (Tesseract)</span>
+        </div>
+
+        <canvas id="imgCanvasPreview" class="hidden" tabindex="0" aria-label="Canvas de imagen con ROI"></canvas>
+
+        <div class="hintbox">
+          Arrastra dentro del rectángulo para mover; usa los 8 puntos (esquinas/lados) para redimensionar.
+          Móvil: un dedo mueve; dos dedos (pinch) escalan. Con el canvas enfocado: flechas mueven (Shift = 5 px),
+          +/- cambia tamaño (Shift = x3).
+        </div>
+
+        <!-- Controles de tamaño del ROI (ancho) -->
+        <div class="seg roi-controls">
+          <label class="small">Tamaño del ROI (ancho)</label>
+          <div class="row">
+            <div class="tight">
+              <button id="btnRoiMinus" aria-label="Reducir ancho ROI">−</button>
+              <button id="btnRoiReset" aria-label="Restablecer ambos sliders a 100%">100%</button>
+              <button id="btnRoiPlus" aria-label="Ampliar ancho ROI">+</button>
+            </div>
+            <div class="grow">
+              <input id="rngRoiScale" type="range" min="10" max="400" step="1" value="100" />
+            </div>
+            <div style="min-width:64px; text-align:right"><span id="lblRoiScale">100%</span></div>
+          </div>
+          <p class="sub">Ajusta el ancho alrededor del centro del ROI sin moverlo.</p>
+        </div>
+
+        <!-- Controles de altura del ROI -->
+        <div class="seg roi-controls">
+          <label class="small">Altura del ROI</label>
+          <div class="row">
+            <div class="tight">
+              <button id="btnRoiHMinus" aria-label="Reducir altura ROI">−</button>
+              <button id="btnRoiHReset" aria-label="Restablecer altura (100%)">100%</button>
+              <button id="btnRoiHPlus" aria-label="Ampliar altura ROI">+</button>
+            </div>
+            <div class="grow">
+              <input id="rngRoiHScale" type="range" min="10" max="400" step="1" value="100" />
+            </div>
+            <div style="min-width:64px; text-align:right"><span id="lblRoiHScale">100%</span></div>
+          </div>
+          <p class="sub">Ajusta <strong>solo</strong> la altura alrededor del centro del ROI.</p>
+        </div>
+
+        <div class="grid split2" style="margin-top:8px">
+          <div>
+            <label>Vista previa ROI (imagen o cámara)</label>
+            <div class="preview"><canvas id="roiPreview" width="200" height="150"></canvas></div>
+          </div>
+          <div>
+            <label>JSON parseado</label>
+            <textarea id="txtJson" placeholder='{"campo":"valor", …}'></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pane: Texto crudo pegado -->
+      <div id="pane-raw" class="hidden" style="width:100%">
+        <div class="grid">
+          <label>Texto crudo (raw MRZ)</label>
+          <textarea id="txtRaw" placeholder="Aquí se mostrará la cadena MRZ extraída (o pégala)…"></textarea>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button id="btnParse">{} Parsear MRZ</button>
+          <button id="btnClearRaw" class="ghost">Limpiar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="grid">
+      <label>Tabla</label>
+      <table id="tbl"><thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="spacer"></div>
+    <p class="sub">Consejo: centra la zona MRZ y evita reflejos; para pasaportes TD3 suele haber 2 líneas largas; para tarjetas ID suelen ser 3 líneas cortas.</p>
+  </aside>
+
+  <div class="status" id="status">
+    <span class="pill info" id="sCam">Cámara: detenida</span>
+    <span class="pill info" id="sModel">Modelo: cargando…</span>
+    <span class="pill info" id="sDec">Decoder: inicializando…</span>
+    <span class="pill ok hidden" id="sHit">Detectado</span>
+    <span class="pill bad hidden" id="sMiss">Sin detección</span>
+    <span class="pill info fps" id="sFPS">FPS: —</span>
+  </div>
+
+  <script>
+  (function(){
+    const { InferenceEngine, CVImage } = inferencejs;
+    const ZX = window.ZXing; // UMD (no usado para MRZ OCR, pero lo dejamos)
+    const $ = window.jQuery;
+
+    // ====== Elementos ======
+    const video = document.getElementById('video');
+    const overlay = document.getElementById('overlay');
+    const octx = overlay.getContext('2d');
+    const helpMessage = document.getElementById('helpMessage');
+
+    const sCam = $('#sCam'), sModel = $('#sModel'), sDec = $('#sDec'), sHit = $('#sHit'), sMiss = $('#sMiss'), sFPS = $('#sFPS');
+    const tagDetector = $('#tag-detector');
+
+    // Imagen / ROI
+    const imgCanvasPreview = document.getElementById('imgCanvasPreview');
+    const imgCtx = imgCanvasPreview.getContext('2d');
+    const roiPreview = document.getElementById('roiPreview');
+    const roiCtx = roiPreview.getContext('2d');
+
+    // ====== Estado ======
+    let facingMode = 'environment';
+    let stream = null;
+    let running = false;
+    let sourceMode = 'video'; // 'video' | 'image'
+
+    const engine = new InferenceEngine();
+    let workerId = null;
+    let rafId = 0;
+    let lastBBox = null; // bbox de cámara (centro + size)
+    let lastTS = performance.now(), fpsSMA = [];
+
+    // Auto-captura
+    let isAuto = false;
+    let captureCooldown = false;
+
+    // Imagen cargada a resolución nativa (fuera de vista)
+    const imgCanvasFull = document.createElement('canvas');
+    const ifctx = imgCanvasFull.getContext('2d');
+
+    // ROI (imagen) relativo [0..1]
+    let imgLoaded = false;
+    let roi = { x:0.15, y:0.25, w:0.70, h:0.50 };
+    let drawSize = { w:0, h:0 }; // tamaño dibujado en preview
+
+    // baseline del ROI para sliders
+    let baselineRoi = null;
+
+    // Interacción ROI precisa (imagen)
+    const HANDLE = 12; // px radio de detección
+    const MIN_SIZE_PX = 16;
+    let action = null; // 'move' | 'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'
+    let start = {x:0,y:0}; // px en preview
+    let startRoi = null;
+
+    // Pinch zoom (imagen)
+    let activeTouches = new Map();
+    let pinchStartDist = 0;
+    let pinchStartRoi = null;
+
+    // Tesseract worker
+    let tessWorker = null;
+    let tessReady = false;
+
+    // Decodificador nativo (no usado para MRZ) - se conserva
+    let hasBarcodeDetector = ('BarcodeDetector' in window);
+
+    // ====== Utilidades ======
+    function setCanvasToVideoSize() {
+      const vw = video.videoWidth || 1280;
+      const vh = video.videoHeight || 720;
+      overlay.width = vw; overlay.height = vh;
+    }
+
+    function updateFPS() {
+      const now = performance.now();
+      const delta = now - lastTS;
+      lastTS = now;
+      const fps = 1000 / delta;
+      fpsSMA.push(fps);
+      if (fpsSMA.length > 20) fpsSMA.shift();
+      const avg = fpsSMA.reduce((a,b)=>a+b,0)/fpsSMA.length || 0;
+      sFPS.text(`FPS: ${avg.toFixed(0)}`);
+    }
+
+    function paintBox(ctx, bbox, label='MRZ', conf=1){
+      ctx.lineWidth = 4; ctx.font = '16px ui-monospace';
+      const {x,y,width,height} = bbox;
+      ctx.strokeStyle = '#39d353';
+      ctx.strokeRect(x - width/2, y - height/2, width, height);
+      const tag = `${label} ${(conf*100|0)}%`;
+      const tw = ctx.measureText(tag).width + 10;
+      ctx.fillStyle = '#13281a';
+      ctx.fillRect(x - width/2, y - height/2 - 22, tw, 20);
+      ctx.fillStyle = '#c9ffd9';
+      ctx.fillText(tag, x - width/2 + 5, y - height/2 - 7);
+    }
+
+    function setHit(ok){
+      if (ok){ sHit.removeClass('hidden'); sMiss.addClass('hidden'); $('#btnCaptureCamROI').prop('disabled', false); }
+      else { sMiss.removeClass('hidden'); sHit.addClass('hidden'); $('#btnCaptureCamROI').prop('disabled', true); }
+    }
+
+    function escapeHtml(str){
+      return String(str).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;");
+    }
+
+    function renderTable(obj){
+      const $tb = $('#tbl tbody'); $tb.empty();
+      if (!obj || typeof obj!=='object') return;
+      Object.entries(obj).forEach(([k,v])=>{
+        let val = (typeof v==='object') ? JSON.stringify(v) : String(v);
+        if (val.length > 300) val = val.slice(0,300)+'…';
+        $tb.append(`<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(val)}</td></tr>`);
+      });
+    }
+
+    function setStatus(msg, type){
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status';
+      if(type==='ok') el.classList.add('ok');
+      else if(type==='bad') el.classList.add('bad');
+      else el.classList.add('info');
+    }
+
+    // ====== Cámara ======
+    async function startCamera(){
+      stopCamera();
+      try{
+        const constraints = { video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        await new Promise((resolve) => { video.onloadedmetadata = resolve; });
+        await video.play();
+        setCanvasToVideoSize();
+        sCam.removeClass('bad info').addClass('ok').text(`Cámara: activa (${facingMode})`);
+        sourceMode = 'video';
+        helpMessage.classList.add('hidden');
+        running = true;
+        loopDetect();
+      }catch(err){
+        sCam.removeClass('ok info').addClass('bad').text('Cámara: error - ' + err.message);
+        helpMessage.innerHTML = '<h3>Error de cámara</h3><p>' + err.message + '</p>';
+        helpMessage.classList.remove('hidden');
+      }
+    }
+    function stopCamera(){
+      running = false;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+      sCam.removeClass('ok info').addClass('bad').text('Cámara: detenida');
+      helpMessage.innerHTML = '<h3>Inicia la cámara</h3><p>Haz clic en "▶ Iniciar cámara" para comenzar</p>';
+      helpMessage.classList.remove('hidden');
+      octx.clearRect(0,0,overlay.width,overlay.height);
+      setHit(false);
+    }
+
+    // ====== Modelo Roboflow (InferenceJS) ======
+    async function loadModel(){
+      try{
+        sModel.removeClass('ok bad').addClass('info').text('Modelo: cargando…');
+        // Nota: el worker id provisto parece ser mrz; se mantiene
+        workerId = await engine.startWorker(
+          "mrz-ye7hu-5jxuj",
+          "1",
+          "rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2"
+        );
+        sModel.removeClass('bad info').addClass('ok').text('Modelo: listo');
+      }catch(e){
+        sModel.removeClass('ok info').addClass('bad').text('Modelo: error');
+        console.error(e);
+      }
+    }
+
+    // ====== Inicializar Tesseract ======
+    async function initTesseract(){
+      sDec.removeClass('ok bad').addClass('info').text('OCR: cargando…');
+      try{
+        tessWorker = Tesseract.createWorker({
+          logger: m => {
+            // opcional: console.log(m)
+          }
+        });
+        await tessWorker.load();
+        await tessWorker.loadLanguage('eng'); // MRZ usa caracteres latinos; 'eng' suficiente
+        await tessWorker.initialize('eng');
+        // mejorar rendimiento: limitar a whitelist MRZ (digitos, A-Z, <) — se hace en el reconocimiento con config
+        tessReady = true;
+        sDec.removeClass('bad info').addClass('ok').text('OCR: listo (Tesseract)');
+        $('#tag-detector').text(`Decoder: OCR MRZ (Tesseract)`);
+      }catch(e){
+        tessReady = false;
+        sDec.removeClass('ok info').addClass('bad').text('OCR: error');
+        console.error('Tesseract init error', e);
+      }
+    }
+
+    // ====== OCR MRZ desde canvas ======
+    async function decodeFromCanvas(canvas){
+      // Usamos Tesseract para extraer texto; retornamos texto en bruto
+      if (tessReady && tessWorker){
+        try{
+          // pasar imagen como dataURL mejora compatibilidad
+          const dataUrl = canvas.toDataURL('image/png');
+          // Reconocer con parámetros para MRZ (whitelist)
+          const res = await tessWorker.recognize(dataUrl, { tessjs_create_hocr: '0' }, {
+            tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<",
+          });
+          const text = (res && res.data && res.data.text) ? res.data.text : '';
+          return text.replace(/\r/g,'\n').trim();
+        }catch(err){
+          console.warn('Tesseract error', err);
+          return '';
+        }
+      }
+      // fallback simple: intentar lectura por ZXing como imagen (no confiable para MRZ)
+      try{
+        const img = new Image();
+        img.src = canvas.toDataURL('image/png');
+        await new Promise(r=> img.onload = r);
+        const reader = new ZX.BrowserPDF417Reader();
+        if (typeof reader.decodeFromImageElement === 'function'){
+          const res = await reader.decodeFromImageElement(img);
+          return res?.getText?.() || res?.text || '';
+        }
+      }catch(e){}
+      return '';
+    }
+
+    // ====== Bucle de detección (cámara) ======
+    async function loopDetect(){
+      if (!running || !workerId || !video.videoWidth) { rafId = requestAnimationFrame(loopDetect); return; }
+      const image = new CVImage(video);
+      try{
+        const preds = await engine.infer(workerId, image);
+        octx.clearRect(0,0,overlay.width,overlay.height);
+        if (preds && preds.length){
+          // Buscar la clase que parezca MRZ (o la de mayor confianza)
+          const best = preds.reduce((a,b)=> (b.confidence > a.confidence) ? b : a, preds[0]);
+          paintBox(octx, best.bbox, best.class || 'MRZ', best.confidence);
+          lastBBox = best.bbox; setHit(true);
+
+          // Auto-captura
+          if(isAuto && !captureCooldown){
+            const thr = clamp(parseFloat($('#numThresh').val()) || 0.6, 0, 1);
+            if(best.confidence >= thr){
+              captureCooldown = true;
+              setTimeout(async ()=>{
+                await captureRoiFromCamera();
+                const cooldownMs = Math.max(0, (parseFloat($('#numCooldown').val()) || 2.5) * 1000);
+                setTimeout(()=>{ captureCooldown = false; }, cooldownMs);
+              }, 0);
+            }
+          }
+        } else { lastBBox = null; setHit(false); }
+      }catch(e){ /* noop */ }
+      updateFPS();
+      rafId = requestAnimationFrame(loopDetect);
+    }
+
+    // ====== Capturar ROI (cámara) desde bbox detectado ======
+    async function captureRoiFromCamera(){
+      if(!running || !lastBBox || !video.videoWidth) {
+        setStatus('No hay detección activa para capturar','bad');
+        return;
+      }
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const frame = document.createElement('canvas');
+      frame.width = vw; frame.height = vh;
+      const fctx = frame.getContext('2d', { willReadFrequently:true });
+      fctx.drawImage(video, 0, 0, vw, vh);
+
+      const { x, y, width, height } = lastBBox;
+      const rx = Math.max(0, Math.round(x - width/2));
+      const ry = Math.max(0, Math.round(y - height/2));
+      const rw = Math.max(1, Math.round(width));
+      const rh = Math.max(1, Math.round(height));
+
+      const crop = document.createElement('canvas');
+      crop.width = rw; crop.height = rh;
+      const cctx = crop.getContext('2d');
+      cctx.drawImage(frame, rx, ry, rw, rh, 0, 0, rw, rh);
+
+      // Preview en panel
+      roiCtx.clearRect(0,0,roiPreview.width,roiPreview.height);
+      const scale = Math.min(roiPreview.width / rw, roiPreview.height / rh);
+      const dw = Math.round(rw * scale), dh = Math.round(rh * scale);
+      const dx = Math.round((roiPreview.width - dw)/2), dy = Math.round((roiPreview.height - dh)/2);
+      roiCtx.drawImage(crop, 0, 0, rw, rh, dx, dy, dw, dh);
+
+      const raw = await decodeFromCanvas(crop);
+      if(raw){
+        setStatus('Texto detectado en ROI (cámara)','ok');
+        const parsed = smartParse(raw); renderResult(parsed, raw);
+      }else{
+        setStatus('No se pudo leer MRZ en el ROI (cámara). Intenta acercar/enfocar.','bad');
+      }
+    }
+
+    // ====== Imagen (carga + preview) ======
+    function loadImageFile(file){
+      return new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>{
+          const img = new Image();
+          img.onload = ()=>{
+            imgCanvasFull.width = img.naturalWidth; imgCanvasFull.height = img.naturalHeight;
+            ifctx.drawImage(img, 0, 0);
+            fitPreview(img);
+            sourceMode = 'image'; imgLoaded = true;
+            baselineRoi = {...roi};
+            setRoiScaleUI(100);   // ancho
+            setRoiHeightUI(100);  // alto (nuevo)
+            resolve();
+          };
+          img.onerror = reject;
+          img.src = reader.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    function fitPreview(img){
+      const W = imgCanvasPreview.width = imgCanvasPreview.clientWidth || 640;
+      const H = imgCanvasPreview.height = Math.round(W * (img.naturalHeight/img.naturalWidth));
+      drawSize.w = W; drawSize.h = H;
+      imgCtx.clearRect(0,0,W,H);
+      imgCtx.drawImage(img, 0, 0, W, H);
+      imgCanvasPreview.classList.remove('hidden');
+      drawROIOverlay();
+    }
+
+    // ====== Detección en imagen con Roboflow ======
+    async function detectOnImage(){
+      if (!imgCanvasFull.width) return null;
+      const image = new CVImage(imgCanvasFull);
+      try{
+        const preds = await engine.infer(workerId, image);
+        imgCtx.drawImage(imgCanvasFull, 0, 0, imgCanvasPreview.width, imgCanvasPreview.height);
+        if (preds && preds.length){
+          const best = preds.find(p => (p.class||'').toLowerCase().includes('mrz')) || preds[0];
+          paintBBoxScaled(best.bbox, '#ffb347');
+          setHit(true);
+        } else {
+          setHit(false);
+        }
+      }catch(e){ /* noop */ }
+    }
+    function paintBBoxScaled(bbox, color='#ffb347'){
+      const sx = imgCanvasPreview.width / imgCanvasFull.width;
+      const sy = imgCanvasPreview.height / imgCanvasFull.height;
+      const ctx = imgCtx;
+      ctx.save();
+      ctx.lineWidth = 3; ctx.strokeStyle = color;
+      ctx.strokeRect(
+        bbox.x*sx - bbox.width*sx/2,
+        bbox.y*sy - bbox.height*sy/2,
+        bbox.width*sx,
+        bbox.height*sy
+      );
+      ctx.restore();
+    }
+
+    // ====== ROI helpers (imagen) ======
+    function roiToPx(r){
+      return { x: Math.round(r.x * drawSize.w), y: Math.round(r.y * drawSize.h), w: Math.round(r.w * drawSize.w), h: Math.round(r.h * drawSize.h) };
+    }
+    function pxToRoi(px){
+      return {
+        x: Math.max(0, Math.min(1, px.x / drawSize.w)),
+        y: Math.max(0, Math.min(1, px.y / drawSize.h)),
+        w: Math.max(1/drawSize.w, Math.min(1, px.w / drawSize.w)),
+        h: Math.max(1/drawSize.h, Math.min(1, px.h / drawSize.h)),
+      };
+    }
+
+    function getHandleAt(mx, my, rect){
+      const cx = rect.x + rect.w/2, cy = rect.y + rect.h/2;
+      const pts = [
+        {k:'nw', x:rect.x, y:rect.y},
+        {k:'ne', x:rect.x+rect.w, y:rect.y},
+        {k:'sw', x:rect.x, y:rect.y+rect.h},
+        {k:'se', x:rect.x+rect.w, y:rect.y+rect.h},
+        {k:'n',  x:cx, y:rect.y},
+        {k:'s',  x:cx, y:rect.y+rect.h},
+        {k:'w',  x:rect.x, y:cy},
+        {k:'e',  x:rect.x+rect.w, y:cy},
+      ];
+      for(const p of pts){
+        if(Math.abs(mx - p.x) <= HANDLE && Math.abs(my - p.y) <= HANDLE) return p.k;
+      }
+      if(mx >= rect.x && mx <= rect.x+rect.w && my >= rect.y && my <= rect.y+rect.h) return 'move';
+      return null;
+    }
+
+    function drawHandles(rect){
+      const ctx = imgCtx;
+      const corners = [
+        {x:rect.x, y:rect.y, c:'nw'},
+        {x:rect.x+rect.w, y:rect.y, c:'ne'},
+        {x:rect.x, y:rect.y+rect.h, c:'sw'},
+        {x:rect.x+rect.w, y:rect.y+rect.h, c:'se'},
+      ];
+      const edges = [
+        {x:rect.x+rect.w/2, y:rect.y, c:'n'},
+        {x:rect.x+rect.w/2, y:rect.y+rect.h, c:'s'},
+        {x:rect.x, y:rect.y+rect.h/2, c:'w'},
+        {x:rect.x+rect.w, y:rect.y+rect.h/2, c:'e'},
+      ];
+      ctx.save();
+      // Esquinas (verde)
+      ctx.fillStyle = '#17d47b';
+      for(const p of corners){ ctx.fillRect(p.x-4, p.y-4, 8, 8); }
+      // Lados (amarillo)
+      ctx.fillStyle = '#ffd866';
+      for(const p of edges){ ctx.fillRect(p.x-4, p.y-4, 8, 8); }
+      ctx.restore();
+    }
+
+    // ====== Redimensionado robusto por handler ======
+    function resizeFromHandlePx(startPx, handle, dx, dy){
+      let {x, y, w, h} = startPx;
+
+      const minW = MIN_SIZE_PX;
+      const minH = MIN_SIZE_PX;
+      const maxX = drawSize.w;
+      const maxY = drawSize.h;
+
+      const right = x + w;
+      const bottom = y + h;
+
+      function clampRect(){
+        if (x < 0){ w += x; x = 0; }
+        if (y < 0){ h += y; y = 0; }
+        if (x + w > maxX){ w = maxX - x; }
+        if (y + h > maxY){ h = maxY - y; }
+        if (w < minW){ w = minW; }
+        if (h < minH){ h = minH; }
+      }
+
+      switch(handle){
+        case 'e': {
+          let newRight = right + dx;
+          newRight = Math.min(newRight, maxX);
+          w = Math.max(minW, newRight - x);
+          break;
+        }
+        case 'w': {
+          let newLeft = x + dx;
+          newLeft = Math.max(0, Math.min(newLeft, right - minW));
+          w = right - newLeft;
+          x = newLeft;
+          break;
+        }
+        case 's': {
+          let newBottom = bottom + dy;
+          newBottom = Math.min(newBottom, maxY);
+          h = Math.max(minH, newBottom - y);
+          break;
+        }
+        case 'n': {
+          let newTop = y + dy;
+          newTop = Math.max(0, Math.min(newTop, bottom - minH));
+          h = bottom - newTop;
+          y = newTop;
+          break;
+        }
+        case 'ne': {
+          let newTop = y + dy;
+          newTop = Math.max(0, Math.min(newTop, bottom - minH));
+          h = bottom - newTop;
+          y = newTop;
+
+          let newRight = right + dx;
+          newRight = Math.min(newRight, maxX);
+          w = Math.max(minW, newRight - x);
+          break;
+        }
+        case 'nw': {
+          let newTop = y + dy;
+          newTop = Math.max(0, Math.min(newTop, bottom - minH));
+          h = bottom - newTop;
+          y = newTop;
+
+          let newLeft = x + dx;
+          newLeft = Math.max(0, Math.min(newLeft, right - minW));
+          w = right - newLeft;
+          x = newLeft;
+          break;
+        }
+        case 'se': {
+          let newBottom = bottom + dy;
+          newBottom = Math.min(newBottom, maxY);
+          h = Math.max(minH, newBottom - y);
+
+          let newRight = right + dx;
+          newRight = Math.min(newRight, maxX);
+          w = Math.max(minW, newRight - x);
+          break;
+        }
+        case 'sw': {
+          let newBottom = bottom + dy;
+          newBottom = Math.min(newBottom, maxY);
+          h = Math.max(minH, newBottom - y);
+
+          let newLeft = x + dx;
+          newLeft = Math.max(0, Math.min(newLeft, right - minW));
+          w = right - newLeft;
+          x = newLeft;
+          break;
+        }
+        default: {
+          x = Math.max(0, Math.min(maxX - w, x + dx));
+          y = Math.max(0, Math.min(maxY - h, y + dy));
+        }
+      }
+
+      clampRect();
+      return {x, y, w, h};
+    }
+
+    function drawROIOverlay(){
+      if(!imgLoaded) return;
+      const base = new Image();
+      base.onload = ()=>{
+        imgCtx.clearRect(0,0,imgCanvasPreview.width,imgCanvasPreview.height);
+        imgCtx.drawImage(base, 0, 0, imgCanvasPreview.width, imgCanvasPreview.height);
+        const rpx = roiToPx(roi);
+
+        imgCtx.save();
+        imgCtx.fillStyle = 'rgba(0,0,0,0.45)';
+        imgCtx.beginPath();
+        imgCtx.rect(0, 0, drawSize.w, drawSize.h);
+        imgCtx.rect(rpx.x, rpx.y, rpx.w, rpx.h);
+        imgCtx.fill('evenodd');
+        imgCtx.restore();
+
+        imgCtx.save();
+        imgCtx.strokeStyle = '#0f6';
+        imgCtx.lineWidth = 2;
+        imgCtx.setLineDash([8,6]);
+        imgCtx.strokeRect(rpx.x, rpx.y, rpx.w, rpx.h);
+        imgCtx.restore();
+
+        drawHandles(rpx);
+
+        // actualizar vista previa ROI (imagen)
+        const sx = Math.max(0, Math.round(roi.x * imgCanvasFull.width));
+        const sy = Math.max(0, Math.round(roi.y * imgCanvasFull.height));
+        const sw = Math.max(1, Math.round(roi.w * imgCanvasFull.width));
+        const sh = Math.max(1, Math.round(roi.h * imgCanvasFull.height));
+        roiCtx.clearRect(0,0,roiPreview.width,roiPreview.height);
+        const scale = Math.min(roiPreview.width / sw, roiPreview.height / sh);
+        const dw = Math.round(sw * scale), dh = Math.round(sh * scale);
+        const dx = Math.round((roiPreview.width - dw)/2), dy = Math.round((roiPreview.height - dh)/2);
+        roiCtx.drawImage(imgCanvasFull, sx, sy, sw, sh, dx, dy, dw, dh);
+
+        // sincronizar ambos sliders
+        updateRoiSlidersFromCurrent();
+      };
+      base.src = imgCanvasFull.toDataURL('image/png');
+    }
+
+    function getRoiPixels(){
+      if (!imgLoaded || !imgCanvasFull.width) return null;
+      const sx = Math.max(0, Math.round(roi.x * imgCanvasFull.width));
+      const sy = Math.max(0, Math.round(roi.y * imgCanvasFull.height));
+      const sw = Math.max(1, Math.round(roi.w * imgCanvasFull.width));
+      const sh = Math.max(1, Math.round(roi.h * imgCanvasFull.height));
+      const temp = document.createElement('canvas');
+      temp.width = sw; temp.height = sh;
+      const tctx = temp.getContext('2d');
+      tctx.drawImage(imgCanvasFull, sx, sy, sw, sh, 0, 0, sw, sh);
+      return temp;
+    }
+
+    // ====== MRZ Parsers ======
+    function isPotentialMRZ(text){
+      if(!text) return false;
+      const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+      if(lines.length < 2) return false;
+      // contar líneas que consisten solo de A-Z0-9<
+      const okLines = lines.filter(l => /^[A-Z0-9<\s]{20,100}$/.test(l.replace(/\s+/g,'')));
+      return okLines.length >= 2;
+    }
+
+    function normalizeMRZLines(raw){
+      // mantener solo caracteres válidos en MRZ y convertir a mayúsculas
+      const lines = raw.split(/\r?\n/).map(l => l.replace(/[^A-Za-z0-9<]/g,'').toUpperCase()).filter(Boolean);
+      return lines;
+    }
+
+    function parseMRZ(raw){
+      const lines = normalizeMRZLines(raw);
+      if(lines.length === 0) return null;
+
+      // TD3 (pasaporte) normalmente dos líneas de 44
+      const two44 = lines.filter(l => l.length >= 40).slice(-2);
+      if(two44.length === 2 && (two44[0].length >= 30 || two44[1].length >= 30)){
+        const L1 = two44[0].padEnd(44,'<').slice(0,44);
+        const L2 = two44[1].padEnd(44,'<').slice(0,44);
+        const docCode = L1.slice(0,2);
+        const issuer = L1.slice(2,5);
+        const names = L1.slice(5).replace(/<+$/,'').split('<<');
+        const surname = (names[0]||'').replace(/</g,' ').trim();
+        const givenNames = (names[1]||'').replace(/</g,' ').trim();
+        const passportNumber = L2.slice(0,9).replace(/</g,'').trim();
+        const passportNumberCD = L2.slice(9,10);
+        const nationality = L2.slice(10,13);
+        const birthRaw = L2.slice(13,19);
+        const birthCheck = L2.slice(19,20);
+        const sex = L2.slice(20,21);
+        const expiryRaw = L2.slice(21,27);
+        const expiryCheck = L2.slice(27,28);
+        const personal = L2.slice(28,42).replace(/</g,'').trim();
+        // formatear fechas YYMMDD -> YYYY-MM-DD (heurística: si YY>currentYear%100 then 1900s else 2000s)
+        function fmtDateYYMMDD(s){
+          if(!/^\d{6}$/.test(s)) return null;
+          const yy = parseInt(s.slice(0,2),10), mm = s.slice(2,4), dd = s.slice(4,6);
+          const curYY = new Date().getFullYear() % 100;
+          const century = (yy > curYY) ? 1900 : 2000;
+          return `${century+yy}-${mm}-${dd}`;
+        }
+        return {
+          format: 'TD3',
+          documentCode: docCode,
+          issuingState: issuer,
+          surname,
+          givenNames,
+          passportNumber,
+          passportNumberCheckDigit: passportNumberCD,
+          nationality,
+          birthDate: fmtDateYYMMDD(birthRaw),
+          birthDateCheckDigit: birthCheck,
+          sex,
+          expiryDate: fmtDateYYMMDD(expiryRaw),
+          expiryCheckDigit: expiryCheck,
+          personalNumber: personal
+        };
+      }
+
+      // TD1 (ID cards) suele ser 3 líneas de 30
+      const three30 = lines.filter(l => l.length >= 25).slice(-3);
+      if(three30.length === 3){
+        const A = three30[0].padEnd(30,'<').slice(0,30);
+        const B = three30[1].padEnd(30,'<').slice(0,30);
+        const C = three30[2].padEnd(30,'<').slice(0,30);
+        // TD1 parsing (simplificado / heurístico)
+        const docCode = A.slice(0,2);
+        const issuer = A.slice(2,5);
+        const documentNumber = A.slice(5,14).replace(/</g,'').trim();
+        const documentNumberCD = A.slice(14,15);
+        const birthRaw = B.slice(0,6);
+        const birthCD = B.slice(6,7);
+        const sex = B.slice(7,8);
+        const expiryRaw = B.slice(8,14);
+        const expiryCD = B.slice(14,15);
+        const names = C.slice(0).replace(/<+$/,'').split('<<');
+        const surname = (names[0]||'').replace(/</g,' ').trim();
+        const givenNames = (names[1]||'').replace(/</g,' ').trim();
+        function fmtDateYYMMDD(s){
+          if(!/^\d{6}$/.test(s)) return null;
+          const yy = parseInt(s.slice(0,2),10), mm = s.slice(2,4), dd = s.slice(4,6);
+          const curYY = new Date().getFullYear() % 100;
+          const century = (yy > curYY) ? 1900 : 2000;
+          return `${century+yy}-${mm}-${dd}`;
+        }
+        return {
+          format: 'TD1',
+          documentCode: docCode,
+          issuingState: issuer,
+          documentNumber,
+          documentNumberCheckDigit: documentNumberCD,
+          birthDate: fmtDateYYMMDD(birthRaw),
+          birthDateCheckDigit: birthCD,
+          sex,
+          expiryDate: fmtDateYYMMDD(expiryRaw),
+          expiryDateCheckDigit: expiryCD,
+          surname,
+          givenNames
+        };
+      }
+
+      // Si no coincide con TD3/TD1 devolvemos raw estructurado por líneas
+      return {
+        format: 'unknown',
+        lines: lines
+      };
+    }
+
+    // Reemplazo de parsers anteriores por MRZ-first
+    function smartParse(raw){
+      const txt = String(raw||'').toUpperCase();
+      if(isPotentialMRZ(txt)){
+        const parsed = parseMRZ(txt);
+        return { kind: 'MRZ', data: parsed };
+      }
+      // Mantener fallback a otros parsers (p.ej. DUI) si el texto contiene delimitadores ||
+      if(txt.includes('||')) {
+        // simple parse tipo DUI por compatibilidad (conservado)
+        const parts = String(raw||'').split('||');
+        const fieldNames = [
+          "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Tipo de Documento","Firma Digital",
+          "Lugar de Nacimiento","Municipio","Departamento","Nacionalidad","Sexo","Fecha de Nacimiento",
+          "Fecha de Emisión","Número de Emisión","Categoría","Fecha de Vencimiento","Segunda Firma Digital","Código de Verificación"
+        ];
+        const out = {};
+        for(let i=0;i<fieldNames.length;i++) out[fieldNames[i]] = (i<parts.length? parts[i] : 'No disponible');
+        return { kind:'DUI', data: out };
+      }
+      return { kind:'raw', data: { raw: txt } };
+    }
+
+    function renderResult(parsed, raw){
+      let toShow = parsed?.data || {};
+      // si MRZ -> expandir en tabla con campos claros
+      renderTable(toShow);
+      $('#txtJson').val(JSON.stringify(toShow, null, 2));
+      $('#txtRaw').val(String(raw||''));
+    }
+
+    // ====== Eventos UI ======
+    $('#btnStart').on('click', startCamera);
+    $('#btnStop').on('click', stopCamera);
+    $('#btnFlip').on('click', async ()=>{ 
+      facingMode = (facingMode==='environment')? 'user' : 'environment';
+      if(running) startCamera();
+    });
+    $('#btnCaptureCamROI').on('click', captureRoiFromCamera);
+
+    // Auto-captura toggles
+    $('#chkAuto').on('change', function(){ isAuto = !!this.checked; setStatus(isAuto?'Auto-captura ON':'Auto-captura OFF','info'); });
+    $('#numThresh,#numCooldown').on('change', function(){
+      const v = $(this).val();
+      if(this.id==='numThresh') $(this).val(String(clamp(parseFloat(v)||0.6,0,1)));
+      if(this.id==='numCooldown') $(this).val(String(clamp(parseFloat(v)||2.5,0,30)));
+    });
+
+    // Imagen
+    $('#btnPick').on('click', ()=> document.getElementById('fileImage').click());
+    $('#fileImage').on('change', async (e)=>{
+      const f = e.target.files?.[0];
+      if(!f){ imgCanvasPreview.classList.add('hidden'); return; }
+      await loadImageFile(f);
+      setStatus('Imagen cargada (puede ajustar el ROI y capturar)');
+    });
+    $('#btnDetectImg').on('click', detectOnImage);
+    $('#btnProcessFull').on('click', async ()=>{
+      if(!imgLoaded) return setStatus('Cargue una imagen primero','info');
+      const temp = document.createElement('canvas');
+      temp.width = imgCanvasFull.width; temp.height = imgCanvasFull.height;
+      temp.getContext('2d').drawImage(imgCanvasFull, 0, 0);
+      const raw = await decodeFromCanvas(temp);
+      if(raw){ setStatus('Texto detectado (imagen completa)','ok'); const parsed = smartParse(raw); renderResult(parsed, raw); }
+      else setStatus('No se detectó MRZ en la imagen completa','bad');
+    });
+    $('#btnProcessROI').on('click', async ()=>{
+      if(!imgLoaded) return setStatus('Cargue una imagen primero','info');
+      const roiCanvas = getRoiPixels();
+      if(!roiCanvas) return setStatus('Defina un ROI válido','info');
+      const raw = await decodeFromCanvas(roiCanvas);
+      if(raw){
+        setStatus('Texto detectado en ROI','ok');
+        // mostrar preview del ROI (imagen)
+        roiCtx.clearRect(0,0,roiPreview.width,roiPreview.height);
+        const scale = Math.min(roiPreview.width / roiCanvas.width, roiPreview.height / roiCanvas.height);
+        const dw = Math.round(roiCanvas.width * scale), dh = Math.round(roiCanvas.height * scale);
+        const dx = Math.round((roiPreview.width - dw)/2), dy = Math.round((roiPreview.height - dh)/2);
+        roiCtx.drawImage(roiCanvas, 0, 0, roiCanvas.width, roiCanvas.height, dx, dy, dw, dh);
+        const parsed = smartParse(raw); renderResult(parsed, raw);
+      }else setStatus('No se detectó MRZ en el ROI','bad');
+    });
+    $('#btnParse').on('click', ()=>{
+      const raw = $('#txtRaw').val();
+      const parsed = smartParse(raw);
+      renderResult(parsed, raw);
+      setStatus('Parseo completado','ok');
+    });
+    $('#btnClearRaw').on('click', ()=>{ $('#txtRaw').val(''); $('#txtJson').val(''); renderTable({}); });
+
+    // ====== Interacción precisa (imagen) ======
+    imgCanvasPreview.addEventListener('mousedown', (e)=>{
+      if(!imgLoaded) return;
+      const rect = imgCanvasPreview.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const rpx = roiToPx(roi);
+      action = getHandleAt(mx, my, rpx);
+      start = {x:mx, y:my};
+      startRoi = {...roi};
+    });
+
+    window.addEventListener('mousemove', (e)=>{
+      const rect = imgCanvasPreview.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+      // Cursor contextual
+      if(!imgLoaded || !action){
+        const rpx = roiToPx(roi);
+        const h = getHandleAt(mx, my, rpx);
+        let cursor = 'crosshair';
+        if (h==='move') cursor = 'move';
+        else if (h==='n' || h==='s') cursor = 'ns-resize';
+        else if (h==='e' || h==='w') cursor = 'ew-resize';
+        else if (h==='ne' || h==='sw') cursor = 'nesw-resize';
+        else if (h==='nw' || h==='se') cursor = 'nwse-resize';
+        imgCanvasPreview.style.cursor = cursor;
+      }
+
+      if(!imgLoaded || !action) return;
+
+      const dx = mx - start.x, dy = my - start.y;
+      const startPx = roiToPx(startRoi);
+
+      let newPx;
+      if(action==='move'){
+        newPx = resizeFromHandlePx(startPx, 'move', dx, dy);
+      }else{
+        newPx = resizeFromHandlePx(startPx, action, dx, dy);
+      }
+
+      roi = pxToRoi(newPx);
+      drawROIOverlay();
+    });
+
+    window.addEventListener('mouseup', ()=>{ action=null; });
+
+    // Touch (drag + pinch)
+    imgCanvasPreview.addEventListener('touchstart', (e)=>{
+      if(!imgLoaded) return;
+      e.preventDefault();
+      const touches = Array.from(e.touches);
+      activeTouches.clear();
+      touches.forEach(t=>activeTouches.set(t.identifier, {x:t.clientX, y:t.clientY}));
+
+      if(touches.length===1){
+        const rect = imgCanvasPreview.getBoundingClientRect();
+        const mx = touches[0].clientX - rect.left, my = touches[0].clientY - rect.top;
+        const rpx = roiToPx(roi);
+        action = getHandleAt(mx, my, rpx) || 'move';
+        start = {x:mx, y:my};
+        startRoi = {...roi};
+      }else if(touches.length===2){
+        pinchStartDist = dist2(touches[0], touches[1]);
+        pinchStartRoi = {...roi};
+      }
+    }, {passive:false});
+
+    imgCanvasPreview.addEventListener('touchmove', (e)=>{
+      if(!imgLoaded) return;
+      e.preventDefault();
+      const touches = Array.from(e.touches);
+
+      if(touches.length===1 && action){
+        const rect = imgCanvasPreview.getBoundingClientRect();
+        const mx = touches[0].clientX - rect.left, my = touches[0].clientY - rect.top;
+        const dx = mx - start.x, dy = my - start.y;
+        const startPx = roiToPx(startRoi);
+
+        let newPx;
+        if(action==='move'){
+          newPx = resizeFromHandlePx(startPx, 'move', dx, dy);
+        }else{
+          newPx = resizeFromHandlePx(startPx, action, dx, dy);
+        }
+
+        roi = pxToRoi(newPx);
+        drawROIOverlay();
+      } else if(touches.length===2 && pinchStartRoi){
+        const d = dist2(touches[0], touches[1]);
+        const scale = d / (pinchStartDist || d);
+        const cx = pinchStartRoi.x + pinchStartRoi.w/2;
+        const cy = pinchStartRoi.y + pinchStartRoi.h/2;
+        let w = pinchStartRoi.w * scale;
+        let h = pinchStartRoi.h * scale;
+        w = Math.max(MIN_SIZE_PX/drawSize.w, w);
+        h = Math.max(MIN_SIZE_PX/drawSize.h, h);
+        let x = cx - w/2, y = cy - h/2;
+        x = Math.max(0, Math.min(1 - w, x));
+        y = Math.max(0, Math.min(1 - h, y));
+        roi = {x,y,w,h};
+        drawROIOverlay();
+      }
+    }, {passive:false});
+
+    imgCanvasPreview.addEventListener('touchend', (e)=>{ e.preventDefault(); action=null; pinchStartRoi=null; activeTouches.clear(); }, {passive:false});
+    function dist2(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
+
+    // Teclado
+    imgCanvasPreview.addEventListener('keydown', (e)=>{
+      if(!imgLoaded) return;
+      const step = e.shiftKey ? 5 : 1; // px
+      const grow = e.shiftKey ? 6 : 2; // px por lado
+      const rpx = roiToPx(roi);
+
+      if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-','=', '_'].includes(e.key)) e.preventDefault();
+
+      if(e.key==='ArrowLeft'){ rpx.x = Math.max(0, rpx.x - step); }
+      if(e.key==='ArrowRight'){ rpx.x = Math.min(drawSize.w - rpx.w, rpx.x + step); }
+      if(e.key==='ArrowUp'){ rpx.y = Math.max(0, rpx.y - step); }
+      if(e.key==='ArrowDown'){ rpx.y = Math.min(drawSize.h - rpx.h, rpx.y + step); }
+
+      if(e.key==='+' || e.key==='='){ // expandir
+        rpx.x = Math.max(0, rpx.x - grow);
+        rpx.y = Math.max(0, rpx.y - grow);
+        rpx.w = Math.min(drawSize.w - rpx.x, rpx.w + grow*2);
+        rpx.h = Math.min(drawSize.h - rpx.y, rpx.h + grow*2);
+      }
+      if(e.key==='-' || e.key==='_'){ // contraer
+        rpx.x = Math.min(rpx.x + grow, drawSize.w - MIN_SIZE_PX);
+        rpx.y = Math.min(rpx.y + grow, drawSize.h - MIN_SIZE_PX);
+        rpx.w = Math.max(MIN_SIZE_PX, rpx.w - grow*2);
+        rpx.h = Math.max(MIN_SIZE_PX, rpx.h - grow*2);
+      }
+
+      roi = pxToRoi(rpx);
+      drawROIOverlay();
+    });
+
+    // Enfocar el canvas al hacer click para habilitar teclado
+    imgCanvasPreview.addEventListener('click', ()=> imgCanvasPreview.focus());
+
+    // ====== CONTROLES DE ANCHO (slider) ======
+    const $rng = $('#rngRoiScale');
+    const $lbl = $('#lblRoiScale');
+    $('#btnRoiMinus').on('click', ()=> { setRoiScaleUI(($rng.val()|0) - 10); });
+    $('#btnRoiPlus').on('click', ()=> { setRoiScaleUI(($rng.val()|0) + 10); });
+    $('#btnRoiReset').on('click', ()=> { baselineRoi = {...roi}; setRoiScaleUI(100); setRoiHeightUI(100); });
+    $rng.on('input', function(){ setRoiScaleUI(parseInt(this.value,10)); });
+
+    function setRoiScaleUI(perc){
+      if(!baselineRoi) baselineRoi = {...roi};
+      const p = clamp(perc, 10, 400);
+      $rng.val(String(p));
+      $lbl.text(`${p}%`);
+      scaleRoiWidthAroundCenterFromBaseline(p/100);
+      drawROIOverlay();
+    }
+
+    function scaleRoiWidthAroundCenterFromBaseline(mult){
+      const cy = roi.y + roi.h/2; // mantener centro vertical
+      const cx = roi.x + roi.w/2;
+      let w = baselineRoi.w * mult;
+      let h = roi.h; // no cambia altura aquí
+
+      const minW = MIN_SIZE_PX / drawSize.w;
+      const minH = MIN_SIZE_PX / drawSize.h;
+      w = Math.max(minW, Math.min(1, w));
+      h = Math.max(minH, Math.min(1, h));
+
+      let x = cx - w/2;
+      let y = cy - h/2;
+
+      x = Math.max(0, Math.min(1 - w, x));
+      y = Math.max(0, Math.min(1 - h, y));
+
+      roi = {x,y,w,h};
+    }
+
+    // ====== CONTROLES DE ALTURA (slider) ======
+    const $rngH = $('#rngRoiHScale');
+    const $lblH = $('#lblRoiHScale');
+    $('#btnRoiHMinus').on('click', ()=> { setRoiHeightUI(($rngH.val()|0) - 10); });
+    $('#btnRoiHPlus').on('click', ()=> { setRoiHeightUI(($rngH.val()|0) + 10); });
+    $('#btnRoiHReset').on('click', ()=> { baselineRoi = {...roi}; setRoiHeightUI(100); setRoiScaleUI(100); });
+    $rngH.on('input', function(){ setRoiHeightUI(parseInt(this.value,10)); });
+
+    function setRoiHeightUI(perc){
+      if(!baselineRoi) baselineRoi = {...roi};
+      const p = clamp(perc, 10, 400);
+      $rngH.val(String(p));
+      $lblH.text(`${p}%`);
+      scaleRoiHeightAroundCenterFromBaseline(p/100);
+      drawROIOverlay();
+    }
+
+    function scaleRoiHeightAroundCenterFromBaseline(mult){
+      const cx = roi.x + roi.w/2; // mantener centro horizontal
+      const cy = roi.y + roi.h/2;
+      let w = roi.w; // no cambia ancho aquí
+      let h = baselineRoi.h * mult;
+
+      const minW = MIN_SIZE_PX / drawSize.w;
+      const minH = MIN_SIZE_PX / drawSize.h;
+      w = Math.max(minW, Math.min(1, w));
+      h = Math.max(minH, Math.min(1, h));
+
+      let x = cx - w/2;
+      let y = cy - h/2;
+
+      x = Math.max(0, Math.min(1 - w, x));
+      y = Math.max(0, Math.min(1 - h, y));
+
+      roi = {x,y,w,h};
+    }
+
+    // Sincronización de sliders desde el ROI actual
+    function updateRoiSlidersFromCurrent(){
+      if(!baselineRoi) return;
+      const percW = clamp(Math.round((roi.w / baselineRoi.w) * 100), 10, 400);
+      const percH = clamp(Math.round((roi.h / baselineRoi.h) * 100), 10, 400);
+      if(($rng.val()|0) !== percW){ $rng.val(String(percW)); $lbl.text(`${percW}%`); }
+      if(($rngH.val()|0) !== percH){ $rngH.val(String(percH)); $lblH.text(`${percH}%`); }
+    }
+
+    // ====== Inicio ======
+    loadModel();
+    initTesseract();
+
+    // ====== Tabs ======
+    const tabs = Array.from(document.querySelectorAll('.tab'));
+    tabs.forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        tabs.forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        const pane = btn.dataset.pane;
+        document.getElementById('pane-img').classList.toggle('hidden', pane!=='pane-img');
+        document.getElementById('pane-raw').classList.toggle('hidden', pane!=='pane-raw');
+      });
+    });
+
+    // Helpers
+    function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  })();
+  </script>
+</body>
+</html>
