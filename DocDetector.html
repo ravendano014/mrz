@@ -69,6 +69,7 @@
     .result thead th{position:sticky; top:0; background:#0f1b34; color:#a7b8d4; border-bottom:1px solid var(--border)}
     .result th,.result td{padding:8px 10px; white-space:nowrap; border-bottom:1px dashed var(--border)}
 
+    /* Mini-toolbar contextual del ROI */
     .roi-toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px}
     .roi-toolbar .kbd{font-family:var(--mono); font-size:12px; opacity:.85}
     select, .input{background:#0f1c36; color:#e5eeff; border:1px solid var(--border); border-radius:8px; padding:7px 10px}
@@ -139,6 +140,7 @@
                 <canvas id="roiCanvas"></canvas>
               </div>
 
+              <!-- === Mini-toolbar contextual del ROI === -->
               <div class="roi-toolbar">
                 <label>Tipo ROI:</label>
                 <select id="roiType">
@@ -153,6 +155,7 @@
                 <button class="btn ok" id="btnProcessROI" disabled>OCR & Parsear ROI</button>
                 <button class="btn" id="btnActionByType" disabled>Acción según Tipo (ROI)</button>
 
+                <!-- Botones rápidos según tipo -->
                 <span class="kbd">Acciones:</span>
                 <button class="btn ghost" id="btnROI_OCR" disabled>OCR ROI</button>
                 <button class="btn ghost" id="btnROI_MRZ" disabled>MRZ ROI</button>
@@ -233,7 +236,7 @@
   themeToggle.addEventListener('click', ()=>{ const next = document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'; localStorage.setItem('docdet.theme', next); applyTheme(next); });
 
   /* =========================================================
-      InferenceJS — Detección de documento (recorte con confirmación)
+      InferenceJS — Detección de documento (recorte auto)
   ========================================================= */
   const { InferenceEngine, CVImage } = inferencejs;
   const engine = new InferenceEngine();
@@ -243,7 +246,6 @@
   async function loadModel(){
     try{
       modelStatus.text('Modelo: cargando…'); dotModel.css('background','#f59e0b');
-      // Tu modelo de detección de documentos
       workerId = await engine.startWorker("react-project-wdxr6","1","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
       modelStatus.text('Modelo: listo'); dotModel.css('background','#22c55e');
     }catch(e){
@@ -255,12 +257,6 @@
   const overlay = document.getElementById('overlay'); const octx = overlay.getContext('2d');
   const detBox = document.getElementById('detBox');
   let stream=null, running=false, rafId=null, lastFPS=[];
-
-  // NUEVO: control para pedir confirmación solo una vez por aparición
-  let detectionPresent = false;       // hay detección en el frame actual
-  let detectionLive = false;          // estado binario (antes/ahora)
-  let autoPromptShown = false;        // ya se mostró confirm() para esta aparición
-  let lastBestBBox = null;            // record del mejor bbox
 
   function resizeOverlay(){
     const rect = video.getBoundingClientRect();
@@ -281,15 +277,13 @@
     if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null;
     $('#btnCamStart').prop('disabled', false); $('#btnCamStop').prop('disabled', true);
     octx.clearRect(0,0,overlay.width,overlay.height); detBox.style.display='none';
-    // Reinicia el estado de aparición para el auto-prompt
-    detectionPresent=false; detectionLive=false; autoPromptShown=false; lastBestBBox=null;
   }
 
   function drawDetections(preds){
     octx.clearRect(0,0,overlay.width,overlay.height); detBox.style.display='none';
-    if(!preds?.length){ detectionPresent=false; return null; }
+    if(!preds?.length) return null;
 
-    // bbox más grande
+    // Busca el bbox más grande
     let best=preds[0], bestA=0;
     for(const p of preds){
       const a = p.bbox.width*p.bbox.height; if(a>bestA){best=p; bestA=a;}
@@ -314,9 +308,7 @@
     detBox.style.top = (video.getBoundingClientRect().top + my)+'px';
     detBox.style.width = mw+'px'; detBox.style.height = mh+'px';
 
-    detectionPresent=true;
-    lastBestBBox = { x, y, w, h };
-    return lastBestBBox;
+    return {x,y,w,h};
   }
 
   async function loopDetect(){
@@ -327,28 +319,7 @@
         const preds = await engine.infer(workerId, frame);
         drawDetections(preds);
 
-        // Detección → transición de estado para decidir si preguntar
-        if(detectionPresent && !detectionLive){
-          detectionLive = true;
-          autoPromptShown = false; // nueva aparición, se puede preguntar
-        } else if(!detectionPresent && detectionLive){
-          detectionLive = false;
-          autoPromptShown = false; // desaparecer → resetea
-        }
-
-        // Si hay una detección viva y aún no preguntamos, proponemos captura
-        if(detectionLive && !autoPromptShown && lastBestBBox){
-          autoPromptShown = true;
-          setTimeout(()=>{ // pequeño debounce para evitar parpadeos
-            if(detectionLive && lastBestBBox){
-              const ok = confirm("Se detectó un documento.\n¿Deseas generar una captura del área detectada para procesarla en la Vista Previa?\n\nNota: Los resultados actuales se mantendrán hasta que confirmes una nueva captura.");
-              if(ok) captureCurrentDetection(); // SOLO si acepta, reemplaza la Vista Previa
-              // si cancela, no pasa nada; resultados se mantienen
-            }
-          }, 100); 
-        }
-
-        // FPS
+        // FPS indicador
         const now = performance.now(); lastFPS.push(now); if(lastFPS.length>15) lastFPS.shift();
         if(lastFPS.length>=2){
           const fps = 1000 / ((lastFPS[lastFPS.length-1]-lastFPS[0])/(lastFPS.length-1));
@@ -368,30 +339,21 @@
     c.getContext('2d').drawImage(source,x,y,w,h,0,0,c.width,c.height); return c;
   }
 
+  // Vista previa
   const prevCanvas = document.getElementById('previewCanvas'); const pctx = prevCanvas.getContext('2d');
   function showOnPreview(c){ prevCanvas.width=c.width; prevCanvas.height=c.height; pctx.clearRect(0,0,c.width,c.height); pctx.drawImage(c,0,0); }
 
-  // NUEVO: función central para recortar usando la detección actual
-  function captureCurrentDetection(){
-    if(!stream || !lastBestBBox) return;
-    const src = canvasFromVideo();
-    const {x,y,w,h} = lastBestBBox;
-    const crop = cropCanvas(src,x,y,w,h);
-    showOnPreview(crop);
-    // Importante: NO tocamos las tablas de resultados aquí (se mantienen)
-  }
-
   $('#btnCamStart').on('click', startCamera);
   $('#btnCamStop').on('click', stopCamera);
-  $('#btnCapture').on('click', ()=>{ if(!stream) return; const c = canvasFromVideo(); showOnPreview(c); /* no limpia resultados */ });
-
-  // MODIFICADO: ahora pide confirmación antes de recortar
+  $('#btnCapture').on('click', ()=>{ if(!stream) return; const c = canvasFromVideo(); showOnPreview(c); });
   $('#btnCaptureDoc').on('click', async ()=>{
-    if(!stream || !workerId){ alert('Inicia la cámara y espera a que el modelo esté listo.'); return; }
-    if(!lastBestBBox){ alert('Aún no se detecta un documento.'); return; }
-    const ok = confirm("¿Generar captura del área detectada para procesarla en la Vista Previa?\n\nLos resultados actuales se mantendrán hasta que confirmes una nueva captura.");
-    if(!ok) return;
-    captureCurrentDetection();
+    if(!stream || !workerId) return;
+    const frame = new CVImage(video); const preds = await engine.infer(workerId, frame);
+    if(!preds?.length){ alert('No se detectó documento.'); return; }
+    const best = preds.reduce((acc,p)=>{const a=p.bbox.width*p.bbox.height; return !acc||a>acc.a?{p,a}:acc;},null).p;
+    const src = canvasFromVideo();
+    const x = best.bbox.x - best.bbox.width/2, y = best.bbox.y - best.bbox.height/2, w = best.bbox.width, h = best.bbox.height;
+    const crop = cropCanvas(src,x,y,w,h); showOnPreview(crop);
   });
 
   /* =========================================================
@@ -425,7 +387,7 @@
     await runAllParsersOnCanvas(tmp);
   });
 
-  // ROIs + tipos
+  // ROIs
   let rois=[], selectedId=null; const HANDLE=7;
   const roiTypeSelect = document.getElementById('roiType');
   function addROI(x=40,y=40,w=220,h=120,type=roiTypeSelect.value || 'text'){ const id=crypto.randomUUID(); rois.push({id,x,y,w,h,type}); selectedId=id; drawROIs(); updateROIButtons(); syncRoiTypeSelector(); }
@@ -444,8 +406,10 @@
       const sel=r.id===selectedId;
       rctx.lineWidth=1.5; rctx.strokeStyle= sel ? "#8e8dfd" : "#5ac8fa"; rctx.strokeRect(r.x,r.y,r.w,r.h);
       const hs=HANDLE; const pts=corners(r); rctx.fillStyle = sel ? "#8e8dfd" : "#5ac8fa"; pts.forEach(pt=>rctx.fillRect(pt.x-hs/2,pt.y-hs/2,hs,hs));
-      const label = r.type.toUpperCase(); const lw = Math.max(90, 10 + label.length*7);
-      rctx.fillStyle="rgba(16,32,55,.85)"; rctx.fillRect(r.x, r.y-18, lw, 16);
+      // Etiqueta tipo
+      const label = r.type.toUpperCase();
+      const w = Math.max(90, 10 + label.length*7);
+      rctx.fillStyle="rgba(16,32,55,.85)"; rctx.fillRect(r.x, r.y-18, w, 16);
       rctx.fillStyle="#cfe6ff"; rctx.font="12px "+getComputedStyle(document.body).fontFamily; rctx.fillText(label, r.x+6, r.y-6);
     }
   }
@@ -476,9 +440,11 @@
   roiCanvas.addEventListener('pointerup', ()=>dragState=null);
   roiCanvas.addEventListener('pointercancel', ()=>dragState=null);
 
+  // Sincroniza el selector con el ROI seleccionado
   function syncRoiTypeSelector(){
     const r = rois.find(x=>x.id===selectedId);
     roiTypeSelect.value = r?.type || 'text';
+    // Habilita/inhabilita botones rápidos por tipo
     const t = roiTypeSelect.value;
     $('#btnROI_OCR').prop('disabled', !r || !['text','mrz'].includes(t));
     $('#btnROI_MRZ').prop('disabled', !r || t!=='mrz');
@@ -507,7 +473,7 @@
   });
 
   /* =========================================================
-      PDF417 (ZXing) — DUI (||)
+      PDF417 (ZXing) — Parseo DUI (||) y UI
   ========================================================= */
   const pdf417Error = document.getElementById('pdf417Error');
   const pdf417Summary = document.getElementById('pdf417Summary');
@@ -537,6 +503,7 @@
     return null;
   }
 
+  // Parseo DUI desde separador ||
   function parseDUIFromRaw(raw){
     if(!raw || typeof raw!=='string') return null;
     const parts = raw.split('||');
@@ -600,6 +567,7 @@
     try{ await navigator.clipboard.writeText(currentDuiRawText); copyRawText.textContent='¡Texto crudo copiado!'; setTimeout(()=>copyRawText.textContent='Copiar Texto Crudo',1100); }catch(e){}
   });
 
+  // Botón PDF417 desde la vista previa
   $('#btnDecodePDF417FromPreview').on('click', async ()=>{
     const dataURL = prevCanvas.toDataURL('image/png');
     const im = new Image();
@@ -761,10 +729,6 @@
     }
   }
 
-  const copyMrz = document.getElementById('copyMrz');
-  const copyJson = document.getElementById('copyJson');
-  let currentParsedData=null;
-
   copyMrz.addEventListener('click', async ()=>{
     const mrzLines = currentParsedData?.raw?.join('\n'); if(!mrzLines) return;
     try{ await navigator.clipboard.writeText(mrzLines); copyMrz.textContent='¡MRZ copiado!'; setTimeout(()=>copyMrz.textContent='Copiar MRZ',1100); }catch(e){}
@@ -774,9 +738,11 @@
     try{ await navigator.clipboard.writeText(JSON.stringify(currentParsedData,null,2)); copyJson.textContent='¡JSON copiado!'; setTimeout(()=>copyJson.textContent='Copiar JSON',1100); }catch(e){}
   });
 
+  // Botones vista previa
   $('#btnMRZFromPreview').on('click', async ()=>{ if(!prevCanvas.width) return; await processMRZFromSource(prevCanvas); });
   $('#btnOCRPreview').on('click', async ()=>{ if(!prevCanvas.width) return; await runAllParsersOnCanvas(prevCanvas); });
 
+  // Ejecuta ambos parsers automáticamente sobre un canvas dado
   async function runAllParsersOnCanvas(cnv){
     // 1) PDF417
     await (async ()=>{
@@ -791,13 +757,6 @@
   /* =========================================================
       Acciones por tipo de ROI
   ========================================================= */
-  const btnProcessROI = document.getElementById('btnProcessROI');
-  const btnActionByType = document.getElementById('btnActionByType');
-  const btnROI_OCR = document.getElementById('btnROI_OCR');
-  const btnROI_MRZ = document.getElementById('btnROI_MRZ');
-  const btnROI_PDF417 = document.getElementById('btnROI_PDF417');
-  const btnROI_Image = document.getElementById('btnROI_Image');
-
   function cropFromROI(r){
     const src=document.createElement('canvas'); src.width=imgCanvas.width; src.height=imgCanvas.height; src.getContext('2d').drawImage(imgCanvas,0,0);
     const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(r.w)); c.height=Math.max(1,Math.round(r.h));
@@ -808,10 +767,13 @@
   async function actionByType(r){
     const t = r.type;
     const crop = cropFromROI(r);
-    showOnPreview(crop); // NO limpia resultados
-    if(t==='text'){ await runAllParsersOnCanvas(crop); }
-    else if(t==='mrz'){ await processMRZFromSource(crop); }
-    else if(t==='pdf417' || t==='barcode'){
+    showOnPreview(crop);
+
+    if(t==='text'){ // OCR general (con parseo general)
+      await runAllParsersOnCanvas(crop);
+    }else if(t==='mrz'){
+      await processMRZFromSource(crop);
+    }else if(t==='pdf417' || t==='barcode'){
       const dataURL = crop.toDataURL('image/png'); const im = new Image();
       await new Promise(res=>{ im.onload=()=>res(); im.src=dataURL; });
       await decodePDF417FromImageElement(im);
@@ -819,39 +781,52 @@
       const dataURL = crop.toDataURL('image/png');
       try{ await navigator.clipboard.writeText(dataURL); alert('Imagen ROI exportada a base64 y copiada al portapapeles.'); }catch(e){ alert('Base64 listo. No se pudo copiar automáticamente.'); }
     }else{
+      // fallback
       await runAllParsersOnCanvas(crop);
     }
   }
 
-  btnProcessROI.addEventListener('click', async ()=>{
+  $('#btnProcessROI').on('click', async ()=>{
     const r = rois.find(x=>x.id===selectedId); if(!r){ alert('Selecciona un ROI.'); return; }
+    // Mantén compatibilidad: OCR + parsers
     const crop = cropFromROI(r); showOnPreview(crop); await runAllParsersOnCanvas(crop);
   });
 
-  btnActionByType.addEventListener('click', async ()=>{
+  $('#btnActionByType').on('click', async ()=>{
     const r = rois.find(x=>x.id===selectedId); if(!r){ alert('Selecciona un ROI.'); return; }
     await actionByType(r);
   });
 
-  btnROI_OCR.addEventListener('click', async ()=>{
+  // Acciones rápidas por tipo
+  $('#btnROI_OCR').on('click', async ()=>{
     const r = rois.find(x=>x.id===selectedId); if(!r) return;
     const crop = cropFromROI(r); showOnPreview(crop); await runAllParsersOnCanvas(crop);
   });
-  btnROI_MRZ.addEventListener('click', async ()=>{
+  $('#btnROI_MRZ').on('click', async ()=>{
     const r = rois.find(x=>x.id===selectedId); if(!r) return;
     const crop = cropFromROI(r); showOnPreview(crop); await processMRZFromSource(crop);
   });
-  btnROI_PDF417.addEventListener('click', async ()=>{
+  $('#btnROI_PDF417').on('click', async ()=>{
     const r = rois.find(x=>x.id===selectedId); if(!r) return;
     const crop = cropFromROI(r); showOnPreview(crop);
     const dataURL = crop.toDataURL('image/png'); const im = new Image();
     await new Promise(res=>{ im.onload=()=>res(); im.src=dataURL; });
     await decodePDF417FromImageElement(im);
   });
-  btnROI_Image.addEventListener('click', async ()=>{
+  $('#btnROI_Image').on('click', async ()=>{
     const r = rois.find(x=>x.id===selectedId); if(!r) return;
     const crop = cropFromROI(r); const dataURL = crop.toDataURL('image/png');
     try{ await navigator.clipboard.writeText(dataURL); alert('Imagen ROI exportada a base64 y copiada al portapapeles.'); }catch(e){ alert('Base64 listo. No se pudo copiar automáticamente.'); }
+  });
+
+  /* =========================================================
+      OCR "Imagen Completa" (ya integrado)
+  ========================================================= */
+  $('#btnOCRFull').on('click', async ()=>{
+    if(!baseLoaded){ alert('Carga una imagen primero.'); return; }
+    const tmp=document.createElement('canvas'); tmp.width=imgCanvas.width; tmp.height=imgCanvas.height; tmp.getContext('2d').drawImage(imgCanvas,0,0);
+    showOnPreview(tmp);
+    await runAllParsersOnCanvas(tmp);
   });
 
   // Inicializa modelo de detección
