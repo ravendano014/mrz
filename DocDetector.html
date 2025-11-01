@@ -71,12 +71,32 @@
       .results{grid-template-columns:1fr}
       .results-panel{max-width:100%}
     }
-  </style>
+  
+    .badge.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
+    .tab-btn{ padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#0f1720; cursor:pointer; }
+    .tab-btn.primary{ background:var(--muted); }
+    .tab-btn.active{ box-shadow:0 0 0 1px var(--accent) inset; }
+    .card h3{ position:sticky; top:0; background:var(--panel); z-index:2; padding-top:6px; }
+    .btn-icon{ display:inline-flex; align-items:center; gap:6px; }
+    .spin{ display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; vertical-align:-2px; }
+    @keyframes spin{ to{ transform:rotate(360deg);} }
+    /* Toasts */
+    #toastHost{ position:fixed; right:12px; bottom:12px; display:flex; flex-direction:column; gap:8px; z-index:100; }
+    .toast{ background:#0f1720; border:1px solid var(--border); border-left:4px solid var(--accent); padding:10px 12px; border-radius:10px; color:var(--text); }
+    .toast.err{ border-left-color: var(--bad); }
+    .toast.warn{ border-left-color: var(--warn); }
+    /* Sidebar resizer */
+    #resizeHandle{ position:absolute; top:0; bottom:0; right:-4px; width:8px; cursor:col-resize; }
+
+    /* Mejora: bordes sutiles para barras sticky */
+    #appHeader, #topModels{ backdrop-filter: blur(4px); }
+</style>
 </head>
 <body>
   <div class="app">
     <!-- LADO IZQUIERDO -->
-    <aside class="left">
+    <aside class="left" id="leftPanel" style="position:relative"><div id="resizeHandle" title="Arrastra para redimensionar"></div>
       <h1>OCR de Documentos</h1>
 
       <div class="card" style="margin-bottom:12px">
@@ -135,8 +155,40 @@
 
     <!-- LADO DERECHO -->
     <main class="right">
+  <header id="appHeader" class="bar" style="position:sticky;top:0;z-index:50;margin-bottom:8px">
+    <h1 style="font-size:1rem;margin:0">OCR de Documentos · MRZ + PDF417</h1>
+    <div class="spacer"></div>
+    <button id="btnHelp" title="Ayuda (atajos de teclado)">❓ Ayuda</button>
+    <label class="status" title="Guardar preferencias de la sesión">
+      <input type="checkbox" id="chkPersist" /> Guardar preferencias
+    </label>
+  </header>
+
       <!-- Cámara -->
-      <div class="bar" id="cameraBar">
+      
+      <!-- Stepper (Asistente) -->
+      
+      <!-- Estado modelos (Top) -->
+      <div id="topModels" class="bar" style="position:sticky;top:52px;z-index:49;margin-bottom:8px">
+        <h2>Estado</h2>
+        <div class="status" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+          <div>Engine: <span id="sEngineHolder" class="badge">—</span></div>
+          <div>Modelo Doc: <span id="sModelDocHolder" class="badge">—</span></div>
+          <div>MRZ: <span id="sModelMRZHolder" class="badge">—</span></div>
+          <div>PDF417: <span id="sModelPDFHolder" class="badge">—</span></div>
+          <div>FPS: <span id="fpsTop" class="badge mono">—</span></div>
+        </div>
+      </div>
+<div id="stepper" class="bar" style="margin-bottom:8px">
+        <h2>Asistente</h2>
+        <div id="steps" class="status">
+          <span id="st1" class="badge info">1. Identificar documento</span>
+          <span id="st2" class="badge">2. Versión definitiva</span>
+          <span id="st3" class="badge">3. ROIs</span>
+          <span id="st4" class="badge">4. Extraer resultados</span>
+        </div>
+      </div>
+<div class="bar" id="cameraBar">
         <h2>Cámara</h2>
         <button id="btnStart" class="primary">Iniciar</button>
         <button id="btnStop">Detener</button>
@@ -187,7 +239,18 @@
 
         <!-- Panel de resultados (máx 40% ancho pantalla) -->
         <div class="card results-panel">
-          <h3>Datos parseados</h3>
+          
+      <!-- Tabs de Resultados -->
+      <div class="bar" id="resultsTabs" style="gap:4px">
+        <button class="tab-btn primary" data-tab="pdf417">PDF417</button>
+        <button class="tab-btn" data-tab="mrz">MRZ</button>
+        <button class="tab-btn" data-tab="rois">ROIs</button>
+        <button class="tab-btn" data-tab="raw">Texto crudo</button>
+        <div class="spacer"></div>
+        <button id="btnCopyVisible" title="Copiar tabla visible">📋 Copiar</button>
+        <button id="btnClearVisible" title="Limpiar panel visible">🧹 Limpiar</button>
+      </div>
+<h3>Datos parseados</h3>
           <div id="status" class="status">Esperando extracción…</div>
 
           <!-- PDF417 (arriba) -->
@@ -212,7 +275,26 @@
           </div>
         </div>
       </section>
-    </main>
+    
+  <!-- Toasts -->
+  <div id="toastHost" aria-live="polite"></div>
+
+  <!-- Ayuda Modal -->
+  <dialog id="dlgHelp" style="max-width:720px">
+    <h3>Ayuda y atajos de teclado</h3>
+    <div class="status" style="margin:8px 0">Usa estos atajos para agilizar el flujo:</div>
+    <ul>
+      <li><b>S</b> Iniciar cámara · <b>X</b> Detener · <b>C</b> Capturar imagen · <b>D</b> Capturar documento</li>
+      <li><b>M</b> Detectar MRZ · <b>P</b> Detectar PDF417</li>
+      <li><b>R</b> Nuevo ROI (arrastrar) · <b>Del</b> borrar ROI seleccionado</li>
+      <li><b>?</b> Abrir/cerrar esta ayuda</li>
+    </ul>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="btnHelpClose">Cerrar</button>
+    </div>
+  </dialog>
+
+</main>
   </div>
 
   <!-- =============== LÓGICA =============== -->
@@ -272,8 +354,30 @@
     const roiResults    = document.getElementById('roiResults');
 
     // ====== Helpers UI
+    // ====== Stepper helpers ======
+    function mark(el, text, cls){ if(!el) return; el.className='badge '+(cls||''); el.textContent=text; }
+    function updateSteps(stage){
+      // stage: 1=borrador listo, 2=final cargada, 3=rois definidos, 4=extrayendo/resultados
+      const s1 = document.getElementById('st1');
+      const s2 = document.getElementById('st2');
+      const s3 = document.getElementById('st3');
+      const s4 = document.getElementById('st4');
+      mark(s1, '1. Identificar documento', stage>=1?'ok active':'info');
+      mark(s2, '2. Versión definitiva',    stage>=2?'ok active':'');
+      mark(s3, '3. ROIs',                   stage>=3?'ok active':'');
+      mark(s4, '4. Extraer resultados',     stage>=4?'ok active':'');
+    }
+
     function setBadge(el, text, klass=''){ el.className='badge '+klass; el.textContent=text; }
-    function setStatus(msg,isErr){ $status.innerHTML = `<span class="badge ${isErr?'err':'ok'}">${msg}</span>`; }
+    function setStatus(msg,isErr){
+      $status.innerHTML = `<span class="badge ${isErr?'err':'ok'}">${msg}</span>`;
+      try{
+        const m = String(msg).toLowerCase();
+        if(!isErr && /(ocr completado|decodificado|parseado|transición a versión definitiva completada|exportada)/.test(m)){
+          if(typeof updateSteps==='function') updateSteps(4);
+        }
+      }catch(e){}
+    }
 
     // ====== InferenceJS: init engine y carga inicial (solo Doc)
     async function initEngine(){
@@ -299,6 +403,7 @@
         setBadge($sModelMRZ,'—'); setBadge($sModelPDF,'—');
         // Deshabilitar detecciones MRZ/PDF
         setDetectButtonsEnabled(false);
+        try{ if(typeof updateSteps==='function') updateSteps(1); }catch(e){}
       }catch(e){
         console.error('Error cargando Doc:', e);
         setBadge($sModelDoc,'error','err');
@@ -362,7 +467,7 @@
       // 3) Habilitar UI detección MRZ/PDF si ambos listos
       const ready = !!(state.mrzWorkerId && state.pdfWorkerId);
       setDetectButtonsEnabled(ready);
-      if(ready){ state.phase='final'; setStatus('Transición a versión definitiva completada.'); }
+      if(ready){ state.phase='final'; setStatus('Transición a versión definitiva completada.'); try{ if(typeof updateSteps==='function') updateSteps(2); }catch(e){} }
       else { setStatus('Transición incompleta: ver errores de carga.', true); }
     }
 
@@ -434,7 +539,7 @@
       frames++; if(ts-lastFpsTs>1000){
         const fps = Math.round(frames*1000/(ts-lastFpsTs));
         $fpsOverlay.textContent = fps+' fps';
-        $fpsVal.textContent = fps;
+        $fpsVal.textContent = fps; try{ var fTop=document.getElementById('fpsTop'); if(fTop) fTop.textContent=fps; }catch(e){}
         frames=0; lastFpsTs=ts;
       }
 
@@ -607,6 +712,7 @@
       };
       state.rois.push(roi);
       state.selectedRoiId = roi.id;
+      if(state.rois.length===1){ try{ if(typeof updateSteps==='function') updateSteps(3); }catch(e){} }
       updateRoiCount(); drawOverlay(); syncRoiPropsPanel();
       return roi;
     }
@@ -740,7 +846,7 @@ document.getElementById('btnClearRois').addEventListener('click', ()=>{ clearAll
       const f=e.target.files?.[0]; if(!f) return; const txt = await f.text();
       try{
         const j = JSON.parse(txt);
-        if(j && Array.isArray(j.rois)) { state.rois = j.rois.map(r=>({type:'text',...r})); updateRoiCount(); drawOverlay(); syncRoiPropsPanel(); }
+        if(j && Array.isArray(j.rois)) { try{ if(typeof updateSteps==='function') updateSteps(3); }catch(e){} ; state.rois = j.rois.map(r=>({type:'text',...r})); updateRoiCount(); drawOverlay(); syncRoiPropsPanel(); }
       }catch(err){ alert('JSON inválido'); }
     });
 
@@ -1462,6 +1568,7 @@ function clearAllRois(){
       syncRoiPropsPanel();
       updateRoiCount();
       ensureRoiResultsTableIfEmpty();
+      try{ if(typeof updateSteps==='function') updateSteps(1); }catch(e){}
     })();
   </script>
 
@@ -1485,7 +1592,137 @@ function clearAllRois(){
     document.addEventListener('DOMContentLoaded', tryLoadDocDefault, {once:true});
   }
 })();
+
+    // ====== UX Helpers: Tabs ======
+    const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
+    const tabPanels  = Array.from(document.querySelectorAll('[data-tab-panel]'));
+    function showTab(id){
+      tabButtons.forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
+      tabPanels.forEach(p=>p.style.display = (p.getAttribute('data-tab-panel')===id)?'block':'none');
+      localStorage.setItem('ux.activeTab', id);
+    }
+    const lastTab = localStorage.getItem('ux.activeTab') || 'pdf417';
+    showTab(lastTab);
+    tabButtons.forEach(b=>b.addEventListener('click', ()=>showTab(b.dataset.tab)));
+
+    // Copiar / Limpiar visible
+    document.getElementById('btnCopyVisible').addEventListener('click', ()=>{
+      const active = document.querySelector('[data-tab-panel][style*="block"]') || document.querySelector('[data-tab-panel]');
+      if(!active) return;
+      const txt = active.innerText || '';
+      navigator.clipboard.writeText(txt).then(()=> showToast('Copiado al portapapeles'), ()=> showToast('No se pudo copiar', 'err'));
+    });
+    document.getElementById('btnClearVisible').addEventListener('click', ()=>{
+      const id = (document.querySelector('.tab-btn.active')||{}).dataset?.tab || 'pdf417';
+      if(id==='pdf417'){ pdf417Summary.innerHTML=''; pdf417Error.classList.add('hidden'); pdf417Table.innerHTML='<p class="muted">Sin datos.</p>'; }
+      else if(id==='mrz'){ mrzSummary.innerHTML=''; mrzTable.innerHTML='<p class="muted">Sin datos.</p>'; }
+      else if(id==='rois'){ clearRoiResults(); }
+      else if(id==='raw'){ $raw.value=''; }
+      showToast('Panel limpiado');
+    });
+
+    // ====== UX Helpers: Toasts ======
+    function showToast(msg, kind=''){
+      try{
+        const host = document.getElementById('toastHost'); if(!host) return;
+        const d = document.createElement('div'); d.className='toast'+(kind?(' '+kind):''); d.textContent=msg;
+        host.appendChild(d);
+        setTimeout(()=>{ d.style.opacity='0'; d.style.transition='opacity .3s'; }, 2500);
+        setTimeout(()=>{ d.remove(); }, 3000);
+      }catch(e){}
+    }
+
+    // Hook setStatus to also toast on errors/warns
+    const _setStatus = setStatus;
+    setStatus = function(msg,isErr){
+      _setStatus(msg,isErr);
+      if(isErr) showToast(String(msg||'Error'), 'err');
+    }
+
+    // ====== Ayuda Modal y atajos ======
+    const dlgHelp = document.getElementById('dlgHelp');
+    document.getElementById('btnHelp').addEventListener('click', ()=> dlgHelp.showModal());
+    document.getElementById('btnHelpClose').addEventListener('click', ()=> dlgHelp.close());
+    addEventListener('keydown', (e)=>{
+      if(e.key==='?'){ e.preventDefault(); (dlgHelp.open? dlgHelp.close(): dlgHelp.showModal()); }
+      else if(e.key==='s' || e.key==='S'){ document.getElementById('btnStart').click(); }
+      else if(e.key==='x' || e.key==='X'){ document.getElementById('btnStop').click(); }
+      else if(e.key==='c' || e.key==='C'){ document.getElementById('btnShot').click(); }
+      else if(e.key==='d' || e.key==='D'){ document.getElementById('btnShotDoc').click(); }
+      else if(e.key==='m' || e.key==='M'){ document.getElementById('btnDetectMRZ').click(); }
+      else if(e.key==='p' || e.key==='P'){ document.getElementById('btnDetectPDF').click(); }
+    });
+
+    // ====== Preferencias (persistencia) ======
+    const chkPersist = document.getElementById('chkPersist');
+    chkPersist.checked = localStorage.getItem('ux.persist')==='1';
+    chkPersist.addEventListener('change', ()=>{
+      localStorage.setItem('ux.persist', chkPersist.checked ? '1':'0');
+      showToast(chkPersist.checked?'Preferencias guardadas':'Preferencias no persistirán');
+    });
+    // Guardar/restaurar autodetect y ancho del panel si persist está activo
+    const chkAutoDoc = document.getElementById('chkAutoDoc');
+    if(localStorage.getItem('ux.persist')==='1'){
+      const savedAuto = localStorage.getItem('ux.autoDoc'); if(savedAuto!=null) chkAutoDoc.checked = savedAuto==='1';
+    }
+    chkAutoDoc.addEventListener('change', ()=>{
+      if(localStorage.getItem('ux.persist')==='1'){ localStorage.setItem('ux.autoDoc', chkAutoDoc.checked?'1':'0'); }
+    });
+
+    // ====== Resizer lateral ======
+    (function(){
+      const left = document.getElementById('leftPanel'); const handle = document.getElementById('resizeHandle');
+      let dragging=false, startX=0, startW=0;
+      function px(n){ return n+'px'; }
+      function onDown(e){ dragging=true; startX = (e.touches?e.touches[0].clientX:e.clientX); startW = left.offsetWidth; e.preventDefault(); }
+      function onMove(e){ if(!dragging) return; const x = (e.touches?e.touches[0].clientX:e.clientX); const dx=x-startX; const w=Math.max(260, Math.min(560, startW+dx)); left.style.width=px(w); if(localStorage.getItem('ux.persist')==='1'){ localStorage.setItem('ux.leftW', String(w)); } }
+      function onUp(){ dragging=false; }
+      handle.addEventListener('mousedown', onDown); handle.addEventListener('touchstart', onDown, {passive:false});
+      addEventListener('mousemove', onMove, {passive:false}); addEventListener('touchmove', onMove, {passive:false});
+      addEventListener('mouseup', onUp); addEventListener('touchend', onUp);
+      // Restore
+      if(localStorage.getItem('ux.persist')==='1'){
+        const w = parseInt(localStorage.getItem('ux.leftW')||'0',10); if(w>0) left.style.width=px(w);
+      }
+    })();
+
+    // ====== Spinners en acciones largas ======
+    function withSpinner(btn, fn){
+      return async function(...args){
+        const old = btn.innerHTML;
+        btn.innerHTML = '<span class="spin"></span> '+btn.textContent;
+        btn.disabled = true;
+        try{ return await fn.apply(this, args); }
+        finally{ btn.disabled=false; btn.innerHTML = old; }
+      }
+    }
+    // Aplicar a botones intensivos
+    document.getElementById('btnShotDoc').onclick = withSpinner(document.getElementById('btnShotDoc'), document.getElementById('btnShotDoc').onclick || (async()=>{}));
+    document.getElementById('btnDetectMRZ').onclick = withSpinner(document.getElementById('btnDetectMRZ'), ()=>detectMRZFlow('Detección manual'));
+    document.getElementById('btnDetectPDF').onclick = withSpinner(document.getElementById('btnDetectPDF'), ()=>detectPDF417Flow('Detección manual'));
+    document.getElementById('btnParseFull').onclick = withSpinner(document.getElementById('btnParseFull'), document.getElementById('btnParseFull').onclick || (async()=>{}));
+
+    // ====== Mover badges de estado al Top ======
+    (function(){
+      function move(id, holderId){
+        const el = document.getElementById(id);
+        const holder = document.getElementById(holderId);
+        if(el && holder){ holder.replaceWith(el); }
+      }
+      move('sEngine','sEngineHolder');
+      move('sModelDoc','sModelDocHolder');
+      move('sModelMRZ','sModelMRZHolder');
+      move('sModelPDF','sModelPDFHolder');
+      // Ocultar el bloque original "Estado" en el panel izquierdo
+      try{
+        const left = document.querySelector('aside.left');
+        const bars = Array.from(left.querySelectorAll('.bar'));
+        const b = bars.find(x=> (x.querySelector('h2')||{}).textContent?.trim()==='Estado');
+        if(b) b.style.display='none';
+      }catch(e){}
+    })();
 </script>
 
 </body>
 </html>
+
