@@ -121,8 +121,9 @@
       <div class="card">
         <h3>Modelo de detección</h3>
         <div class="status" style="display:grid;gap:6px">
-          <div>Motor: <span id="sEngine" class="badge">cargando…</span></div>
-          <div>Modelo: <span id="sModel" class="badge">cargando…</span></div>
+          <div>Engine: <span id="sEngine" class="badge">cargando…</span></div>
+          <div>Modelo Doc: <span id="sModelDoc" class="badge">—</span></div>
+          <div>Modelo MRZ: <span id="sModelMRZ" class="badge">cargando…</span></div>
         </div>
       </div>
     </aside>
@@ -156,6 +157,7 @@
         <h2>Imagen</h2>
         <input type="file" id="file" accept="image/*" />
         <button id="btnParseFull">Extraer y Parsear (Imagen Completa)</button>
+        <button id="btnDetectMRZ" class="primary">Detectar MRZ en Imagen</button>
       </div>
 
       <!-- Resultados -->
@@ -189,8 +191,9 @@
       lastDetections: [],
       selectedRoiId: null,
       rois: [], // {id,name,type,x,y,w,h} coords relativos [0..1]
-      workerId: null,
       engine: null,
+      docWorkerId: null,   // opcional para detección de documento
+      mrzWorkerId: null,   // requerido por solicitud (mrz-ye7hu-5jxuj)
       activeBitmap: null,
       activeNatural: {w:0,h:0}
     };
@@ -203,7 +206,8 @@
     const $fpsOverlay = document.getElementById('fpsOverlay');
     const $fpsVal = document.getElementById('fpsVal');
     const $sEngine = document.getElementById('sEngine');
-    const $sModel = document.getElementById('sModel');
+    const $sModelDoc = document.getElementById('sModelDoc');
+    const $sModelMRZ = document.getElementById('sModelMRZ');
     const $raw = document.getElementById('raw');
     const $tbl = document.getElementById('tbl').querySelector('tbody');
     const $status = document.getElementById('status');
@@ -215,25 +219,40 @@
     const $roiW = document.getElementById('roiW');
     const $roiH = document.getElementById('roiH');
 
-    // ====== InferenceJS
+    // ====== InferenceJS: carga engine + modelos
     async function initEngine(){
       try{
-        $sEngine.textContent = 'listo';
+        $sEngine.textContent = 'inicializando…';
         state.engine = new inferencejs.InferenceEngine();
-        $sModel.textContent = 'cargando…';
-        state.workerId = await state.engine.startWorker(
-          'react-project-wdxr6',
+        $sEngine.textContent = 'listo';
+
+        // (Opcional) modelo de documento si lo usabas
+        try{
+          $sModelDoc.textContent = 'cargando…';
+          state.docWorkerId = await state.engine.startWorker(
+            'react-project-wdxr6', // tu modelo de documentos
+            '1',
+            'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
+          );
+          $sModelDoc.textContent = 'OK';
+        }catch(e){ console.warn('Modelo Doc no cargó (opcional):', e); $sModelDoc.textContent = '—'; }
+
+        // Modelo MRZ (requerido)
+        $sModelMRZ.textContent = 'cargando…';
+        state.mrzWorkerId = await state.engine.startWorker(
+          'mrz-ye7hu-5jxuj',
           '1',
           'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
         );
-        $sModel.textContent = 'OK';
+        $sModelMRZ.textContent = 'OK';
       }catch(err){
         console.error(err);
-        $sModel.textContent = 'error';
+        $sEngine.textContent = 'error';
+        $sModelMRZ.textContent = 'error';
       }
     }
 
-    // ====== Overlay
+    // ====== Overlay y resize
     function resizeOverlay(){
       const host = state.usingImage ? $imgPreview : $video;
       const w = host.clientWidth || host.getBoundingClientRect().width;
@@ -284,7 +303,7 @@
       };
     });
 
-    // ====== Bucle detección
+    // ====== Bucle detección (para documento; MRZ se hará bajo demanda)
     let frames=0, lastFpsTs=0, lastPromptTs=0;
     async function loop(ts){
       if(!state.running) return;
@@ -302,10 +321,10 @@
       state.activeBitmap = bmp; state.activeNatural={w,h};
       drawOverlay();
 
-      if(state.autoDetect && state.workerId){
+      if(state.autoDetect && state.docWorkerId){
         try{
           const cvimg = new inferencejs.CVImage($video);
-          const preds = await state.engine.infer(state.workerId, cvimg);
+          const preds = await state.engine.infer(state.docWorkerId, cvimg);
           state.lastDetections = preds||[];
           drawOverlay();
 
@@ -368,7 +387,7 @@
       const contentW = natW * scale, contentH = natH * scale;
       const offX = (viewW - contentW)/2, offY = (viewH - contentH)/2;
 
-      // Detecciones
+      // Detecciones (de documento, no MRZ)
       for(const p of state.lastDetections){
         const {x,y,width,height} = p.bbox;
         const sx = offX + (x - width/2) * scale;
@@ -461,6 +480,7 @@
       state.rois.push(roi);
       state.selectedRoiId = roi.id;
       updateRoiCount(); drawOverlay(); syncRoiPropsPanel();
+      return roi;
     }
 
     function pickRoi(px,py){
@@ -596,7 +616,7 @@
       }catch(err){ alert('JSON inválido'); }
     });
 
-    // ====== Botones
+    // ====== Botones principales
     document.getElementById('btnStart').addEventListener('click', startCamera);
     document.getElementById('btnStop').addEventListener('click', stopCamera);
     document.getElementById('btnShot').addEventListener('click', async ()=>{
@@ -605,10 +625,10 @@
       await showPreviewBitmap(bmp);
     });
     document.getElementById('btnShotDoc').addEventListener('click', async ()=>{
-      if(!state.workerId) return alert('Modelo no listo');
+      if(!state.docWorkerId) return alert('Modelo de documento no listo');
       const host = state.usingImage ? $imgPreview : $video;
       const cvimg = new inferencejs.CVImage(host);
-      const preds = await state.engine.infer(state.workerId, cvimg);
+      const preds = await state.engine.infer(state.docWorkerId, cvimg);
       if(!preds?.length) return alert('No se detectó documento');
       const best = _.maxBy(preds, p=>p.confidence||0);
       const bmp = state.usingImage ? await imageBitmapFromImg($imgPreview) : await createImageBitmap($video);
@@ -619,17 +639,65 @@
     });
     document.getElementById('chkAuto').addEventListener('change',(e)=>{ state.autoDetect = !!e.target.checked; });
 
-    // === Extracción por ROI ===
-    document.getElementById('btnExtractSelected').addEventListener('click', async ()=>{
-      const a = state.rois.find(r=>r.id===state.selectedRoiId);
-      if(!a) return alert('Selecciona un ROI');
-      await extractAndReportROI(a);
+    // ====== Detección MRZ bajo demanda (en imagen previa o frame actual)
+    document.getElementById('btnDetectMRZ').addEventListener('click', async ()=>{
+      if(!state.mrzWorkerId) return alert('Modelo MRZ no listo');
+      // Si estamos en cámara, usamos el frame actual; si no, la imagen previa
+      const host = state.usingImage ? $imgPreview : $video;
+      if(!state.usingImage && !$video.videoWidth){ return alert('No hay imagen/cámara lista'); }
+
+      // Antes: asegura activeBitmap / activeNatural
+      const bmp = state.usingImage ? await imageBitmapFromImg($imgPreview) : await createImageBitmap($video);
+      state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
+      setStatus('Buscando MRZ en la imagen…');
+
+      try{
+        const cvimg = new inferencejs.CVImage(host);
+        const preds = await state.engine.infer(state.mrzWorkerId, cvimg);
+        if(!preds?.length) { setStatus('No se detectó MRZ.', true); return; }
+
+        // Selecciona la mejor predicción (mayor confianza)
+        const best = _.maxBy(preds, p=>p.confidence||0);
+        // Crea ROI en coordenadas del overlay
+        const roi = addRoiFromDetection(best, 'MRZ');
+        roi.type = 'mrz';
+        state.selectedRoiId = roi.id;
+        syncRoiPropsPanel();
+        drawOverlay();
+
+        // Extrae y parsea de inmediato
+        await extractAndReportROI(roi);
+      }catch(e){
+        console.error(e);
+        setStatus('Error al inferir MRZ.', true);
+      }
     });
-    document.getElementById('btnExtractAll').addEventListener('click', async ()=>{
-      if(!state.rois.length) return alert('No hay ROIs');
-      for(const r of state.rois){ await extractAndReportROI(r); }
-      setStatus('Extracción de todos los ROIs finalizada.');
-    });
+
+    // Convierte el bbox del modelo (en coords naturales) a ROI overlay-normalizado y lo crea
+    function addRoiFromDetection(det, name='MRZ'){
+      const view = $overlay.getBoundingClientRect();
+      const viewW = view.width, viewH = view.height;
+      const natW = state.activeNatural.w, natH = state.activeNatural.h;
+      const scale = Math.min(viewW/natW, viewH/natH);
+      const offX = (viewW - natW*scale)/2, offY = (viewH - natH*scale)/2;
+
+      const {x,y,width,height} = det.bbox; // en naturales: centro + ancho/alto
+      const left = offX + (x - width/2)*scale;
+      const top  = offY + (y - height/2)*scale;
+      const w = width*scale;
+      const h = height*scale;
+
+      // Clampea al overlay
+      const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+      const px = clamp(left, 0, viewW);
+      const py = clamp(top,  0, viewH);
+      const pw = clamp(w, 1, viewW - px);
+      const ph = clamp(h, 1, viewH - py);
+
+      const roi = addRoiFromRect(px, py, pw, ph);
+      roi.name = name;
+      return roi;
+    }
 
     // ====== OCR + Parseo (imagen completa)
     document.getElementById('btnParseFull').addEventListener('click', ()=>{
@@ -724,7 +792,7 @@
       const passportNumber = L2.slice(0,9).replace(/</g,'');
       const nationality = L2.slice(10,13).replace(/</g,'');
       const birth = L2.slice(13,19);
-      const sex = L2.slice(20,21).replace(/</g,''); // corregido
+      const sex = L2.slice(20,21).replace(/</g,'');
       const expiry = L2.slice(21,27);
       const personal = L2.slice(28,42).replace(/</g,'');
       return {
@@ -816,17 +884,13 @@
       const yy = parseInt(yyMMdd.slice(0,2),10);
       const mm = parseInt(yyMMdd.slice(2,4),10);
       const dd = parseInt(yyMMdd.slice(4,6),10);
-      // Heurística común MRZ: >=50 => 1900s, <50 => 2000s
       const year = (yy >= 50 ? 1900 : 2000) + yy;
       if(mm<1||mm>12||dd<1||dd>31) return null;
       const m = String(mm).padStart(2,'0');
       const d = String(dd).padStart(2,'0');
       return `${year}-${m}-${d}`;
     }
-    function isoToDate(iso){
-      const d = new Date(iso+'T00:00:00');
-      return isNaN(d.getTime()) ? null : d;
-    }
+    function isoToDate(iso){ const d = new Date(iso+'T00:00:00'); return isNaN(d.getTime()) ? null : d; }
     function yearsBetween(birthISO){
       const d = isoToDate(birthISO); if(!d) return null;
       const now = new Date();
@@ -842,35 +906,26 @@
       return Math.ceil((d - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / msPerDay);
     }
     function augmentMRZ(parsed){
-      // Clona para no mutar el original
       const out = {...parsed};
-      // Claves posibles según TD1/TD2/TD3:
       const kBirth = 'Fecha de nacimiento (YYMMDD)';
       const kExp   = 'Fecha de expiración (YYMMDD)';
-
       if(parsed[kBirth]){
-        const iso = yyMMddToISO(parsed[kBirth]);
-        if(iso){
+        const iso = yyMMddToISO(parsed[kBirth]); if(iso){
           out['Fecha de nacimiento'] = iso;
-          const age = yearsBetween(iso);
-          if(age!=null) out['Edad (años)'] = String(age);
+          const age = yearsBetween(iso); if(age!=null) out['Edad (años)'] = String(age);
         }
       }
       if(parsed[kExp]){
-        const iso = yyMMddToISO(parsed[kExp]);
-        if(iso){
+        const iso = yyMMddToISO(parsed[kExp]); if(iso){
           out['Fecha de expiración'] = iso;
           const left = daysUntilISO(iso);
-          if(left!=null){
-            out['Días hasta expiración'] = String(left);
-            out['¿Vencido?'] = left < 0 ? 'Sí' : 'No';
-          }
+          if(left!=null){ out['Días hasta expiración'] = String(left); out['¿Vencido?'] = left < 0 ? 'Sí' : 'No'; }
         }
       }
       return out;
     }
 
-    // ====== Área "Texto crudo OCR" → MRZ con augment
+    // ====== Área "Texto crudo OCR"
     document.getElementById('btnParseRaw').addEventListener('click', ()=>{
       const txt = ($raw.value||'').trim();
       if(!txt){ setStatus('No hay texto para parsear.', true); return; }
@@ -880,16 +935,14 @@
 
     function parseToTable(raw){
       $tbl.innerHTML = '';
-      // Intento MRZ
       try{
         const parsed = guessAndParseMRZ(raw);
         const enriched = augmentMRZ(parsed);
         const rows = Object.entries(enriched);
         $tbl.innerHTML = rows.map(([k,v])=>`<tr><td class="mono">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('');
         return;
-      }catch(_) { /* si no es MRZ, continua */ }
-
-      // Heurística genérica "Campo: Valor"
+      }catch(_) {}
+      // Heurística genérica
       const rows = [];
       const lines = raw.split(/\r?\n+/).map(s=>s.trim()).filter(Boolean);
       for(const ln of lines){
@@ -900,7 +953,18 @@
       $tbl.innerHTML = rows.map(([k,v])=>`<tr><td class="mono">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('');
     }
 
-    // ====== Extracción por ROI (usa guessAndParseMRZ + augment)
+    // ====== Extracción por ROI
+    document.getElementById('btnExtractSelected').addEventListener('click', async ()=>{
+      const a = state.rois.find(r=>r.id===state.selectedRoiId);
+      if(!a) return alert('Selecciona un ROI');
+      await extractAndReportROI(a);
+    });
+    document.getElementById('btnExtractAll').addEventListener('click', async ()=>{
+      if(!state.rois.length) return alert('No hay ROIs');
+      for(const r of state.rois){ await extractAndReportROI(r); }
+      setStatus('Extracción de todos los ROIs finalizada.');
+    });
+
     async function extractAndReportROI(roi){
       if(!state.activeBitmap){ alert('No hay imagen activa'); return; }
       const cnv = roiToCanvas(roi);
@@ -996,7 +1060,7 @@
       });
     }
 
-    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[m]); }
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt","\"":"&quot;","'":"&#39;"})[m]); }
 
     // ====== Inicio
     (async function init(){
