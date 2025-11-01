@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OCR de Documentos · MRZ + PDF417 · Cámara/Imagen · ROIs · Dark</title>
+  <title>OCR de Documentos · Flujo Definitivo · MRZ + PDF417 · Dark</title>
 
   <!-- ====== Librerías por CDN ====== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/inferencejs@1.1.3"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <!-- ZXing (UMD) expone window.ZXing.* para códigos de barras (incluye PDF417) -->
+  <!-- ZXing (UMD) expone window.ZXing.* (incluye PDF417) -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
 
   <style>
     :root{--bg:#0b0f14;--panel:#111820;--muted:#1a2230;--text:#e6eef7;--sub:#9fb3c8;--accent:#5ac8fa;--good:#34d399;--bad:#f87171;--warn:#fbbf24;--border:#1f2a3a}
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
-    h1{font-size:1.1rem;margin:0 0 .25rem 0;color:var(--text)}
+    h1{font-size:1.1rem;margin:0 0 .25rem 0}
     .app{display:grid;grid-template-columns:360px 1fr;gap:12px;height:100%;}
     .left{padding:12px;background:var(--panel);border-right:1px solid var(--border);overflow:auto}
     .right{display:grid;grid-template-rows:auto 1fr auto auto;gap:12px;padding:12px}
@@ -42,7 +42,7 @@
     th{color:var(--sub);font-weight:600}
     .status{font-size:.9rem;color:var(--sub)}
     .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:#0f1720}
-    .ok{color:var(--good)}.warn{color:var(--warn)}.err{color:var(--bad)}
+    .ok{color:var(--good)}.warn{color:var(--warn)}.err{color:var(--bad)} .info{color:#93c5fd}
 
     button,input[type=file],input[type=text],input[type=number],select{
       appearance:none;border:none;background:var(--panel);color:var(--text);
@@ -53,6 +53,7 @@
     button.primary{background:linear-gradient(180deg, #132435, #0f1c2a);border-color:#223247}
     button.good{border-color:#17392c;background:#0e2b21}
     button.bad{border-color:#3b1e1e;background:#2a1414}
+    button[disabled]{opacity:.55; cursor:not-allowed}
 
     .fps{position:absolute;bottom:10px;left:10px;background:rgba(0,0,0,.4);padding:4px 8px;border-radius:8px;border:1px solid var(--border);font-size:.8rem}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
@@ -61,6 +62,7 @@
     .results-panel{width:100%;max-width:40vw;}
     .results-scroll{overflow:auto;max-height:260px}
     .muted{color:#6b7a8c}
+    .hidden{display:none !important}
 
     @media (max-width: 1100px){
       .app{grid-template-columns:1fr}
@@ -121,12 +123,12 @@
       </div>
 
       <div class="card">
-        <h3>Modelos de detección</h3>
+        <h3>Modelos y estado</h3>
         <div class="status" style="display:grid;gap:6px">
-          <div>Engine: <span id="sEngine" class="badge">cargando…</span></div>
-          <div>Modelo Doc: <span id="sModelDoc" class="badge">—</span></div>
-          <div>Modelo MRZ: <span id="sModelMRZ" class="badge">cargando…</span></div>
-          <div>Modelo PDF417: <span id="sModelPDF" class="badge">cargando…</span></div>
+          <div>Engine: <span id="sEngine" class="badge info">inicializando…</span></div>
+          <div>Modelo Doc (react-project-wdxr6): <span id="sModelDoc" class="badge info">pendiente</span></div>
+          <div>Modelo MRZ: <span id="sModelMRZ" class="badge">—</span></div>
+          <div>Modelo PDF417: <span id="sModelPDF" class="badge">—</span></div>
         </div>
       </div>
     </aside>
@@ -147,16 +149,6 @@
           <input type="checkbox" id="chkAutoDoc" /> Auto-detectar Documento
         </label>
 
-        <label class="status" style="display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="chkAutoMrzCam" checked />
-          Auto-MRZ (cámara)
-        </label>
-
-        <label class="status" style="display:flex;align-items:center;gap:6px">
-          Intervalo (ms)
-          <input type="number" id="mrzInterval" value="800" min="200" step="100" style="width:90px" />
-        </label>
-
         <span id="fps" class="badge mono">FPS: <span id="fpsVal">—</span></span>
       </div>
 
@@ -173,15 +165,14 @@
         <h2>Imagen</h2>
         <input type="file" id="file" accept="image/*" />
         <button id="btnParseFull">Extraer y Parsear (Imagen Completa)</button>
-        <button id="btnDetectMRZ" class="primary">Detectar MRZ en Imagen</button>
-        <button id="btnDetectPDF" class="primary">Detectar PDF417 en Imagen</button>
+
+        <!-- Botón de transición a versión definitiva -->
+        <button id="btnSetFinal" class="primary" title="Descarga modelo Doc y carga MRZ/PDF417 para pasar a la etapa final">Establecer versión definitiva</button>
+
         <div class="spacer"></div>
-        <label class="status" style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chkAutoMRZ" checked /> Auto-MRZ al cargar/capturar
-        </label>
-        <label class="status" style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chkAutoPDF" checked /> Auto-PDF417 al cargar/capturar
-        </label>
+        <!-- Deshabilitados inicialmente -->
+        <button id="btnDetectMRZ" class="primary" disabled>Detectar MRZ en Imagen</button>
+        <button id="btnDetectPDF" class="primary" disabled>Detectar PDF417 en Imagen</button>
       </div>
 
       <!-- Resultados -->
@@ -208,9 +199,15 @@
           <div id="mrzSummary" class="status hidden" style="margin-top:14px"></div>
           <div id="mrzTable" class="results-scroll" style="margin-top:6px"></div>
 
-          <!-- >>> NUEVO: Tabla de Resultados (ROIs) debajo de MRZ <<< -->
+          <!-- Tabla de Resultados (ROIs) -->
           <div style="margin-top:14px">
-            <div class="status"><strong>Tabla de Resultados (ROIs)</strong></div>
+            <div class="status" style="display:flex;align-items:center;gap:8px">
+              <strong>Tabla de Resultados (ROIs)</strong>
+              <span class="spacer"></span>
+              <button id="btnRoiClear" class="bad">Limpiar tabla</button>
+              <button id="btnRoiCSV">Exportar CSV</button>
+              <button id="btnRoiJSON">Exportar JSON</button>
+            </div>
             <div id="roiResults" class="results-scroll" style="margin-top:6px"></div>
           </div>
         </div>
@@ -229,24 +226,14 @@
       selectedRoiId: null,
       rois: [], // {id,name,type,x,y,w,h} coords relativos [0..1]
       engine: null,
-      docWorkerId: null,
-      mrzWorkerId: null,
-      pdfWorkerId: null,
+      // Workers
+      docWorkerId: null, // react-project-wdxr6 (inicial)
+      mrzWorkerId: null, // mrz-ye7hu-5jxuj (etapa final)
+      pdfWorkerId: null, // pdf417-kl4vz-hl0le (etapa final)
       activeBitmap: null,
       activeNatural: {w:0,h:0},
-
-      // Auto MRZ (cámara)
-      autoMrzCam: true,
-      mrzTickMs: 800,
-      mrzBusy: false,
-      lastMrzTs: 0,
-      mrzStableBox: null,
-      mrzStableHits: 0,
-      mrzCooldownUntil: 0,
-      mrzAutoRoiId: null,
-
-      // Auto PDF417 (imagen)
-      pdfAutoRoiId: null
+      // Fase
+      phase: 'draft' // 'draft' (solo Doc) -> 'final' (MRZ+PDF)
     };
 
     // ====== DOM refs
@@ -256,12 +243,19 @@
     const ctx = $overlay.getContext('2d');
     const $fpsOverlay = document.getElementById('fpsOverlay');
     const $fpsVal = document.getElementById('fpsVal');
+
     const $sEngine = document.getElementById('sEngine');
     const $sModelDoc = document.getElementById('sModelDoc');
     const $sModelMRZ = document.getElementById('sModelMRZ');
     const $sModelPDF = document.getElementById('sModelPDF');
+
     const $raw = document.getElementById('raw');
     const $status = document.getElementById('status');
+
+    const $btnDetectMRZ = document.getElementById('btnDetectMRZ');
+    const $btnDetectPDF = document.getElementById('btnDetectPDF');
+    const $btnSetFinal  = document.getElementById('btnSetFinal');
+
     const $roiCount = document.getElementById('roiCount');
     const $roiName = document.getElementById('roiName');
     const $roiType = document.getElementById('roiType');
@@ -270,63 +264,108 @@
     const $roiW = document.getElementById('roiW');
     const $roiH = document.getElementById('roiH');
 
-    const $chkAutoDoc = document.getElementById('chkAutoDoc');
-    const $chkAutoMrzCam = document.getElementById('chkAutoMrzCam');
-    const $mrzInterval = document.getElementById('mrzInterval');
-    const $chkAutoMRZ = document.getElementById('chkAutoMRZ');
-    const $chkAutoPDF = document.getElementById('chkAutoPDF');
-
-    // Resultados específicos
     const pdf417Summary = document.getElementById('pdf417Summary');
     const pdf417Error   = document.getElementById('pdf417Error');
     const pdf417Table   = document.getElementById('pdf417Table');
     const mrzSummary    = document.getElementById('mrzSummary');
     const mrzTable      = document.getElementById('mrzTable');
+    const roiResults    = document.getElementById('roiResults');
 
-    // >>> NUEVO: contenedor de la tabla de resultados de ROIs
-    const roiResults = document.getElementById('roiResults');
+    // ====== Helpers UI
+    function setBadge(el, text, klass=''){ el.className='badge '+klass; el.textContent=text; }
+    function setStatus(msg,isErr){ $status.innerHTML = `<span class="badge ${isErr?'err':'ok'}">${msg}</span>`; }
 
-    // ====== InferenceJS: carga engine + modelos
+    // ====== InferenceJS: init engine y carga inicial (solo Doc)
     async function initEngine(){
       try{
-        $sEngine.textContent = 'inicializando…';
+        setBadge($sEngine,'inicializando…','info');
         state.engine = new inferencejs.InferenceEngine();
-        $sEngine.textContent = 'listo';
-
-        // (Opcional) modelo de documento
-        try{
-          $sModelDoc.textContent = 'cargando…';
-          state.docWorkerId = await state.engine.startWorker(
-            '',
-            '1',
-            'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
-          );
-          $sModelDoc.textContent = 'OK';
-        }catch(e){ console.warn('Modelo Doc opcional:', e); $sModelDoc.textContent = '—'; }
-
-        // Modelo MRZ
-        $sModelMRZ.textContent = 'cargando…';
-        state.mrzWorkerId = await state.engine.startWorker(
-          'mrz-ye7hu-5jxuj',
-          '1',
-          'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
-        );
-        $sModelMRZ.textContent = 'OK';
-
-        // Modelo PDF417 (detección bbox)
-        $sModelPDF.textContent = 'cargando…';
-        state.pdfWorkerId = await state.engine.startWorker(
-          'pdf417-kl4vz-hl0le',
-          '1',
-          'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
-        );
-        $sModelPDF.textContent = 'OK';
+        setBadge($sEngine,'listo','ok');
+        await loadDocModelOnly();
       }catch(err){
         console.error(err);
-        $sEngine.textContent = 'error';
-        if(!state.mrzWorkerId) $sModelMRZ.textContent = 'error';
-        if(!state.pdfWorkerId) $sModelPDF.textContent = 'error';
+        setBadge($sEngine,'error','err');
       }
+    }
+
+    async function loadDocModelOnly(){
+      try{
+        setBadge($sModelDoc,'cargando…','info');
+        state.docWorkerId = await state.engine.startWorker(
+          'react-project-wdxr6','1','rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
+        );
+        setBadge($sModelDoc,'OK','ok');
+        // Asegurar que MRZ/PDF estén “—”
+        setBadge($sModelMRZ,'—'); setBadge($sModelPDF,'—');
+        // Deshabilitar detecciones MRZ/PDF
+        setDetectButtonsEnabled(false);
+      }catch(e){
+        console.error('Error cargando Doc:', e);
+        setBadge($sModelDoc,'error','err');
+      }
+    }
+
+    async function stopWorkerSafe(workerId){
+      if(!workerId || !state.engine) return;
+      try{
+        if (typeof state.engine.stopWorker === 'function'){
+          await state.engine.stopWorker(workerId);
+        } else if (typeof state.engine.terminateWorker === 'function'){
+          await state.engine.terminateWorker(workerId);
+        } // si no existe, seguimos; algunos engines no exponen descarga explícita
+      }catch(e){ console.warn('stopWorkerSafe:', e); }
+    }
+
+    async function switchToFinalPhase(){
+      if(state.phase!=='draft') return;
+      // Confirmación
+      const ok = confirm('¿Establecer versión definitiva? Se descargará el modelo de Documento y se cargarán MRZ y PDF417.');
+      if(!ok) return;
+
+      // 1) Descargar modelo Doc
+      try{
+        setBadge($sModelDoc,'descargando…','info');
+        await stopWorkerSafe(state.docWorkerId);
+        state.docWorkerId = null;
+        setBadge($sModelDoc,'descargado','warn');
+      }catch(e){
+        console.warn('Fallo descargando Doc:', e);
+        setBadge($sModelDoc,'descargado*','warn');
+      }
+
+      // 2) Cargar MRZ y PDF417
+      try{
+        setBadge($sModelMRZ,'cargando…','info');
+        state.mrzWorkerId = await state.engine.startWorker(
+          'mrz-ye7hu-5jxuj','1','rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
+        );
+        setBadge($sModelMRZ,'OK','ok');
+      }catch(e){
+        console.error('Error cargando MRZ:', e);
+        setBadge($sModelMRZ,'error','err');
+      }
+
+      try{
+        setBadge($sModelPDF,'cargando…','info');
+        state.pdfWorkerId = await state.engine.startWorker(
+          'pdf417-kl4vz-hl0le','1','rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
+        );
+        setBadge($sModelPDF,'OK','ok');
+      }catch(e){
+        console.error('Error cargando PDF417:', e);
+        setBadge($sModelPDF,'error','err');
+      }
+
+      // 3) Habilitar UI detección MRZ/PDF si ambos listos
+      const ready = !!(state.mrzWorkerId && state.pdfWorkerId);
+      setDetectButtonsEnabled(ready);
+      if(ready){ state.phase='final'; setStatus('Transición a versión definitiva completada.'); }
+      else { setStatus('Transición incompleta: ver errores de carga.', true); }
+    }
+
+    function setDetectButtonsEnabled(on){
+      $btnDetectMRZ.disabled = !on;
+      $btnDetectPDF.disabled = !on;
     }
 
     // ====== Overlay y resize
@@ -377,8 +416,6 @@
         const bmp = await imageBitmapFromImg($imgPreview);
         state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
         resizeOverlay();
-        if($chkAutoMRZ.checked) { detectMRZFlow('Imagen cargada'); }
-        if($chkAutoPDF.checked) { detectPDF417Flow('Imagen cargada'); }
       };
     });
 
@@ -400,8 +437,8 @@
       state.activeBitmap = bmp; state.activeNatural={w,h};
       drawOverlay();
 
-      // Auto-detect Doc (opcional)
-      if($chkAutoDoc.checked && state.docWorkerId){
+      // Auto-detect Doc (solo en draft y si hay modelo)
+      if(state.phase==='draft' && state.docWorkerId && document.getElementById('chkAutoDoc').checked){
         try{
           const cvimg = new inferencejs.CVImage($video);
           const preds = await state.engine.infer(state.docWorkerId, cvimg);
@@ -415,106 +452,16 @@
         }catch(e){ console.warn('infer doc error', e); }
       }
 
-      // Auto-MRZ (cámara) con throttling
-      if(state.mrzWorkerId && $chkAutoMrzCam.checked){
-        const now = performance.now();
-        const interval = Math.max(200, parseInt($mrzInterval.value||'800',10));
-        if(now - (state.lastMrzTs||0) >= interval){
-          state.lastMrzTs = now;
-          autoMrzTick().catch(console.warn);
-        }
-      }
-
       requestAnimationFrame(loop);
     }
 
-    // ====== Auto-MRZ Tick
-    async function autoMrzTick(){
-      const cvimg = new inferencejs.CVImage($video);
-      const preds = await state.engine.infer(state.mrzWorkerId, cvimg).catch(()=>null);
-      if(!preds?.length) return;
-
-      const best = _.maxBy(preds, p=>p.confidence||0);
-      if(!best) return;
-
-      const roi = ensureAutoMrzRoi(best);
-
-      if(best.confidence >= 0.70){
-        const now = performance.now();
-        if(now < state.mrzCooldownUntil) return;
-
-        if(isStableBox(best.bbox, state.mrzStableBox, state.activeNatural)){
-          state.mrzStableHits++;
-        }else{
-          state.mrzStableBox = {...best.bbox};
-          state.mrzStableHits = 1;
-        }
-
-        if(state.mrzStableHits >= 3){
-          state.mrzStableHits = 0;
-          await extractAndReportROI(roi, 'Auto-MRZ cámara');
-          state.mrzCooldownUntil = now + 5000;
-        }
-      }
-    }
-
-    // ====== ROI desde bbox (MRZ/PDF417)
-    function ensureAutoMrzRoi(det){
-      const rect = bboxToOverlayRect(det.bbox);
-      if(!state.mrzAutoRoiId){
-        const roi = addRoiFromRect(rect.x, rect.y, rect.w, rect.h);
-        roi.name = 'MRZ (auto)';
-        roi.type = 'mrz';
-        state.mrzAutoRoiId = roi.id;
-        state.selectedRoiId = roi.id;
-        syncRoiPropsPanel(); drawOverlay();
-        return roi;
-      }else{
-        const r = state.rois.find(r=>r.id===state.mrzAutoRoiId);
-        if(!r){ state.mrzAutoRoiId = null; return ensureAutoMrzRoi(det); }
-        const R = $overlay.getBoundingClientRect();
-        r.x = rect.x / R.width; r.y = rect.y / R.height; r.w = rect.w / R.width; r.h = rect.h / R.height;
-        drawOverlay();
-        return r;
-      }
-    }
-    function ensureAutoPdfRoi(det){
-      const rect = bboxToOverlayRect(det.bbox);
-      if(!state.pdfAutoRoiId){
-        const roi = addRoiFromRect(rect.x, rect.y, rect.w, rect.h);
-        roi.name = 'PDF417 (auto)';
-        roi.type = 'pdf417';
-        state.pdfAutoRoiId = roi.id;
-        state.selectedRoiId = roi.id;
-        syncRoiPropsPanel(); drawOverlay();
-        return roi;
-      }else{
-        const r = state.rois.find(r=>r.id===state.pdfAutoRoiId);
-        if(!r){ state.pdfAutoRoiId = null; return ensureAutoPdfRoi(det); }
-        const R = $overlay.getBoundingClientRect();
-        r.x = rect.x / R.width; r.y = rect.y / R.height; r.w = rect.w / R.width; r.h = rect.h / R.height;
-        drawOverlay();
-        return r;
-      }
-    }
-
-    function isStableBox(b1, b2, nat){
-      if(!b1 || !b2) return false;
-      const epsPos = 0.03, epsSize = 0.06;
-      return Math.abs(b1.x - b2.x) <= nat.w*epsPos &&
-             Math.abs(b1.y - b2.y) <= nat.h*epsPos &&
-             Math.abs(b1.width  - b2.width ) <= nat.w*epsSize &&
-             Math.abs(b1.height - b2.height) <= nat.h*epsSize;
-    }
-
+    // ====== Confirmar captura desde detección doc
     async function confirmCapture(det){
       const ok = confirm('Se detectó un documento con alta confianza. ¿Deseas capturar esa región?');
       if(!ok) return;
       const crop = cropFromDetection(det);
       await showPreviewBitmap(crop);
       runOCROnActive('Captura de documento');
-      if($chkAutoMRZ.checked) { detectMRZFlow('Tras captura de documento'); }
-      if($chkAutoPDF.checked) { detectPDF417Flow('Tras captura de documento'); }
     }
 
     function cropFromDetection(det){
@@ -542,8 +489,6 @@
       $imgPreview.style.display='block';
       state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
       setTimeout(resizeOverlay, 100);
-      if($chkAutoMRZ.checked) { detectMRZFlow('Captura estática'); }
-      if($chkAutoPDF.checked) { detectPDF417Flow('Captura estática'); }
     }
 
     // ====== Dibujo overlay
@@ -554,18 +499,20 @@
       ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
       ctx.clearRect(0,0,$overlay.width,$overlay.height);
 
-      // Detecciones de documento
-      for(const p of state.lastDocDetections){
-        const rect = bboxToOverlayRect(p.bbox);
-        ctx.strokeStyle = '#5ac8fa';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-        ctx.fillStyle = 'rgba(90,200,250,.12)';
-        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-        ctx.fillStyle = '#cfe9fb';
-        ctx.font = '12px ui-monospace';
-        const tag = `${p.class||'doc'} ${(p.confidence||0).toFixed(2)}`;
-        ctx.fillText(tag, rect.x+6, rect.y+14);
+      // Detecciones de documento (solo draft)
+      if(state.phase==='draft'){
+        for(const p of state.lastDocDetections){
+          const rect = bboxToOverlayRect(p.bbox);
+          ctx.strokeStyle = '#5ac8fa';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+          ctx.fillStyle = 'rgba(90,200,250,.12)';
+          ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+          ctx.fillStyle = '#cfe9fb';
+          ctx.font = '12px ui-monospace';
+          const tag = `${p.class||'doc'} ${(p.confidence||0).toFixed(2)}`;
+          ctx.fillText(tag, rect.x+6, rect.y+14);
+        }
       }
 
       // ROIs
@@ -584,7 +531,7 @@
       return {x:sx,y:sy,w:sw,h:sh};
     }
 
-    // ====== ROI manager
+    // ====== ROI manager (dibujar, seleccionar, mover, redimensionar con 8 puntos)
     function roisDraw(view){
       for(const roi of state.rois){
         const x = roi.x*view.width, y=roi.y*view.height, w=roi.w*view.width, h=roi.h*view.height;
@@ -772,7 +719,7 @@
     });
     syncRoiPropsPanel();
 
-    // ====== Exportar / Importar
+    // ====== Exportar / Importar plantilla ROIs
     document.getElementById('btnExport').addEventListener('click',()=>{
       const data = { schema:'roi-template:v1', size: state.activeNatural, rois: state.rois };
       const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -796,71 +743,64 @@
       await showPreviewBitmap(bmp);
     });
     document.getElementById('btnShotDoc').addEventListener('click', async ()=>{
-      if(!state.docWorkerId) return alert('Modelo de documento no listo');
-      const host = state.usingImage ? $imgPreview : $video;
-      const preds = await state.engine.infer(state.docWorkerId, new inferencejs.CVImage(host));
+      if(!state.docWorkerId) return alert('Modelo de documento no listo (etapa borrador)');
+      const preds = await state.engine.infer(state.docWorkerId, new inferencejs.CVImage($video));
       if(!preds?.length) return alert('No se detectó documento');
       const best = _.maxBy(preds, p=>p.confidence||0);
-      const bmp = state.usingImage ? await imageBitmapFromImg($imgPreview) : await createImageBitmap($video);
+      const bmp = await createImageBitmap($video);
       state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
       const crop = cropFromDetection(best);
       await showPreviewBitmap(crop);
       runOCROnActive('Captura de documento');
     });
 
-    // ====== MRZ: detección en imagen
-    document.getElementById('btnDetectMRZ').addEventListener('click', ()=>detectMRZFlow('Detección manual'));
+    document.getElementById('btnSetFinal').addEventListener('click', switchToFinalPhase);
+
+    // ====== MRZ/PDF (solo funcionan en fase final)
+    $btnDetectMRZ.addEventListener('click', ()=>detectMRZFlow('Detección manual'));
+    $btnDetectPDF.addEventListener('click', ()=>detectPDF417Flow('Detección manual'));
+
     async function detectMRZFlow(context=''){
-      if(!state.mrzWorkerId) return alert('Modelo MRZ no listo');
+      if(state.phase!=='final' || !state.mrzWorkerId) return alert('Modelo MRZ no listo');
       const host = state.usingImage ? $imgPreview : $video;
       if(!state.usingImage && !$video.videoWidth){ return alert('No hay imagen/cámara lista'); }
-
-      const bmp = state.usingImage ? await imageBitmapFromImg($imgPreview) : await createImageBitmap($video);
-      state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
-
       setStatus(`Buscando MRZ… ${context?'(' + context + ')':''}`);
       try{
         const preds = await state.engine.infer(state.mrzWorkerId, new inferencejs.CVImage(host));
         if(!preds?.length){ setStatus('No se detectó MRZ.', true); return; }
         const best = _.maxBy(preds, p=>p.confidence||0);
-
-        const roi = ensureAutoMrzRoi(best);
-        state.selectedRoiId = roi.id;
-        syncRoiPropsPanel(); drawOverlay();
-
-        await extractAndReportROI(roi, 'Detección estática');
+        // Crear/actualizar ROI y extraer con OCR+parse
+        const roi = ensureAutoRoiFromBbox(best, 'MRZ (auto)', 'mrz');
+        await extractAndReportROI(roi, 'Detección MRZ');
       }catch(e){
         console.error(e);
         setStatus('Error al inferir MRZ.', true);
       }
     }
 
-    // ====== PDF417: detección en imagen
-    document.getElementById('btnDetectPDF').addEventListener('click', ()=>detectPDF417Flow('Detección manual'));
     async function detectPDF417Flow(context=''){
-      if(!state.pdfWorkerId) return alert('Modelo PDF417 no listo');
+      if(state.phase!=='final' || !state.pdfWorkerId) return alert('Modelo PDF417 no listo');
       const host = state.usingImage ? $imgPreview : $video;
       if(!state.usingImage && !$video.videoWidth){ return alert('No hay imagen/cámara lista'); }
-
-      const bmp = state.usingImage ? await imageBitmapFromImg($imgPreview) : await createImageBitmap($video);
-      state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
-
       setStatus(`Buscando PDF417… ${context?'(' + context + ')':''}`);
       try{
         const preds = await state.engine.infer(state.pdfWorkerId, new inferencejs.CVImage(host));
         if(!preds?.length){ setStatus('No se detectó PDF417.', true); return; }
         const best = _.maxBy(preds, p=>p.confidence||0);
-
-        const roi = ensureAutoPdfRoi(best);
-        state.selectedRoiId = roi.id;
-        syncRoiPropsPanel(); drawOverlay();
-
-        roi.type = 'pdf417';
+        const roi = ensureAutoRoiFromBbox(best, 'PDF417 (auto)', 'pdf417');
         await extractAndReportROI(roi, 'Detección PDF417');
       }catch(e){
         console.error(e);
         setStatus('Error al inferir PDF417.', true);
       }
+    }
+
+    function ensureAutoRoiFromBbox(det, name, type){
+      const rect = bboxToOverlayRect(det.bbox);
+      const roi = addRoiFromRect(rect.x, rect.y, rect.w, rect.h);
+      roi.name = name; roi.type = type;
+      state.selectedRoiId = roi.id; syncRoiPropsPanel(); drawOverlay();
+      return roi;
     }
 
     // ====== OCR + Parseo (imagen completa)
@@ -889,42 +829,6 @@
         setStatus('OCR completado.');
       }catch(err){ console.error(err); setStatus('Error en OCR', true); }
       finally{ URL.revokeObjectURL(imgUrl); }
-    }
-
-    function setStatus(msg,isErr){ $status.innerHTML = `<span class="badge ${isErr?'err':'ok'}">${msg}</span>`; }
-
-    // ====== ROI → píxeles naturales
-    function mapRoiToNatural(roi){
-      const view = $overlay.getBoundingClientRect();
-      const viewW = view.width, viewH = view.height;
-      const natW = state.activeNatural.w, natH = state.activeNatural.h;
-      if(!natW || !natH) return {x:0,y:0,w:0,h:0};
-      const scale = Math.min(viewW/natW, viewH/natH);
-      const contentW = natW * scale, contentH = natH * scale;
-      const offX = (viewW - contentW)/2, offY = (viewH - contentH)/2;
-      const ox = roi.x*viewW, oy = roi.y*viewH, ow = roi.w*viewW, oh = roi.h*viewH;
-      const nx = Math.round((ox - offX)/scale);
-      const ny = Math.round((oy - offY)/scale);
-      const nw = Math.round(ow/scale);
-      const nh = Math.round(oh/scale);
-      const x = Math.max(0, Math.min(natW, nx));
-      const y = Math.max(0, Math.min(natH, ny));
-      const w = Math.max(1, Math.min(natW - x, nw));
-      const h = Math.max(1, Math.min(natH - y, nh));
-      return {x,y,w,h};
-    }
-
-    function roiToCanvas(roi){
-      const {x,y,w,h} = mapRoiToNatural(roi);
-      const off = new OffscreenCanvas(w,h);
-      const g = off.getContext('2d');
-      g.drawImage(state.activeBitmap, x,y,w,h, 0, 0, w, h);
-      return off;
-    }
-
-    async function canvasToBlobUrl(cnv, type='image/png', quality=0.92){
-      const blob = await cnv.convertToBlob({type, quality});
-      return URL.createObjectURL(blob);
     }
 
     // ====== —— MRZ: Normalización & Parseo ======
@@ -1110,11 +1014,10 @@
         mrzSummary.classList.remove('hidden');
         mrzSummary.innerHTML = "<strong>Resultados</strong> — <span class='ok'>MRZ parseado.</span>";
         renderPairsTo(mrzTable, enriched);
-        // Registrar también en la tabla global de ROIs (cuando provenga de ROI text genérico)
         addRoiResult({name:'(Texto crudo)', type:'text'}, enriched);
         return;
       }catch(_){}
-      // Si no es MRZ, intentar key:value
+      // Si no es MRZ, intentar pares key:value
       const rows = {};
       const lines = raw.split(/\r?\n+/).map(s=>s.trim()).filter(Boolean);
       for(const ln of lines){
@@ -1149,7 +1052,6 @@
       try{
         switch((roi.type||'text').toLowerCase()){
           case 'image':{
-            // Se exporta imagen; en la tabla anotamos referencia
             addRoiResult(roi, {'Imagen exportada': (roi.name||roi.id)+'.png'});
             const a = document.createElement('a'); a.href = dataUrl; a.download = `${(roi.name||roi.id)}.png`; a.click();
             setStatus(`Imagen ROI "${roi.name||roi.id}" exportada.`);
@@ -1186,7 +1088,7 @@
           case 'pdf417':{
             const res = await decodeBarcodeWithZXing(dataUrl, ['PDF_417']);
             if(res){
-              tryAutoParseDUIFromPDF417(res); // pinta arriba
+              tryAutoParseDUIFromPDF417(res); // pinta arriba (PDF417)
               const rawPDF = (extractRawTextFromPdf417(res) || '').trim();
               const parsed = parseDUIFromRaw(rawPDF);
               if(parsed && parsed.fields){
@@ -1231,7 +1133,7 @@
       }
     }
 
-    // >>> NUEVO: Tabla de Resultados (ROIs) — helpers
+    // ====== Tabla de Resultados (ROIs) — crear/limpiar/exportar
     function ensureRoiResultsTable(){
       if(document.getElementById('roiResultsTable')) return;
       roiResults.innerHTML = `
@@ -1259,6 +1161,78 @@
         tr.innerHTML = `<td>${roiName}</td><td>${roiType}</td><td><strong>Texto</strong></td><td>${escapeHtml(String(data||''))}</td>`;
         body.appendChild(tr);
       }
+    }
+    function clearRoiResults(){
+      const tbl = document.getElementById('roiResultsTable');
+      if(tbl){ const body = document.getElementById('roiResultsBody'); if(body) body.innerHTML=''; }
+      else ensureRoiResultsTable();
+    }
+    document.getElementById('btnRoiClear').addEventListener('click', clearRoiResults);
+
+    document.getElementById('btnRoiCSV').addEventListener('click', ()=>{
+      const rows = collectRoiRows();
+      if(!rows.length){ alert('No hay datos para exportar'); return; }
+      const headers = ['ROI','Tipo','Campo','Valor'];
+      const csv = [headers.join(',')].concat(rows.map(r=>headers.map(h=>csvEsc(r[h])).join(','))).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tabla-rois.csv'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+    });
+    document.getElementById('btnRoiJSON').addEventListener('click', ()=>{
+      const rows = collectRoiRows();
+      if(!rows.length){ alert('No hay datos para exportar'); return; }
+      const blob = new Blob([JSON.stringify(rows,null,2)], {type:'application/json'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tabla-rois.json'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+    });
+    function collectRoiRows(){
+      const body = document.getElementById('roiResultsBody'); if(!body) return [];
+      const out = [];
+      [...body.querySelectorAll('tr')].forEach(tr=>{
+        const tds = tr.querySelectorAll('td');
+        if(tds.length>=4){
+          out.push({ROI:tds[0].textContent||'', Tipo:tds[1].textContent||'', Campo:tds[2].innerText||'', Valor:tds[3].innerText||''});
+        }
+      });
+      return out;
+    }
+    function csvEsc(s){
+      s = String(s??'');
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+    }
+
+    // ====== ROI → píxeles naturales y utilidades
+    function mapRoiToNatural(roi){
+      const view = $overlay.getBoundingClientRect();
+      const viewW = view.width, viewH = view.height;
+      const natW = state.activeNatural.w, natH = state.activeNatural.h;
+      if(!natW || !natH) return {x:0,y:0,w:0,h:0};
+      const scale = Math.min(viewW/natW, viewH/natH);
+      const contentW = natW * scale, contentH = natH * scale;
+      const offX = (viewW - contentW)/2, offY = (viewH - contentH)/2;
+      const ox = roi.x*viewW, oy = roi.y*viewH, ow = roi.w*viewW, oh = roi.h*viewH;
+      const nx = Math.round((ox - offX)/scale);
+      const ny = Math.round((oy - offY)/scale);
+      const nw = Math.round(ow/scale);
+      const nh = Math.round(oh/scale);
+      const x = Math.max(0, Math.min(natW, nx));
+      const y = Math.max(0, Math.min(natH, ny));
+      const w = Math.max(1, Math.min(natW - x, nw));
+      const h = Math.max(1, Math.min(natH - y, nh));
+      return {x,y,w,h};
+    }
+
+    function roiToCanvas(roi){
+      const {x,y,w,h} = mapRoiToNatural(roi);
+      const off = new OffscreenCanvas(w,h);
+      const g = off.getContext('2d');
+      g.drawImage(state.activeBitmap, x,y,w,h, 0, 0, w, h);
+      return off;
+    }
+
+    async function canvasToBlobUrl(cnv, type='image/png', quality=0.92){
+      const blob = await cnv.convertToBlob({type, quality});
+      return URL.createObjectURL(blob);
     }
 
     async function ocrCanvas(cnv, langs='spa+eng'){
@@ -1304,58 +1278,24 @@
 
     function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[m]); }
 
-    // ====== Inicio
-    (async function init(){
-      await initEngine();
-      await startCamera();
-      resizeOverlay();
-      syncRoiPropsPanel();
-      updateRoiCount();
-
-      // Listeners switches
-      $chkAutoMrzCam.addEventListener('change', ()=>{ state.autoMrzCam = $chkAutoMrzCam.checked; });
-      $mrzInterval.addEventListener('input', ()=>{ /* throttling leído en loop */ });
-    })();
-
-    // ====== Botones utilitarios de ROIs
-    document.getElementById('btnAddRoi').addEventListener('click', ()=>{
-      const R = $overlay.getBoundingClientRect();
-      const w = Math.max(80, R.width*0.25), h = Math.max(60, R.height*0.15);
-      addRoiFromRect((R.width-w)/2,(R.height-h)/2,w,h);
-    });
-    document.getElementById('btnDeleteRoi').addEventListener('click', removeSelected);
-    document.getElementById('btnClearRois').addEventListener('click', ()=>{ state.rois=[]; state.selectedRoiId=null; updateRoiCount(); drawOverlay(); syncRoiPropsPanel(); });
-
-
-    /* =====================================================================================
-       ===  CÓDIGO DE PDF417: Parseo DUI + helpers                                      ===
-       ===================================================================================== */
-
-    // ========= PDF417 con @zxing/library (UMD) =========
+    // ====== PDF417: Procesar imagen actual (si quieres reutilizarlo manualmente)
     async function processPDF417(){
       pdf417Error.classList.add('hidden');
       try{
-        // Asegúrate de que la imagen esté cargada completamente
         await ensureImageLoaded($imgPreview);
-
-        // 1) Intento directo con el lector de alto nivel
         const reader = new ZXing.BrowserPDF417Reader();
         let result = null;
         try{
           result = await reader.decodeFromImageElement($imgPreview);
         }catch(e1){
-          // 2) Fallback: dibujar en canvas (por si el elemento <img> no está en el DOM visible)
           const canvas = document.createElement('canvas');
           const ctx2 = canvas.getContext('2d');
           canvas.width = $imgPreview.naturalWidth || $imgPreview.width;
           canvas.height = $imgPreview.naturalHeight || $imgPreview.height;
           if (!canvas.width || !canvas.height) throw e1;
-
           ctx2.drawImage($imgPreview, 0, 0, canvas.width, canvas.height);
           result = await reader.decodeFromCanvas(canvas);
         }
-
-        // Extraer texto y parsear formato DUI
         tryAutoParseDUIFromPDF417(result);
       }catch(err){
         pdf417Error.classList.remove('hidden');
@@ -1363,7 +1303,6 @@
         pdf417Table.innerHTML = '<p class="muted">No se pudo decodificar PDF417.</p>';
       }
     }
-
     function ensureImageLoaded(img){
       return new Promise((resolve, reject)=>{
         if (img.complete && img.naturalWidth > 0) return resolve();
@@ -1482,6 +1421,27 @@
       html += '</tbody></table></div>';
       return html;
     }
+
+    // ====== Utilidades varias
+    async function canvasToBlobUrl(cnv, type='image/png', quality=0.92){
+      const blob = await cnv.convertToBlob({type, quality});
+      return URL.createObjectURL(blob);
+    }
+
+    function ensureRoiResultsTableIfEmpty(){ ensureRoiResultsTable(); }
+
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[m]); }
+
+    // ====== Inicio
+    (async function init(){
+      await initEngine();       // solo Doc
+      await startCamera();
+      resizeOverlay();
+      syncRoiPropsPanel();
+      updateRoiCount();
+      ensureRoiResultsTableIfEmpty();
+    })();
   </script>
 </body>
 </html>
+
