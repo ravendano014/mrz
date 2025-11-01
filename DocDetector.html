@@ -146,9 +146,27 @@
         <h3>Modelos y estado</h3>
         <div class="status" style="display:grid;gap:6px">
           <div>Engine: <span id="sEngine" class="badge info">inicializando…</span></div>
-          <div>Modelo Doc (react-project-wdxr6): <span id="sModelDoc" class="badge info">pendiente</span></div>
-          <div>Modelo MRZ: <span id="sModelMRZ" class="badge">—</span></div>
-          <div>Modelo PDF417: <span id="sModelPDF" class="badge">—</span></div>
+          <div>
+            Modelo Doc (react-project-wdxr6): <span id="sModelDoc" class="badge info">pendiente</span>
+            <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap">
+              <button id="btnLoadDoc">Cargar Doc</button>
+              <button id="btnUnloadDoc" class="bad">Descargar Doc</button>
+            </div>
+          </div>
+          <div>
+            Modelo MRZ: <span id="sModelMRZ" class="badge">—</span>
+            <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap">
+              <button id="btnLoadMRZ">Cargar MRZ</button>
+              <button id="btnUnloadMRZ" class="bad">Descargar MRZ</button>
+            </div>
+          </div>
+          <div>
+            Modelo PDF417: <span id="sModelPDF" class="badge">—</span>
+            <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap">
+              <button id="btnLoadPDF">Cargar PDF417</button>
+              <button id="btnUnloadPDF" class="bad">Descargar PDF417</button>
+            </div>
+          </div>
         </div>
       </div>
     </aside>
@@ -217,6 +235,7 @@
         <h2>Imagen</h2>
         <input type="file" id="file" accept="image/*" />
         <button id="btnParseFull">Extraer y Parsear (Imagen Completa)</button>
+        <button id="btnShotDocImage" class="good" title="Detecta y recorta el documento en la imagen cargada usando el modelo de Documento">Capturar solo Documento (Imagen cargada)</button>
 
         <!-- Botón de transición a versión definitiva -->
         <button id="btnSetFinal" class="primary" title="Descarga modelo Doc y carga MRZ/PDF417 para pasar a la etapa final">Establecer versión definitiva</button>
@@ -380,6 +399,64 @@
     }
 
     // ====== InferenceJS: init engine y carga inicial (solo Doc)
+
+    // ====== NUEVO: Gestión manual de carga/descarga de modelos ======
+    function loadedModelsCount(){
+      return [state.docWorkerId, state.mrzWorkerId, state.pdfWorkerId].filter(Boolean).length;
+    }
+    function canLoadAnother(){
+      const c = loadedModelsCount();
+      if(c >= 2){
+        setStatus('Límite: solo 2 modelos activos a la vez. Descarga alguno para continuar.', true);
+        return false;
+      }
+      return true;
+    }
+    async function loadDoc(){
+      if(state.docWorkerId){ setStatus('Modelo Doc ya cargado.'); return; }
+      if(!canLoadAnother()) return;
+      try{
+        setBadge($sModelDoc,'cargando…','info');
+        state.docWorkerId = await state.engine.startWorker('react-project-wdxr6','1','rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2');
+        setBadge($sModelDoc,'OK','ok');
+      }catch(e){ console.error(e); setBadge($sModelDoc,'error','err'); }
+    }
+    async function unloadDoc(){
+      if(!state.docWorkerId){ setStatus('Modelo Doc no está cargado.'); return; }
+      await stopWorkerSafe(state.docWorkerId); state.docWorkerId=null;
+      setBadge($sModelDoc,'descargado','warn');
+    }
+    async function loadMRZ(){
+      if(state.mrzWorkerId){ setStatus('Modelo MRZ ya cargado.'); return; }
+      if(!canLoadAnother()) return;
+      try{
+        setBadge($sModelMRZ,'cargando…','info');
+        state.mrzWorkerId = await state.engine.startWorker('mrz-ye7hu-5jxuj','1','rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2');
+        setBadge($sModelMRZ,'OK','ok');
+        setDetectButtonsEnabled(!!(state.mrzWorkerId && state.pdfWorkerId));
+      }catch(e){ console.error(e); setBadge($sModelMRZ,'error','err'); }
+    }
+    async function unloadMRZ(){
+      if(!state.mrzWorkerId){ setStatus('Modelo MRZ no está cargado.'); return; }
+      await stopWorkerSafe(state.mrzWorkerId); state.mrzWorkerId=null;
+      setBadge($sModelMRZ,'descargado','warn'); setDetectButtonsEnabled(false);
+    }
+    async function loadPDF(){
+      if(state.pdfWorkerId){ setStatus('Modelo PDF417 ya cargado.'); return; }
+      if(!canLoadAnother()) return;
+      try{
+        setBadge($sModelPDF,'cargando…','info');
+        state.pdfWorkerId = await state.engine.startWorker('pdf417-kl4vz-hl0le','1','rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2');
+        setBadge($sModelPDF,'OK','ok');
+        setDetectButtonsEnabled(!!(state.mrzWorkerId && state.pdfWorkerId));
+      }catch(e){ console.error(e); setBadge($sModelPDF,'error','err'); }
+    }
+    async function unloadPDF(){
+      if(!state.pdfWorkerId){ setStatus('Modelo PDF417 no está cargado.'); return; }
+      await stopWorkerSafe(state.pdfWorkerId); state.pdfWorkerId=null;
+      setBadge($sModelPDF,'descargado','warn'); setDetectButtonsEnabled(false);
+    }
+
     async function initEngine(){
       try{
         setBadge($sEngine,'inicializando…','info');
@@ -871,6 +948,31 @@ document.getElementById('btnClearRois').addEventListener('click', ()=>{ clearAll
     });
 
     document.getElementById('btnSetFinal').addEventListener('click', switchToFinalPhase);
+
+    // Botones de carga/descarga manual
+    document.getElementById('btnLoadDoc').addEventListener('click', loadDoc);
+    document.getElementById('btnUnloadDoc').addEventListener('click', unloadDoc);
+    document.getElementById('btnLoadMRZ').addEventListener('click', loadMRZ);
+    document.getElementById('btnUnloadMRZ').addEventListener('click', unloadMRZ);
+    document.getElementById('btnLoadPDF').addEventListener('click', loadPDF);
+    document.getElementById('btnUnloadPDF').addEventListener('click', unloadPDF);
+
+    // Capturar solo documento desde imagen cargada
+    document.getElementById('btnShotDocImage').addEventListener('click', async ()=>{
+      if(!state.usingImage){ return alert('Primero sube o muestra una imagen.'); }
+      if(!state.docWorkerId){ return alert('Modelo de documento no cargado. Usa "Cargar Doc".'); }
+      try{
+        const preds = await state.engine.infer(state.docWorkerId, new inferencejs.CVImage($imgPreview));
+        if(!preds?.length) return alert('No se detectó documento en la imagen.');
+        const best = _.maxBy(preds, p=>p.confidence||0);
+        const crop = cropFromDetection(best);
+        await showPreviewBitmap(crop);
+        runOCROnActive('Documento (imagen cargada)');
+      }catch(e){
+        console.error(e); alert('Error al detectar documento en imagen.');
+      }
+    });
+
 
     // ====== MRZ/PDF (solo funcionan en fase final)
     $btnDetectMRZ.addEventListener('click', ()=>detectMRZFlow('Detección manual'));
@@ -1725,4 +1827,3 @@ function clearAllRois(){
 
 </body>
 </html>
-
