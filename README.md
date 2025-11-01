@@ -11,6 +11,7 @@ Uses:
 <span style="color:green;">Doc Detector</span> [Doc PDF417 MRZ IA Detector](https://ravendano014.github.io/mrz/DocDetector.html)
 
 <span style="color:green;">MRZ</span> [MRZ Online Cam Reader](https://ravendano014.github.io/mrz/)
+<span style="color:green;">Doc MRZ Autodetect</span> [MRZ Autodetect](https://ravendano014.github.io/mrz/DocMRZAuto.html)
 
 [MRZ Online Image Reader](https://ravendano014.github.io/mrz/MRZFeed.html)
 
