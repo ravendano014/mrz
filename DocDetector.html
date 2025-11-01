@@ -317,6 +317,9 @@
     }
 
     async function switchToFinalPhase(){
+  /*__cleared_rois_on_final__*/
+  try{ clearAllRois && clearAllRois(); }catch(e){}
+
       if(state.phase!=='draft') return;
       // Confirmación
       const ok = confirm('¿Establecer versión definitiva? Se descargará el modelo de Documento y se cargarán MRZ y PDF417.');
@@ -405,6 +408,9 @@
 
     // ====== Cargar imagen
     document.getElementById('file').addEventListener('change', async (e)=>{
+      /*__cleared_rois_on_file_change__*/
+      try{ clearAllRois && clearAllRois(); }catch(e){}
+
       const f = e.target.files?.[0]; if(!f) return;
       const url = URL.createObjectURL(f);
       $imgPreview.src = url;
@@ -700,7 +706,11 @@
     $overlay.addEventListener('touchstart', onDown, {passive:false}); $overlay.addEventListener('touchmove', onMove, {passive:false}); $overlay.addEventListener('touchend', onUp);
     addEventListener('keydown', (e)=>{ if(e.key==='Delete' || e.key==='Backspace') removeSelected(); });
 
-    // Inputs/props ROI
+    
+document.getElementById('btnDeleteRoi').addEventListener('click', ()=>{ removeSelected(); });
+
+document.getElementById('btnClearRois').addEventListener('click', ()=>{ clearAllRois(); });
+// Inputs/props ROI
     [$roiName,$roiType,$roiX,$roiY,$roiW,$roiH].forEach(inp=>{
       inp.addEventListener('input', ()=>{
         const a = state.rois.find(r=>r.id===state.selectedRoiId);
@@ -1167,6 +1177,18 @@
       if(tbl){ const body = document.getElementById('roiResultsBody'); if(body) body.innerHTML=''; }
       else ensureRoiResultsTable();
     }
+function clearAllRois(){
+  try{
+    if(Array.isArray(state.rois)) state.rois.length = 0;
+    state.selectedRoiId = null;
+  }catch(e){ console.warn('clearAllRois state reset warn:', e); }
+  try{ updateRoiCount && updateRoiCount(); }catch(e){}
+  try{ syncRoiPropsPanel && syncRoiPropsPanel(); }catch(e){}
+  try{ clearRoiResults && clearRoiResults(); }catch(e){}
+  try{ drawOverlay && drawOverlay(); }catch(e){}
+  setStatus && setStatus('ROIs limpiados.');
+}
+
     document.getElementById('btnRoiClear').addEventListener('click', clearRoiResults);
 
     document.getElementById('btnRoiCSV').addEventListener('click', ()=>{
@@ -1442,6 +1464,28 @@
       ensureRoiResultsTableIfEmpty();
     })();
   </script>
+
+<script>
+// === Default to DOC model active (borrador) without altering other logic ===
+(function(){
+  function tryLoadDocDefault(){
+    try {
+      if (window.state && window.state.engine && !window.state?.docWorkerId){
+        if (typeof loadDocModelOnly === 'function'){
+          loadDocModelOnly().finally(()=>{ if (typeof updateTopStatus==='function') updateTopStatus(); });
+          return true;
+        }
+      }
+    } catch(e){ console.warn(e); }
+    return false;
+  }
+  if (document.readyState === 'complete' || document.readyState === 'interactive'){
+    setTimeout(tryLoadDocDefault, 0);
+  } else {
+    document.addEventListener('DOMContentLoaded', tryLoadDocDefault, {once:true});
+  }
+})();
+</script>
+
 </body>
 </html>
-
