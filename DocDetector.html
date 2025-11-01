@@ -32,9 +32,10 @@
     #imgPreview{width:100%;height:100%;object-fit:contain;display:none}
     #overlay{touch-action:none}
 
-    .results{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px;min-height:0}
     .card h3{margin:0 0 .5rem 0;color:var(--sub);font-size:.95rem}
+
+    .results{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     textarea.raw{width:100%;height:240px;background:#0a121a;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px;resize:vertical}
     table{width:100%;border-collapse:collapse}
     th,td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;vertical-align:top}
@@ -68,7 +69,7 @@
 </head>
 <body>
   <div class="app">
-    <!-- LADO IZQUIERDO: configuración, ROIs, extracción, estado de modelo -->
+    <!-- LADO IZQUIERDO -->
     <aside class="left">
       <h1>OCR de Documentos</h1>
 
@@ -85,7 +86,7 @@
           <input type="file" id="fileImport" accept="application/json" />
         </div>
 
-        <!-- Propiedades del ROI seleccionado -->
+        <!-- Propiedades ROI -->
         <div class="bar" style="padding:8px;margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <input id="roiName" type="text" placeholder="Nombre ROI" />
           <select id="roiType">
@@ -102,7 +103,7 @@
         </div>
 
         <div class="status" style="margin-top:6px">
-          Tip: Click para seleccionar · Arrastra dentro para mover · Arrastra bordes/esquinas para redimensionar · Supr/Backspace para borrar.
+          Tip: Click para seleccionar · Arrastra para mover · Arrastra bordes/esquinas para redimensionar · Supr/Backspace borra.
         </div>
       </div>
 
@@ -113,7 +114,7 @@
           <button id="btnExtractAll">Extraer todos los ROIs</button>
         </div>
         <div class="status" style="margin-top:6px">
-          Tipos soportados: <span class="mono">text, image, mrz, pdf417, barcode</span>
+          Tipos: <span class="mono">text, image, mrz, pdf417, barcode</span>
         </div>
       </div>
 
@@ -126,9 +127,9 @@
       </div>
     </aside>
 
-    <!-- LADO DERECHO: barras de control + stage + resultados -->
+    <!-- LADO DERECHO -->
     <main class="right">
-      <!-- BARRA DE CÁMARA (AHORA ENCIMA DEL STAGE) -->
+      <!-- Cámara arriba -->
       <div class="bar" id="cameraBar">
         <h2>Cámara</h2>
         <button id="btnStart" class="primary">Iniciar</button>
@@ -142,7 +143,7 @@
         <span id="fps" class="badge mono">FPS: <span id="fpsVal">—</span></span>
       </div>
 
-      <!-- STAGE -->
+      <!-- Stage -->
       <section id="stage" class="stage">
         <video id="video" class="layer" autoplay muted playsinline></video>
         <img id="imgPreview" class="layer" alt="Previsualización" />
@@ -150,14 +151,14 @@
         <div class="fps mono" id="fpsOverlay">— fps</div>
       </section>
 
-      <!-- BARRA DE IMAGEN (AHORA DEBAJO DEL STAGE) -->
+      <!-- Imagen abajo -->
       <div class="bar" id="imageBar">
         <h2>Imagen</h2>
         <input type="file" id="file" accept="image/*" />
         <button id="btnParseFull">Extraer y Parsear (Imagen Completa)</button>
       </div>
 
-      <!-- RESULTADOS -->
+      <!-- Resultados -->
       <section class="results">
         <div class="card">
           <h3>Texto crudo OCR</h3>
@@ -187,7 +188,7 @@
       usingImage: false,
       lastDetections: [],
       selectedRoiId: null,
-      rois: [], // {id,name,type,x,y,w,h} con coords relativos [0..1]
+      rois: [], // {id,name,type,x,y,w,h} coords relativos [0..1]
       workerId: null,
       engine: null,
       activeBitmap: null,
@@ -201,6 +202,7 @@
     const ctx = $overlay.getContext('2d');
     const $fpsOverlay = document.getElementById('fpsOverlay');
     const $fpsVal = document.getElementById('fpsVal');
+    const $sEngine = document.getElementById('sEngine');
     const $sModel = document.getElementById('sModel');
     const $raw = document.getElementById('raw');
     const $tbl = document.getElementById('tbl').querySelector('tbody');
@@ -216,11 +218,9 @@
     // ====== InferenceJS
     async function initEngine(){
       try{
-        // Mostrar estado (simple)
-        document.getElementById('sEngine').textContent = 'listo';
+        $sEngine.textContent = 'listo';
         state.engine = new inferencejs.InferenceEngine();
         $sModel.textContent = 'cargando…';
-        // Carga modelo (ajusta si usas otro)
         state.workerId = await state.engine.startWorker(
           'react-project-wdxr6',
           '1',
@@ -233,7 +233,7 @@
       }
     }
 
-    // ====== Overlay del mismo tamaño visible que el host
+    // ====== Overlay
     function resizeOverlay(){
       const host = state.usingImage ? $imgPreview : $video;
       const w = host.clientWidth || host.getBoundingClientRect().width;
@@ -268,7 +268,7 @@
       }
     }
 
-    // ====== Cargar imagen desde archivo
+    // ====== Cargar imagen
     document.getElementById('file').addEventListener('change', async (e)=>{
       const f = e.target.files?.[0]; if(!f) return;
       const url = URL.createObjectURL(f);
@@ -362,7 +362,7 @@
       ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
       ctx.clearRect(0,0,$overlay.width,$overlay.height);
 
-      // Escala y offset (letterboxing)
+      // Letterboxing (object-fit: contain)
       const natW = state.activeNatural.w || 1, natH = state.activeNatural.h || 1;
       const scale = Math.min(viewW/natW, viewH/natH);
       const contentW = natW * scale, contentH = natH * scale;
@@ -386,7 +386,7 @@
         ctx.fillText(tag, sx+6, sy+14);
       }
 
-      // ROIs (dibujados en coordenadas del overlay 0..1)
+      // ROIs
       roisDraw({width:viewW, height:viewH});
     }
 
@@ -562,7 +562,7 @@
     $overlay.addEventListener('touchstart', onDown, {passive:false}); $overlay.addEventListener('touchmove', onMove, {passive:false}); $overlay.addEventListener('touchend', onUp);
     addEventListener('keydown', (e)=>{ if(e.key==='Delete' || e.key==='Backspace') removeSelected(); });
 
-    // Inputs de propiedades ROI
+    // Inputs/props ROI
     [$roiName,$roiType,$roiX,$roiY,$roiW,$roiH].forEach(inp=>{
       inp.addEventListener('input', ()=>{
         const a = state.rois.find(r=>r.id===state.selectedRoiId);
@@ -581,7 +581,7 @@
     });
     syncRoiPropsPanel();
 
-    // ====== Exportar / Importar plantilla
+    // ====== Exportar / Importar
     document.getElementById('btnExport').addEventListener('click',()=>{
       const data = { schema:'roi-template:v1', size: state.activeNatural, rois: state.rois };
       const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -700,7 +700,207 @@
       $tbl.insertAdjacentHTML('beforeend', html);
     }
 
-    // ====== Extracción por ROI
+    // ====== —— MRZ: Normalización & Parseo (tu bloque) —— ======
+    function normalizeRawMRZ(t){
+      return t
+        .replace(/[^\dA-Z<\n]/g,'')
+        .replace(/[ \t]+/g,'')
+        .toUpperCase()
+        .trim();
+    }
+    function splitNames(s){
+      const parts = s.split('<<');
+      const surname = (parts[0]||'').replace(/</g,' ').trim();
+      const given = (parts[1]||'').replace(/</g,' ').trim();
+      return {surname, given};
+    }
+    function parseTD3(lines){
+      const L1 = (lines[0]||'').padEnd(44,'<').slice(0,44);
+      const L2 = (lines[1]||'').padEnd(44,'<').slice(0,44);
+      const docType = L1.slice(0,2).replace(/</g,'');
+      const issuer = L1.slice(2,5).replace(/</g,'');
+      const namePart = L1.slice(5);
+      const {surname, given} = splitNames(namePart);
+      const passportNumber = L2.slice(0,9).replace(/</g,'');
+      const nationality = L2.slice(10,13).replace(/</g,'');
+      const birth = L2.slice(13,19);
+      const sex = L2.slice(20,21).replace(/</g,''); // corregido
+      const expiry = L2.slice(21,27);
+      const personal = L2.slice(28,42).replace(/</g,'');
+      return {
+        Formato:'TD3 (Pasaporte)',
+        'Tipo de documento':docType,
+        'País emisor':issuer,
+        'Apellidos':surname,
+        'Nombres':given,
+        'Número de documento':passportNumber,
+        'Nacionalidad':nationality,
+        'Fecha de nacimiento (YYMMDD)':birth,
+        'Sexo':sex,
+        'Fecha de expiración (YYMMDD)':expiry,
+        'Número personal':personal
+      };
+    }
+    function parseTD1(lines){
+      const L1 = (lines[0]||'').padEnd(30,'<').slice(0,30);
+      const L2 = (lines[1]||'').padEnd(30,'<').slice(0,30);
+      const L3 = (lines[2]||'').padEnd(30,'<').slice(0,30);
+      const docType = L1.slice(0,2).replace(/</g,'');
+      const country = L1.slice(2,5).replace(/</g,'');
+      const number = L1.slice(5,14).replace(/</g,'');
+      const birth = L2.slice(0,6);
+      const sex = L2.slice(7,8);
+      const expiry = L2.slice(8,14);
+      const nationality = L2.slice(15,18).replace(/</g,'');
+      const optional = L3.slice(0,30).replace(/</g,' ').trim();
+      const {surname, given} = splitNames(L3);
+      return {
+        Formato:'TD1 (ID 3 líneas)',
+        'Tipo de documento':docType,
+        'País emisor':country,
+        'Número de documento':number,
+        'Fecha de nacimiento (YYMMDD)':birth,
+        'Sexo':sex,
+        'Fecha de expiración (YYMMDD)':expiry,
+        'Nacionalidad':nationality,
+        'Apellidos':surname,
+        'Nombres':given,
+        'Dato opcional':optional
+      };
+    }
+    function parseTD2(lines){
+      const L1 = (lines[0]||'').padEnd(36,'<').slice(0,36);
+      const L2 = (lines[1]||'').padEnd(36,'<').slice(0,36);
+      const docType = L1.slice(0,2).replace(/</g,'');
+      const country = L1.slice(2,5).replace(/</g,'');
+      const namePart = L1.slice(5);
+      const {surname, given} = splitNames(namePart);
+      const number = L2.slice(0,9).replace(/</g,'');
+      const nationality = L2.slice(10,13).replace(/</g,'');
+      const birth = L2.slice(13,19);
+      const sex = L2.slice(20,21);
+      const expiry = L2.slice(21,27);
+      const optional = L2.slice(28,35).replace(/</g,' ').trim();
+      return {
+        Formato:'TD2 (ID 2 líneas)',
+        'Tipo de documento':docType,
+        'País emisor':country,
+        'Apellidos':surname,
+        'Nombres':given,
+        'Número de documento':number,
+        'Nacionalidad':nationality,
+        'Fecha de nacimiento (YYMMDD)':birth,
+        'Sexo':sex,
+        'Fecha de expiración (YYMMDD)':expiry,
+        'Dato opcional':optional
+      };
+    }
+    function guessAndParseMRZ(raw){
+      const text = normalizeRawMRZ(raw);
+      const lines = text.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+      if(lines.length>=2 && lines.every(l=>l.length>=36)){
+        const L = lines.map(l=>l.replace(/\s+/g,''));
+        if(L[0].length>=44 || L[1].length>=44) return parseTD3([L[0].slice(0,44), L[1].slice(0,44)]);
+        return parseTD2([L[0].slice(0,36), L[1].slice(0,36)]);
+      }else if(lines.length>=3){
+        const L = lines.slice(0,3).map(l=>l.replace(/\s+/g,''));
+        return parseTD1([L[0].slice(0,30), L[1].slice(0,30), L[2].slice(0,30)]);
+      }else{
+        throw new Error('No se reconoce el formato MRZ.');
+      }
+    }
+
+    // ====== Fechas MRZ → ISO + edad y vencimiento ======
+    function yyMMddToISO(yyMMdd){
+      if(!/^\d{6}$/.test(yyMMdd)) return null;
+      const yy = parseInt(yyMMdd.slice(0,2),10);
+      const mm = parseInt(yyMMdd.slice(2,4),10);
+      const dd = parseInt(yyMMdd.slice(4,6),10);
+      // Heurística común MRZ: >=50 => 1900s, <50 => 2000s
+      const year = (yy >= 50 ? 1900 : 2000) + yy;
+      if(mm<1||mm>12||dd<1||dd>31) return null;
+      const m = String(mm).padStart(2,'0');
+      const d = String(dd).padStart(2,'0');
+      return `${year}-${m}-${d}`;
+    }
+    function isoToDate(iso){
+      const d = new Date(iso+'T00:00:00');
+      return isNaN(d.getTime()) ? null : d;
+    }
+    function yearsBetween(birthISO){
+      const d = isoToDate(birthISO); if(!d) return null;
+      const now = new Date();
+      let age = now.getFullYear() - d.getFullYear();
+      const m = now.getMonth() - d.getMonth();
+      if(m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+      return age;
+    }
+    function daysUntilISO(iso){
+      const d = isoToDate(iso); if(!d) return null;
+      const now = new Date();
+      const msPerDay = 24*60*60*1000;
+      return Math.ceil((d - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / msPerDay);
+    }
+    function augmentMRZ(parsed){
+      // Clona para no mutar el original
+      const out = {...parsed};
+      // Claves posibles según TD1/TD2/TD3:
+      const kBirth = 'Fecha de nacimiento (YYMMDD)';
+      const kExp   = 'Fecha de expiración (YYMMDD)';
+
+      if(parsed[kBirth]){
+        const iso = yyMMddToISO(parsed[kBirth]);
+        if(iso){
+          out['Fecha de nacimiento'] = iso;
+          const age = yearsBetween(iso);
+          if(age!=null) out['Edad (años)'] = String(age);
+        }
+      }
+      if(parsed[kExp]){
+        const iso = yyMMddToISO(parsed[kExp]);
+        if(iso){
+          out['Fecha de expiración'] = iso;
+          const left = daysUntilISO(iso);
+          if(left!=null){
+            out['Días hasta expiración'] = String(left);
+            out['¿Vencido?'] = left < 0 ? 'Sí' : 'No';
+          }
+        }
+      }
+      return out;
+    }
+
+    // ====== Área "Texto crudo OCR" → MRZ con augment
+    document.getElementById('btnParseRaw').addEventListener('click', ()=>{
+      const txt = ($raw.value||'').trim();
+      if(!txt){ setStatus('No hay texto para parsear.', true); return; }
+      parseToTable(txt);
+      setStatus('Texto crudo parseado.');
+    });
+
+    function parseToTable(raw){
+      $tbl.innerHTML = '';
+      // Intento MRZ
+      try{
+        const parsed = guessAndParseMRZ(raw);
+        const enriched = augmentMRZ(parsed);
+        const rows = Object.entries(enriched);
+        $tbl.innerHTML = rows.map(([k,v])=>`<tr><td class="mono">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('');
+        return;
+      }catch(_) { /* si no es MRZ, continua */ }
+
+      // Heurística genérica "Campo: Valor"
+      const rows = [];
+      const lines = raw.split(/\r?\n+/).map(s=>s.trim()).filter(Boolean);
+      for(const ln of lines){
+        const m = ln.match(/^([^:]{2,48})\s*:\s*(.+)$/);
+        if(m) rows.push([m[1].trim(), m[2].trim()]);
+      }
+      if(!rows.length){ lines.slice(0,50).forEach((v,i)=>rows.push([`Línea ${i+1}`, v])); }
+      $tbl.innerHTML = rows.map(([k,v])=>`<tr><td class="mono">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('');
+    }
+
+    // ====== Extracción por ROI (usa guessAndParseMRZ + augment)
     async function extractAndReportROI(roi){
       if(!state.activeBitmap){ alert('No hay imagen activa'); return; }
       const cnv = roiToCanvas(roi);
@@ -723,14 +923,14 @@
           }
           case 'mrz':{
             const text = await ocrCanvas(cnv, 'eng');
-            const mrz = normalizeRawMRZ(text||'');
-            const parsed = tryParseMRZ(mrz);
-            if(parsed){
-              const rows = Object.entries(parsed).map(([k,v])=>[`${label} · ${k}`, String(v)]);
+            try{
+              const parsed = guessAndParseMRZ(text||'');
+              const enriched = augmentMRZ(parsed);
+              const rows = Object.entries(enriched).map(([k,v])=>[`${label} · ${k}`, String(v)]);
               appendRows(rows);
               setStatus(`MRZ parseado en "${roi.name||roi.id}".`);
-            }else{
-              appendRows([[label, 'No se detectó MRZ válido'], [`${label} · raw`, text||'(vacío)']]);
+            }catch(e){
+              appendRows([[label, 'MRZ no reconocido'], [`${label} · raw`, text||'(vacío)']]);
               setStatus(`MRZ no reconocido en "${roi.name||roi.id}".`, true);
             }
             break;
@@ -794,79 +994,6 @@
         img.onerror = reject;
         img.src = url;
       });
-    }
-
-    // ====== Área "Texto crudo OCR"
-    document.getElementById('btnParseRaw').addEventListener('click', ()=>{
-      const txt = ($raw.value||'').trim();
-      if(!txt){ setStatus('No hay texto para parsear.', true); return; }
-      parseToTable(txt);
-      setStatus('Texto crudo parseado.');
-    });
-
-    function parseToTable(raw){
-      const rows = [];
-      const lines = raw.split(/\r?\n+/).map(s=>s.trim()).filter(Boolean);
-      const mrzLines = lines.filter(s=>/<{2,}/.test(s));
-      if(mrzLines.length>=2){
-        const mrz = normalizeRawMRZ(mrzLines.slice(0,3).join('\n'));
-        const parsed = tryParseMRZ(mrz);
-        if(parsed){ for(const [k,v] of Object.entries(parsed)) rows.push([k,v]); commit(rows); return; }
-      }
-      for(const ln of lines){
-        const m = ln.match(/^([^:]{2,48})\s*:\s*(.+)$/);
-        if(m) rows.push([m[1].trim(), m[2].trim()]);
-      }
-      if(!rows.length){ lines.slice(0,50).forEach((v,i)=>rows.push([`Línea ${i+1}`, v])); }
-      commit(rows);
-      function commit(rows){
-        $tbl.innerHTML = rows.map(r=>`<tr><td class="mono">${escapeHtml(r[0])}</td><td>${escapeHtml(r[1])}</td></tr>`).join('');
-      }
-    }
-
-    // ====== MRZ helpers
-    function normalizeRawMRZ(t){
-      return t.replace(/[^\dA-Z<\n]/g,'').replace(/[ \t]+/g,'').toUpperCase().trim();
-    }
-    function splitNames(s){
-      const parts = s.split('<<');
-      const surname = (parts[0]||'').replace(/</g,' ').trim();
-      const given = (parts[1]||'').replace(/</g,' ').trim();
-      return {surname, given};
-    }
-    function tryParseMRZ(mrz){
-      const lines = mrz.split(/\n/);
-      if(lines.length===2){
-        return { Formato:'MRZ (2 líneas)', Línea1:lines[0], Línea2:lines[1] };
-      }
-      if(lines.length===3){
-        const L1 = (lines[0]||'').padEnd(44,'<').slice(0,44);
-        const L2 = (lines[1]||'').padEnd(44,'<').slice(0,44);
-        const L3 = (lines[2]||'').padEnd(44,'<').slice(0,44);
-        const docType = L1.slice(0,2).replace(/</g,'');
-        const issuer = L1.slice(2,5).replace(/</g,'');
-        const nameSec = L1.slice(5);
-        const {surname, given} = splitNames(nameSec);
-        const number = L2.slice(0,9).replace(/</g,'');
-        const nationality = L2.slice(10,13).replace(/</g,'');
-        const birth = L2.slice(13,19);
-        const sex = L2.slice(20,21).replace(/</g,'');
-        const expiry = L2.slice(21,27);
-        return {
-          Formato:'MRZ (TD3)', 'Tipo Doc':docType, Emisor:issuer,
-          Apellidos:surname, Nombres:given, 'N° Documento':number,
-          Nacionalidad:nationality, 'Fecha Nacimiento':fmtYyMmDd(birth), Sexo:sex,
-          'Fecha Expiración':fmtYyMmDd(expiry)
-        };
-      }
-      return null;
-    }
-    function fmtYyMmDd(s){
-      if(!/^\d{6}$/.test(s)) return s;
-      const yy=s.slice(0,2),mm=s.slice(2,4),dd=s.slice(4,6);
-      const year = parseInt(yy,10);
-      const century = (year>50)? '19':'20';
-      return `${century}${yy}-${mm}-${dd}`;
     }
 
     function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[m]); }
