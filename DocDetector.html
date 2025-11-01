@@ -1,836 +1,894 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="dark">
+<html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Document Detector — Cámara / Imagen / ROIs (PDF417 & MRZ)</title>
+  <title>OCR de Documentos (Cámara + Imagen) · ROIs · Dark Mode</title>
 
-  <!-- ===== Librerías por CDN ===== -->
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <!-- ====== Librerías por CDN ====== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/inferencejs@1.1.3"></script>
-  <script src="https://unpkg.com/@zxing/library@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- ZXing (barcodes, PDF417, etc.) -->
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
 
   <style>
-    :root{
-      --bg:#0b1220; --panel:#0f172a; --panel2:#0b152a; --text:#e5e7eb; --text-dim:#b9c2d3;
-      --accent:#3b82f6; --accent-2:#8e8dfd; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
-      --muted:#1c2740; --border:#20304f; --chip:#17233a; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      --r:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
-    }
+    :root{--bg:#0b0f14;--panel:#111820;--muted:#1a2230;--text:#e6eef7;--sub:#9fb3c8;--accent:#5ac8fa;--good:#34d399;--bad:#f87171;--warn:#fbbf24;--border:#1f2a3a}
     *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0 auto; max-width:1280px; padding:18px; background:var(--bg); color:var(--text); font:14px/1.45 Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-    h1{margin:0 0 4px 0; font-size:clamp(22px,2.4vw,32px)}
-    .sub{margin:0 0 12px 0; color:var(--text-dim)}
-    .header{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px}
-    .controls{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
-    .btn{border:1px solid var(--border); border-radius:10px; padding:9px 12px; background:#17325f; color:#e9f2ff; cursor:pointer}
-    .btn:hover{filter:brightness(1.05)}
-    .btn.ghost{background:transparent; color:var(--text)}
-    .btn.ok{background:#113322; border-color:#21543b; color:#b9f3d1}
-    .btn.warn{background:#332a11; border-color:#6b530f; color:#ffe29a}
-    .btn.danger{background:#331516; border-color:#6b1f23; color:#ffb3b7}
-    .btn.accent{background:#162d52; border-color:#2c4c8a; color:#cfe4ff}
-    .btn:disabled{opacity:.6; cursor:not-allowed}
-    .chip{display:inline-flex; gap:8px; align-items:center; padding:6px 10px; border-radius:999px; background:var(--chip); border:1px solid var(--border); color:var(--text-dim); font-weight:600}
-    .dot{width:8px; height:8px; border-radius:50%}
-    .ok{color:var(--ok); font-weight:700}
-    .fail{color:var(--bad); font-weight:700}
-    .file{padding:6px 10px; border:1px dashed var(--border); border-radius:10px; color:var(--text-dim); background:#0d1a32}
+    html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
+    h1{font-size:1.1rem;margin:0 0 .25rem 0;color:var(--text)}
+    .app{display:grid;grid-template-columns:370px 1fr;gap:12px;height:100%;}
+    .left{padding:12px;background:var(--panel);border-right:1px solid var(--border);overflow:auto}
+    .right{display:grid;grid-template-rows:1fr 320px;gap:12px;padding:12px}
+    .toolbar{display:grid;gap:8px}
+    .group{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--muted)}
+    .group h2{font-size:.95rem;margin:.15rem 0 .5rem 0;color:var(--sub)}
+    .row{display:flex;flex-wrap:wrap;gap:8px}
+    button,input[type=file],input[type=text],input[type=number],select{appearance:none;border:none;background:var(--panel);color:var(--text);padding:8px 10px;border-radius:10px;border:1px solid var(--border);cursor:pointer}
+    input[type=text],input[type=number],select{width:100%;cursor:text}
+    select{cursor:pointer}
+    button:hover{border-color:var(--accent)}
+    button.primary{background:linear-gradient(180deg, #132435, #0f1c2a);border-color:#223247}
+    button.good{border-color:#17392c;background:#0e2b21}
+    button.bad{border-color:#3b1e1e;background:#2a1414}
+    label.toggle{display:flex;align-items:center;gap:8px;cursor:pointer}
+    input[type=checkbox]{width:18px;height:18px}
 
-    .grid{display:grid; grid-template-columns:1.25fr .75fr; gap:12px}
-    @media (max-width:1080px){ .grid{grid-template-columns:1fr} }
+    .stage{position:relative;background:#05080c;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .layer{position:absolute;inset:0}
+    #video{width:100%;height:100%;object-fit:contain;background:#000}
+    #imgPreview{width:100%;height:100%;object-fit:contain;display:none}
+    #overlay{touch-action:none}
 
-    .panel{background:var(--panel); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow); overflow:hidden}
-    .head{padding:10px 12px; background:linear-gradient(180deg,#101a2f,transparent 70%); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px}
-    .body{padding:10px}
-
-    .video-wrap{position:relative; background:#0a121d; border:1px solid var(--border); border-radius:10px; overflow:hidden}
-    video{width:100%; height:auto; display:block; background:#000}
-    #overlay{position:absolute; inset:0; pointer-events:none}
-    #detBox{position:absolute; border:2px solid #5ac8fa; border-radius:8px; display:none; pointer-events:none}
-
-    .two{display:grid; grid-template-columns:1fr 1fr; gap:10px}
-    @media (max-width:840px){ .two{grid-template-columns:1fr} }
-    .section{border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#0b152a}
-    .section .title{padding:8px 10px; background:#0e1931; border-bottom:1px solid var(--border); font-weight:700; color:#cfe0ff}
-    .section .content{padding:8px 10px; max-height:360px; overflow:auto}
-
-    .img-wrap{position:relative; width:100%; background:#071225}
-    #imgCanvas{display:block; max-width:100%}
-    #roiCanvas{position:absolute; inset:0; touch-action:none}
-
-    .scroll{overflow:auto; border:1px solid var(--border); border-radius:10px; background:#0c1a30; max-height:300px}
-    pre.code{white-space:pre-wrap; font-family:var(--mono); color:#d7e7ff; margin:0; padding:10px}
-
-    table.result{width:max-content; border-collapse:collapse; font-size:14px}
-    .result thead th{position:sticky; top:0; background:#0f1b34; color:#a7b8d4; border-bottom:1px solid var(--border)}
-    .result th,.result td{padding:8px 10px; white-space:nowrap; border-bottom:1px dashed var(--border)}
-
-    /* Mini-toolbar contextual del ROI */
-    .roi-toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px}
-    .roi-toolbar .kbd{font-family:var(--mono); font-size:12px; opacity:.85}
-    select, .input{background:#0f1c36; color:#e5eeff; border:1px solid var(--border); border-radius:8px; padding:7px 10px}
+    .results{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px;min-height:0}
+    .card h3{margin:0 0 .5rem 0;color:var(--sub);font-size:.95rem}
+    textarea.raw{width:100%;height:240px;background:#0a121a;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px;resize:vertical}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;vertical-align:top}
+    th{color:var(--sub);font-weight:600}
+    .status{font-size:.9rem;color:var(--sub)}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:#0f1720}
+    .ok{color:var(--good)}.warn{color:var(--warn)}.err{color:var(--bad)}
+    .fps{position:absolute;bottom:10px;left:10px;background:rgba(0,0,0,.4);padding:4px 8px;border-radius:8px;border:1px solid var(--border);font-size:.8rem}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
   </style>
 </head>
 <body>
-  <div class="header">
-    <div>
-      <h1>Document Detector</h1>
-      <p class="sub">Cámara / Imagen / ROIs • PDF417 & MRZ • Tesseract + ZXing + InferenceJS</p>
-    </div>
-    <div class="controls">
-      <span class="chip"><span class="dot" id="dotModel" style="background:#aaa"></span><span id="modelStatus">Modelo: cargando…</span></span>
-      <button class="btn ghost" id="themeToggle">🌙 Oscuro</button>
-    </div>
-  </div>
-
-  <!-- ===== Barra de acciones ===== -->
-  <div class="controls" style="margin-bottom:12px">
-    <button class="btn accent" id="btnCamStart">Iniciar Cámara</button>
-    <button class="btn" id="btnCamStop" disabled>Detener Cámara</button>
-    <button class="btn ok" id="btnCapture">Capturar Imagen</button>
-    <button class="btn warn" id="btnCaptureDoc">Capturar Documento</button>
-
-    <label class="file">
-      <input type="file" id="fileInput" accept="image/*"/>
-      <span id="fileName">Subir imagen…</span>
-    </label>
-
-    <button class="btn" id="btnOCRFull">Extraer & Parsear (Imagen Completa)</button>
-  </div>
-
-  <div class="grid">
-    <!-- ===================== Columna 1 ===================== -->
-    <section class="panel">
-      <div class="head">
-        <div>Entrada</div>
-        <span class="chip"><span class="dot" style="background:#6bd3ff"></span><span id="fpsLabel">FPS: —</span></span>
-      </div>
-      <div class="body">
-        <div class="video-wrap" id="videoWrap">
-          <video id="video" autoplay muted playsinline></video>
-          <canvas id="overlay"></canvas>
-          <div id="detBox"></div>
-        </div>
-
-        <div class="two" style="margin-top:10px">
-          <div class="section">
-            <div class="title">Vista previa (desde cámara/recorte/ROI)</div>
-            <div class="content">
-              <div style="background:#06101b; border:1px solid var(--border); border-radius:10px; padding:8px; display:flex; align-items:center; justify-content:center; min-height:160px">
-                <canvas id="previewCanvas"></canvas>
-              </div>
-              <div class="controls" style="margin-top:8px">
-                <button class="btn ok" id="btnOCRPreview">OCR & Parsear Vista Previa</button>
-                <button class="btn" id="btnDecodePDF417FromPreview">Decodificar PDF417 (Vista Previa)</button>
-                <button class="btn" id="btnMRZFromPreview">MRZ desde Vista Previa</button>
-                <span class="chip" id="ocrChip">OCR: listo</span>
-              </div>
-            </div>
+  <div class="app">
+    <aside class="left">
+      <h1>OCR de Documentos</h1>
+      <div class="toolbar">
+        <div class="group">
+          <h2>Cámara</h2>
+          <div class="row">
+            <button id="btnStart" class="primary">Iniciar</button>
+            <button id="btnStop">Detener</button>
+            <button id="btnShot" class="good">Capturar Imagen</button>
+            <button id="btnShotDoc" class="good">Capturar solo Documento</button>
           </div>
-
-          <div class="section">
-            <div class="title">Imagen cargada & ROIs</div>
-            <div class="content">
-              <div class="img-wrap">
-                <canvas id="imgCanvas"></canvas>
-                <canvas id="roiCanvas"></canvas>
-              </div>
-
-              <!-- === Mini-toolbar contextual del ROI === -->
-              <div class="roi-toolbar">
-                <label>Tipo ROI:</label>
-                <select id="roiType">
-                  <option value="text">text (OCR)</option>
-                  <option value="mrz">mrz (OCR+MRZ)</option>
-                  <option value="pdf417">pdf417 (ZXing)</option>
-                  <option value="barcode">barcode (PDF417)</option>
-                  <option value="image">image (export base64)</option>
-                </select>
-                <button class="btn" id="btnAddROI">Agregar ROI</button>
-                <button class="btn" id="btnDelROI" disabled>Eliminar ROI</button>
-                <button class="btn ok" id="btnProcessROI" disabled>OCR & Parsear ROI</button>
-                <button class="btn" id="btnActionByType" disabled>Acción según Tipo (ROI)</button>
-
-                <!-- Botones rápidos según tipo -->
-                <span class="kbd">Acciones:</span>
-                <button class="btn ghost" id="btnROI_OCR" disabled>OCR ROI</button>
-                <button class="btn ghost" id="btnROI_MRZ" disabled>MRZ ROI</button>
-                <button class="btn ghost" id="btnROI_PDF417" disabled>PDF417 ROI</button>
-                <button class="btn ghost" id="btnROI_Image" disabled>Export ROI (base64)</button>
-
-                <span style="flex:1"></span>
-                <button class="btn" id="btnExportTpl">Exportar Plantilla JSON</button>
-                <label class="file">
-                  <input type="file" id="tplInput" accept="application/json"/>
-                  Importar Plantilla JSON
-                </label>
-              </div>
-            </div>
+          <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <label class="toggle"><input type="checkbox" id="chkAuto"> Auto-detectar documento</label>
+            <span id="fps" class="badge mono">FPS: <span id="fpsVal">—</span></span>
           </div>
         </div>
 
-        <div class="section" style="margin-top:10px">
-          <div class="title">Texto crudo (OCR)</div>
-          <div class="content scroll">
-            <pre id="rawText" class="code"></pre>
+        <div class="group">
+          <h2>Imagen</h2>
+          <div class="row">
+            <input type="file" id="file" accept="image/*" />
+            <button id="btnParseFull">Extraer y Parsear (Imagen Completa)</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <h2>ROIs (plantilla)</h2>
+          <div class="row">
+            <button id="btnAddRoi">Agregar ROI</button>
+            <button id="btnDeleteRoi" class="bad">Eliminar ROI</button>
+            <button id="btnClearRois" class="bad">Limpiar ROIs</button>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button id="btnExport">Exportar JSON</button>
+            <input type="file" id="fileImport" accept="application/json" />
+          </div>
+          <div class="status" id="roiCount">0 ROIs</div>
+
+          <!-- Propiedades del ROI seleccionado -->
+          <div id="roiProps" class="row" style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <input id="roiName" type="text" placeholder="Nombre ROI" />
+            <select id="roiType">
+              <option value="text">text</option>
+              <option value="image">image</option>
+              <option value="mrz">mrz</option>
+              <option value="pdf417">pdf417</option>
+              <option value="barcode">barcode</option>
+            </select>
+            <input id="roiX" type="number" step="0.001" min="0" max="1" placeholder="x (0..1)" />
+            <input id="roiY" type="number" step="0.001" min="0" max="1" placeholder="y (0..1)" />
+            <input id="roiW" type="number" step="0.001" min="0.02" max="1" placeholder="w (0..1)" />
+            <input id="roiH" type="number" step="0.001" min="0.02" max="1" placeholder="h (0..1)" />
+          </div>
+          <div class="status">Tip: Click para seleccionar · Arrastra dentro para mover · Arrastra bordes/esquinas para redimensionar · Supr/Backspace para borrar.</div>
+        </div>
+
+        <div class="group">
+          <h2>Extracción por ROI</h2>
+          <div class="row">
+            <button id="btnExtractSelected" class="good">Extraer ROI Seleccionado</button>
+            <button id="btnExtractAll">Extraer todos los ROIs</button>
+          </div>
+          <div class="status">Tipos soportados: <span class="mono">text, image, mrz, pdf417, barcode</span></div>
+        </div>
+
+        <div class="group">
+          <h2>Modelo de detección</h2>
+          <div class="status">
+            <div>Motor: <span id="sEngine" class="badge">cargando…</span></div>
+            <div>Modelo: <span id="sModel" class="badge">cargando…</span></div>
           </div>
         </div>
       </div>
-    </section>
+    </aside>
 
-    <!-- ===================== Columna 2 (Resultados) ===================== -->
-    <section class="panel">
-      <div class="head">
-        <div>Resultados</div>
-        <div class="controls">
-          <span class="chip">Salidas alineadas a tu programa (PDF417/MRZ)</span>
-        </div>
-      </div>
-      <div class="body">
-        <div class="two">
-          <!-- ===== PDF417 ===== -->
-          <article class="section">
-            <div class="title">Resultados DUI (PDF417)</div>
-            <div class="content">
-              <div id="pdf417Error" class="chip" style="display:none; background:#331516; border-color:#6b1f23; color:#ffb3b7"></div>
-              <div id="pdf417Summary" class="chip" style="display:none"></div>
-              <div id="pdf417Table"></div>
-              <div class="controls" style="margin-top:8px">
-                <button id="copyDuiJson" class="btn ghost">Copiar DUI JSON</button>
-                <button id="copyRawText" class="btn ghost">Copiar Texto Crudo</button>
-              </div>
-            </div>
-          </article>
+    <main class="right">
+      <section id="stage" class="stage">
+        <video id="video" class="layer" autoplay muted playsinline></video>
+        <img id="imgPreview" class="layer" alt="Previsualización" />
+        <canvas id="overlay" class="layer"></canvas>
+        <div class="fps mono" id="fpsOverlay">— fps</div>
+      </section>
 
-          <!-- ===== MRZ ===== -->
-          <article class="section">
-            <div class="title">MRZ (Datos Parseados)</div>
-            <div class="content">
-              <div id="mrzError" class="chip" style="display:none; background:#331516; border-color:#6b1f23; color:#ffb3b7"></div>
-              <div id="status" class="chip" style="display:none"><span id="statusText">Cargando…</span> <progress id="prog" value="0" max="1" style="width:120px; height:10px; margin-left:8px"></progress></div>
-              <div id="meta" class="chip" style="display:none"></div>
-              <div id="resultSummary" class="chip" style="display:none"></div>
-              <div id="resultTable"></div>
-              <div class="controls" style="margin-top:8px">
-                <button id="copyMrz" class="btn ghost">Copiar MRZ</button>
-                <button id="copyJson" class="btn ghost">Copiar JSON</button>
-              </div>
-            </div>
-          </article>
+      <section class="results">
+        <div class="card">
+          <h3>Texto crudo OCR</h3>
+          <textarea id="raw" class="raw" placeholder="Aquí aparecerá el texto crudo…"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button id="btnParseRaw" title="Parsear el contenido actual del área de texto sin volver a ejecutar OCR">Parsear Texto Crudo</button>
+          </div>
         </div>
-      </div>
-    </section>
+        <div class="card">
+          <h3>Datos parseados</h3>
+          <div id="status" class="status">Esperando extracción…</div>
+          <div style="overflow:auto;max-height:260px">
+            <table id="tbl"><thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody></tbody></table>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
 
+  <!-- =============== LÓGICA =============== -->
   <script>
-  /* =========================================================
-      Tema
-  ========================================================= */
-  const themeToggle = document.getElementById('themeToggle');
-  function applyTheme(t){ document.documentElement.setAttribute('data-theme',t); themeToggle.textContent = t==='dark'?'☀️ Claro':'🌙 Oscuro'; }
-  (function initTheme(){ const t = localStorage.getItem('docdet.theme') || 'dark'; applyTheme(t);})();
-  themeToggle.addEventListener('click', ()=>{ const next = document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'; localStorage.setItem('docdet.theme', next); applyTheme(next); });
+    // ====== Estado global
+    const state = {
+      stream: null,
+      running: false,
+      autoDetect: false,
+      usingImage: false,
+      lastDetections: [],
+      selectedRoiId: null,
+      rois: [], // {id,name,type,x,y,w,h} con coords relativos [0..1]
+      workerId: null,
+      engine: null,
+      activeBitmap: null,
+      activeNatural: {w:0,h:0}
+    };
 
-  /* =========================================================
-      InferenceJS — Detección de documento (recorte auto)
-  ========================================================= */
-  const { InferenceEngine, CVImage } = inferencejs;
-  const engine = new InferenceEngine();
-  const modelStatus = $('#modelStatus'); const dotModel = $('#dotModel');
-  let workerId = null;
+    // ====== DOM helpers
+    const $video = document.getElementById('video');
+    const $imgPreview = document.getElementById('imgPreview');
+    const $overlay = document.getElementById('overlay');
+    const ctx = $overlay.getContext('2d');
+    const $fpsOverlay = document.getElementById('fpsOverlay');
+    const $fpsVal = document.getElementById('fpsVal');
+    const $sEngine = document.getElementById('sEngine');
+    const $sModel = document.getElementById('sModel');
+    const $raw = document.getElementById('raw');
+    const $tbl = document.getElementById('tbl').querySelector('tbody');
+    const $status = document.getElementById('status');
+    const $roiCount = document.getElementById('roiCount');
+    const $roiName = document.getElementById('roiName');
+    const $roiType = document.getElementById('roiType');
+    const $roiX = document.getElementById('roiX');
+    const $roiY = document.getElementById('roiY');
+    const $roiW = document.getElementById('roiW');
+    const $roiH = document.getElementById('roiH');
 
-  async function loadModel(){
-    try{
-      modelStatus.text('Modelo: cargando…'); dotModel.css('background','#f59e0b');
-      workerId = await engine.startWorker("react-project-wdxr6","1","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-      modelStatus.text('Modelo: listo'); dotModel.css('background','#22c55e');
-    }catch(e){
-      console.error(e); modelStatus.text('Modelo: error'); dotModel.css('background','#ef4444');
-    }
-  }
-
-  const video = document.getElementById('video');
-  const overlay = document.getElementById('overlay'); const octx = overlay.getContext('2d');
-  const detBox = document.getElementById('detBox');
-  let stream=null, running=false, rafId=null, lastFPS=[];
-
-  function resizeOverlay(){
-    const rect = video.getBoundingClientRect();
-    overlay.width = rect.width * devicePixelRatio;
-    overlay.height = rect.height * devicePixelRatio;
-    overlay.style.width = rect.width+'px'; overlay.style.height = rect.height+'px';
-  }
-  window.addEventListener('resize', resizeOverlay);
-
-  async function startCamera(){
-    if(stream) return;
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
-    video.srcObject = stream; await video.play(); resizeOverlay(); running=true; loopDetect();
-    $('#btnCamStart').prop('disabled', true); $('#btnCamStop').prop('disabled', false);
-  }
-  function stopCamera(){
-    running=false; if(rafId) cancelAnimationFrame(rafId);
-    if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null;
-    $('#btnCamStart').prop('disabled', false); $('#btnCamStop').prop('disabled', true);
-    octx.clearRect(0,0,overlay.width,overlay.height); detBox.style.display='none';
-  }
-
-  function drawDetections(preds){
-    octx.clearRect(0,0,overlay.width,overlay.height); detBox.style.display='none';
-    if(!preds?.length) return null;
-
-    // Busca el bbox más grande
-    let best=preds[0], bestA=0;
-    for(const p of preds){
-      const a = p.bbox.width*p.bbox.height; if(a>bestA){best=p; bestA=a;}
-    }
-    const rect = video.getBoundingClientRect();
-    const scaleX = overlay.width / rect.width, scaleY = overlay.height / rect.height;
-
-    const x = best.bbox.x - best.bbox.width/2;
-    const y = best.bbox.y - best.bbox.height/2;
-    const w = best.bbox.width, h = best.bbox.height;
-
-    const mx = x * scaleX / devicePixelRatio;
-    const my = y * scaleY / devicePixelRatio;
-    const mw = w * scaleX / devicePixelRatio;
-    const mh = h * scaleY / devicePixelRatio;
-
-    octx.lineWidth = 2*devicePixelRatio; octx.strokeStyle = "#5ac8fa";
-    octx.strokeRect(mx*devicePixelRatio,my*devicePixelRatio,mw*devicePixelRatio,mh*devicePixelRatio);
-
-    detBox.style.display='block';
-    detBox.style.left = (video.getBoundingClientRect().left + mx)+'px';
-    detBox.style.top = (video.getBoundingClientRect().top + my)+'px';
-    detBox.style.width = mw+'px'; detBox.style.height = mh+'px';
-
-    return {x,y,w,h};
-  }
-
-  async function loopDetect(){
-    if(!running) return;
-    if(workerId && video.readyState>=2){
+    // ====== Inicializar InferenceJS
+    async function initEngine(){
       try{
-        const frame = new CVImage(video);
-        const preds = await engine.infer(workerId, frame);
-        drawDetections(preds);
-
-        // FPS indicador
-        const now = performance.now(); lastFPS.push(now); if(lastFPS.length>15) lastFPS.shift();
-        if(lastFPS.length>=2){
-          const fps = 1000 / ((lastFPS[lastFPS.length-1]-lastFPS[0])/(lastFPS.length-1));
-          $('#fpsLabel').text('FPS: '+fps.toFixed(0));
-        }
-      }catch(e){ /* noop */ }
-    }
-    rafId = requestAnimationFrame(loopDetect);
-  }
-
-  function canvasFromVideo(){
-    const w=video.videoWidth, h=video.videoHeight; const c=document.createElement('canvas');
-    c.width=w; c.height=h; c.getContext('2d').drawImage(video,0,0,w,h); return c;
-  }
-  function cropCanvas(source,x,y,w,h){
-    const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(w)); c.height=Math.max(1,Math.round(h));
-    c.getContext('2d').drawImage(source,x,y,w,h,0,0,c.width,c.height); return c;
-  }
-
-  // Vista previa
-  const prevCanvas = document.getElementById('previewCanvas'); const pctx = prevCanvas.getContext('2d');
-  function showOnPreview(c){ prevCanvas.width=c.width; prevCanvas.height=c.height; pctx.clearRect(0,0,c.width,c.height); pctx.drawImage(c,0,0); }
-
-  $('#btnCamStart').on('click', startCamera);
-  $('#btnCamStop').on('click', stopCamera);
-  $('#btnCapture').on('click', ()=>{ if(!stream) return; const c = canvasFromVideo(); showOnPreview(c); });
-  $('#btnCaptureDoc').on('click', async ()=>{
-    if(!stream || !workerId) return;
-    const frame = new CVImage(video); const preds = await engine.infer(workerId, frame);
-    if(!preds?.length){ alert('No se detectó documento.'); return; }
-    const best = preds.reduce((acc,p)=>{const a=p.bbox.width*p.bbox.height; return !acc||a>acc.a?{p,a}:acc;},null).p;
-    const src = canvasFromVideo();
-    const x = best.bbox.x - best.bbox.width/2, y = best.bbox.y - best.bbox.height/2, w = best.bbox.width, h = best.bbox.height;
-    const crop = cropCanvas(src,x,y,w,h); showOnPreview(crop);
-  });
-
-  /* =========================================================
-      Imagen + ROIs
-  ========================================================= */
-  const imgCanvas = document.getElementById('imgCanvas'); const ictx = imgCanvas.getContext('2d');
-  const roiCanvas = document.getElementById('roiCanvas'); const rctx = roiCanvas.getContext('2d');
-  let baseImage = new Image(), baseLoaded=false;
-
-  function fitToWidth(image,maxW=1200){ const s=Math.min(1,maxW/image.width); return {w:Math.round(image.width*s), h:Math.round(image.height*s)}; }
-  function drawBase(){ if(!baseLoaded) return; ictx.clearRect(0,0,imgCanvas.width,imgCanvas.height); ictx.drawImage(baseImage,0,0,imgCanvas.width,imgCanvas.height); }
-  function setBaseImage(src){
-    return new Promise((resolve,reject)=>{
-      const im = new Image();
-      im.onload = ()=>{ baseImage=im; baseLoaded=true; const {w,h}=fitToWidth(im); imgCanvas.width=w; imgCanvas.height=h; roiCanvas.width=w; roiCanvas.height=h; drawBase(); drawROIs(); resolve(); };
-      im.onerror = reject; im.src = src;
-    });
-  }
-
-  $('#fileInput').on('change', async (e)=>{
-    const file = e.target.files?.[0]; if(!file) return;
-    $('#fileName').text(file.name);
-    await setBaseImage(URL.createObjectURL(file));
-  });
-
-  $('#btnOCRFull').on('click', async ()=>{
-    if(!baseLoaded){ alert('Carga una imagen primero.'); return; }
-    const tmp=document.createElement('canvas'); tmp.width=imgCanvas.width; tmp.height=imgCanvas.height;
-    tmp.getContext('2d').drawImage(imgCanvas,0,0);
-    showOnPreview(tmp);
-    await runAllParsersOnCanvas(tmp);
-  });
-
-  // ROIs
-  let rois=[], selectedId=null; const HANDLE=7;
-  const roiTypeSelect = document.getElementById('roiType');
-  function addROI(x=40,y=40,w=220,h=120,type=roiTypeSelect.value || 'text'){ const id=crypto.randomUUID(); rois.push({id,x,y,w,h,type}); selectedId=id; drawROIs(); updateROIButtons(); syncRoiTypeSelector(); }
-  function deleteROI(){ if(!selectedId) return; rois=rois.filter(r=>r.id!==selectedId); selectedId=null; drawROIs(); updateROIButtons(); syncRoiTypeSelector(); }
-  function updateROIButtons(){ const has=!!selectedId; $('#btnDelROI,#btnProcessROI,#btnActionByType,#btnROI_OCR,#btnROI_MRZ,#btnROI_PDF417,#btnROI_Image').prop('disabled',!has); }
-  $('#btnAddROI').on('click', ()=>addROI());
-  $('#btnDelROI').on('click', ()=>deleteROI());
-
-  function corners(r){ const cx=r.x+r.w/2, cy=r.y+r.h/2; return [
-    {x:r.x,y:r.y},{x:cx,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x+r.w,y:cy},{x:r.x+r.w,y:r.y+r.h},{x:cx,y:r.y+r.h},{x:r.x,y:r.y+r.h},{x:r.x,y:cy}];}
-  function hitHandle(mx,my,r){ const hs=HANDLE; const pts=corners(r); for(let i=0;i<pts.length;i++){const p=pts[i]; if(Math.abs(mx-p.x)<=hs && Math.abs(my-p.y)<=hs) return i;} return -1; }
-  function hitBody(mx,my,r){ return (mx>=r.x && mx<=r.x+r.w && my>=r.y && my<=r.y+r.h); }
-  function drawROIs(){
-    rctx.clearRect(0,0,roiCanvas.width,roiCanvas.height);
-    for(const r of rois){
-      const sel=r.id===selectedId;
-      rctx.lineWidth=1.5; rctx.strokeStyle= sel ? "#8e8dfd" : "#5ac8fa"; rctx.strokeRect(r.x,r.y,r.w,r.h);
-      const hs=HANDLE; const pts=corners(r); rctx.fillStyle = sel ? "#8e8dfd" : "#5ac8fa"; pts.forEach(pt=>rctx.fillRect(pt.x-hs/2,pt.y-hs/2,hs,hs));
-      // Etiqueta tipo
-      const label = r.type.toUpperCase();
-      const w = Math.max(90, 10 + label.length*7);
-      rctx.fillStyle="rgba(16,32,55,.85)"; rctx.fillRect(r.x, r.y-18, w, 16);
-      rctx.fillStyle="#cfe6ff"; rctx.font="12px "+getComputedStyle(document.body).fontFamily; rctx.fillText(label, r.x+6, r.y-6);
-    }
-  }
-  function pointerPos(evt){ const rect = roiCanvas.getBoundingClientRect(); const cX = (evt.touches?evt.touches[0].clientX:evt.clientX) - rect.left; const cY = (evt.touches?evt.touches[0].clientY:evt.clientY) - rect.top; return {x:cX, y:cY}; }
-  let dragState=null;
-  roiCanvas.addEventListener('pointerdown', (e)=>{
-    if(!baseLoaded) return; roiCanvas.setPointerCapture(e.pointerId);
-    const {x,y} = pointerPos(e);
-    for(let i=rois.length-1;i>=0;i--){
-      const r=rois[i]; const h=hitHandle(x,y,r);
-      if(h>=0){ selectedId=r.id; dragState={mode:'resize', idx:h, start:{x,y}, startRect:{...r}}; drawROIs(); updateROIButtons(); syncRoiTypeSelector(); return; }
-      if(hitBody(x,y,r)){ selectedId=r.id; dragState={mode:'move', start:{x,y}, startRect:{...r}}; drawROIs(); updateROIButtons(); syncRoiTypeSelector(); return; }
-    }
-    selectedId=null; drawROIs(); updateROIButtons(); syncRoiTypeSelector();
-  });
-  roiCanvas.addEventListener('pointermove', (e)=>{
-    if(!dragState) return; const r=rois.find(z=>z.id===selectedId); if(!r) return; const {x,y}=pointerPos(e);
-    if(dragState.mode==='move'){ const dx=x-dragState.start.x, dy=y-dragState.start.y; r.x=Math.round(dragState.startRect.x+dx); r.y=Math.round(dragState.startRect.y+dy); }
-    else{
-      const s=dragState.startRect; let x1=s.x,y1=s.y,x2=s.x+s.w,y2=s.y+s.h; const i=dragState.idx;
-      if([0,7,6].includes(i)) x1 = Math.min(x2-10, x); if([2,3,4].includes(i)) x2 = Math.max(x1+10, x);
-      if([0,1,2].includes(i)) y1 = Math.min(y2-10, y); if([6,5,4].includes(i)) y2 = Math.max(y1+10, y);
-      r.x=Math.round(x1); r.y=Math.round(y1); r.w=Math.round(Math.max(20, x2-x1)); r.h=Math.round(Math.max(20, y2-y1));
-    }
-    r.x=Math.max(0,Math.min(roiCanvas.width-r.w,r.x)); r.y=Math.max(0,Math.min(roiCanvas.height-r.h,r.y));
-    drawROIs();
-  });
-  roiCanvas.addEventListener('pointerup', ()=>dragState=null);
-  roiCanvas.addEventListener('pointercancel', ()=>dragState=null);
-
-  // Sincroniza el selector con el ROI seleccionado
-  function syncRoiTypeSelector(){
-    const r = rois.find(x=>x.id===selectedId);
-    roiTypeSelect.value = r?.type || 'text';
-    // Habilita/inhabilita botones rápidos por tipo
-    const t = roiTypeSelect.value;
-    $('#btnROI_OCR').prop('disabled', !r || !['text','mrz'].includes(t));
-    $('#btnROI_MRZ').prop('disabled', !r || t!=='mrz');
-    $('#btnROI_PDF417').prop('disabled', !r || !['pdf417','barcode'].includes(t));
-    $('#btnROI_Image').prop('disabled', !r || t!=='image');
-  }
-  roiTypeSelect.addEventListener('change', ()=>{
-    const r = rois.find(x=>x.id===selectedId); if(!r) return;
-    r.type = roiTypeSelect.value; drawROIs(); syncRoiTypeSelector();
-  });
-
-  $('#btnExportTpl').on('click', ()=>{
-    if(!rois.length){ alert('No hay ROIs para exportar.'); return; }
-    const tpl={width:imgCanvas.width, height:imgCanvas.height, rois};
-    const blob=new Blob([JSON.stringify(tpl,null,2)],{type:'application/json'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='plantilla_rois.json'; a.click();
-  });
-  $('#tplInput').on('change', async (e)=>{
-    const file=e.target.files?.[0]; if(!file) return; const text=await file.text();
-    try{
-      const tpl=JSON.parse(text); if(!tpl.rois||!Array.isArray(tpl.rois)) throw new Error('Plantilla inválida.');
-      const sx=imgCanvas.width/tpl.width, sy=imgCanvas.height/tpl.height;
-      rois = tpl.rois.map(r=>({...r, x:Math.round(r.x*sx), y:Math.round(r.y*sy), w:Math.round(r.w*sx), h:Math.round(r.h*sy)}));
-      selectedId=rois[0]?.id||null; drawROIs(); updateROIButtons(); syncRoiTypeSelector();
-    }catch(err){ alert('Error al importar: '+err.message); }
-  });
-
-  /* =========================================================
-      PDF417 (ZXing) — Parseo DUI (||) y UI
-  ========================================================= */
-  const pdf417Error = document.getElementById('pdf417Error');
-  const pdf417Summary = document.getElementById('pdf417Summary');
-  const pdf417Table = document.getElementById('pdf417Table');
-  const copyDuiJson = document.getElementById('copyDuiJson');
-  const copyRawText = document.getElementById('copyRawText');
-  let currentDuiJSON=null, currentDuiRawText=null;
-
-  function ensureImageLoaded(img){ return new Promise((res,rej)=>{ if(img.complete && img.naturalWidth>0) res(); else { img.onload=()=>res(); img.onerror=(e)=>rej(e);} }); }
-  function renderKVTable(obj){
-    let html='<div class="scroll"><table class="result"><thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody>';
-    for(const [k,v] of Object.entries(obj)){ const vv = (v??'')===''?'<span style="color:#9fb3c8">—</span>':escapeHtml(String(v)); html+=`<tr><td><strong>${escapeHtml(k)}</strong></td><td>${vv}</td></tr>`; }
-    html+='</tbody></table></div>'; return html;
-  }
-  function escapeHtml(s){ return s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-  function extractRawTextFromPdf417(obj){
-    try{
-      if(!obj) return null;
-      if(typeof obj.getText==='function'){ const t=obj.getText(); if(t && t.trim()) return t.trim(); }
-      if(typeof obj==='string'){ try{ obj=JSON.parse(obj); }catch(e){ if(obj.includes('||')) return obj.trim(); return null; } }
-      if(Array.isArray(obj)){ for(const it of obj){ const t=extractRawTextFromPdf417(it); if(t) return t; } }
-      const candidates=[obj?.text,obj?.rawText,obj?.result?.text,obj?.result?.rawText,obj?.[0]?.text,obj?.[0]?.rawText];
-      for(const c of candidates){ if(typeof c==='string' && c.trim()) return c.trim(); }
-      for(const k of Object.keys(obj)){ const v=obj[k]; if(typeof v==='string' && v.includes('||')) return v.trim(); }
-    }catch(e){ /* noop */ }
-    return null;
-  }
-
-  // Parseo DUI desde separador ||
-  function parseDUIFromRaw(raw){
-    if(!raw || typeof raw!=='string') return null;
-    const parts = raw.split('||');
-    if(parts.length < 17) return null;
-    const FIELDS = [
-      'Número de DUI','Primer Apellido','Segundo Apellido y Nombres','Número de Emisión','Firma Digital','Lugar de Nacimiento',
-      'Municipio','Profesión u Oficio','Sexo','Fecha de Nacimiento','Fecha de Emisión','Código de Zona',
-      'Categoría','Estdo Familiar','Nacionalidad','Segunda Firma Digital','Código de Verificación'
-    ];
-    const obj={}; FIELDS.forEach((name,idx)=> obj[name] = (parts[idx]??'').trim());
-    return { fields: obj, toJSON: obj, raw };
-  }
-
-  async function decodePDF417FromImageElement(imgEl){
-    pdf417Error.style.display='none';
-    try{
-      await ensureImageLoaded(imgEl);
-      const reader = new ZXing.BrowserPDF417Reader();
-      let result=null;
-      try{ result = await reader.decodeFromImageElement(imgEl); }
-      catch(e1){
-        const c=document.createElement('canvas'); const ctx=c.getContext('2d');
-        c.width = imgEl.naturalWidth || imgEl.width; c.height = imgEl.naturalHeight || imgEl.height;
-        if(!c.width || !c.height) throw e1; ctx.drawImage(imgEl,0,0,c.width,c.height);
-        result = await reader.decodeFromCanvas(c);
+        $sEngine.textContent = 'listo';
+        state.engine = new inferencejs.InferenceEngine();
+        $sModel.textContent = 'cargando…';
+        // Modelo de ejemplo
+        state.workerId = await state.engine.startWorker(
+          'react-project-wdxr6',
+          '1',
+          'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
+        );
+        $sModel.textContent = 'OK';
+      }catch(err){
+        console.error(err);
+        $sModel.textContent = 'error';
       }
-      tryAutoParseDUIFromPDF417(result);
-    }catch(err){
-      pdf417Error.style.display='block';
-      pdf417Error.textContent='PDF417 Error: '+(err?.message || err);
-      pdf417Table.innerHTML='<p style="color:#9fb3c8">No se pudo decodificar PDF417.</p>';
     }
-  }
 
-  function tryAutoParseDUIFromPDF417(resultObj){
-    const rawText = extractRawTextFromPdf417(resultObj);
-    currentDuiRawText = rawText || null;
-    if(!rawText){
-      pdf417Summary.style.display='none';
-      pdf417Table.innerHTML='<p style="color:#9fb3c8">No se encontró Texto crudo para parsear.</p>';
-      currentDuiJSON=null; return;
+    // ====== Overlay exactamente alineado al host visible
+    function resizeOverlay(){
+      const host = state.usingImage ? $imgPreview : $video;
+      const w = host.clientWidth || host.getBoundingClientRect().width;
+      const h = host.clientHeight || host.getBoundingClientRect().height;
+      $overlay.width  = Math.round(w * devicePixelRatio);
+      $overlay.height = Math.round(h * devicePixelRatio);
+      $overlay.style.width  = w + 'px';
+      $overlay.style.height = h + 'px';
+      drawOverlay();
     }
-    const parsed = parseDUIFromRaw(rawText);
-    if(!parsed){
-      pdf417Summary.style.display='none';
-      pdf417Table.innerHTML='<p style="color:#9fb3c8">El Texto crudo no coincide con el formato DUI (||).</p>';
-      currentDuiJSON=null; return;
+    addEventListener('resize', ()=>setTimeout(resizeOverlay,50));
+
+    // ====== Cámara
+    async function startCamera(){
+      try{
+        state.stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+        $video.srcObject = state.stream;
+        await $video.play();
+        state.running = true;
+        state.usingImage = false;
+        $imgPreview.style.display = 'none';
+        $video.style.display = 'block';
+        requestAnimationFrame(loop);
+        setTimeout(resizeOverlay, 150);
+      }catch(err){ console.error(err); }
     }
-    currentDuiJSON = parsed.toJSON;
-    pdf417Summary.style.display='inline-flex';
-    pdf417Summary.innerHTML = "<strong>Resultados</strong> — <span class='ok'>DUI (PDF417 imagen) parseado.</span>";
-    pdf417Table.innerHTML = renderKVTable(parsed.fields);
-  }
-
-  copyDuiJson.addEventListener('click', async ()=>{
-    if(!currentDuiJSON) return;
-    try{ await navigator.clipboard.writeText(JSON.stringify(currentDuiJSON,null,2)); copyDuiJson.textContent='¡DUI JSON copiado!'; setTimeout(()=>copyDuiJson.textContent='Copiar DUI JSON',1100); }catch(e){}
-  });
-  copyRawText.addEventListener('click', async ()=>{
-    if(!currentDuiRawText) return;
-    try{ await navigator.clipboard.writeText(currentDuiRawText); copyRawText.textContent='¡Texto crudo copiado!'; setTimeout(()=>copyRawText.textContent='Copiar Texto Crudo',1100); }catch(e){}
-  });
-
-  // Botón PDF417 desde la vista previa
-  $('#btnDecodePDF417FromPreview').on('click', async ()=>{
-    const dataURL = prevCanvas.toDataURL('image/png');
-    const im = new Image();
-    im.onload = ()=> decodePDF417FromImageElement(im);
-    im.src = dataURL;
-  });
-
-  /* =========================================================
-      MRZ — Parseo y UI
-  ========================================================= */
-  const statusEl = document.getElementById('status');
-  const statusText = document.getElementById('statusText');
-  const prog = document.getElementById('prog');
-  const mrzError = document.getElementById('mrzError');
-  const metaEl = document.getElementById('meta');
-  const resultSummary = document.getElementById('resultSummary');
-  const resultTable = document.getElementById('resultTable');
-  const copyMrz = document.getElementById('copyMrz');
-  const copyJson = document.getElementById('copyJson');
-  let currentParsedData=null;
-
-  function normalizeOCR(text){
-    return text
-      .replace(/[\u2014\u2013\-]/g,'-').replace(/[\u00D8]/g,'O').replace(/[\u00A0\t]+/g,' ')
-      .replace(/[\r]+/g,'\n').split('\n').map(l=>l.trim().toUpperCase()).join('\n');
-  }
-  const MRZ_CHARS=/^[A-Z0-9<]+$/;
-  function padTo(s,n){ return (s + '<'.repeat(Math.max(0,n-s.length))).slice(0,n); }
-  function tidy(s){ return s.replace(/<+/g,' ').trim().replace(/\s+/g,' ')}
-  function valOf(ch){ if(ch==='<') return 0; if(ch>='0'&&ch<='9') return ch.charCodeAt(0)-48; if(ch>='A'&&ch<='Z') return ch.charCodeAt(0)-55; return 0; }
-  function mrzCheck(str){ const w=[7,3,1]; let sum=0; for(let i=0;i<str.length;i++) sum+=valOf(str[i])*w[i%3]; return String(sum%10); }
-  function yymmddToISO(s){ if(!/^[0-9]{6}$/.test(s)) return null; const yy=+s.slice(0,2), mm=+s.slice(2,4), dd=+s.slice(4,6); const yyyy=(yy>=50?1900+yy:2000+yy); if(mm<1||mm>12||dd<1||dd>31) return null; return `${yyyy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`; }
-
-  function scoreBlock(lines,target){ let s=0; for(const l of lines){ const near = 1 - Math.min(1, Math.abs(target - l.length)/target); const charset = MRZ_CHARS.test(l)?1:0; s += (near*.7 + charset*.3);} return s/lines.length; }
-  function findMRZBlock(cleaned){
-    const lines = cleaned.split(/\n+/).map(l=>l.replace(/\s+/g,'')).filter(l=>l.length>=20 && /[A-Z0-9]/.test(l));
-    if(!lines.length) return null;
-    const cands=[];
-    for(let i=0;i<lines.length;i++){
-      const a=lines[i], b=lines[i+1], c=lines[i+2];
-      if(a&&b&&MRZ_CHARS.test(a)&&MRZ_CHARS.test(b)){ cands.push({type:'TD3-2x44', lines:[padTo(a,44), padTo(b,44)], score:scoreBlock([a,b],44)}); }
-      if(a&&b&&MRZ_CHARS.test(a)&&MRZ_CHARS.test(b)){ cands.push({type:'TD2-2x36', lines:[padTo(a,36), padTo(b,36)], score:scoreBlock([a,b],36)}); }
-      if(a&&b&&c&&MRZ_CHARS.test(a)&&MRZ_CHARS.test(b)&&MRZ_CHARS.test(c)){ cands.push({type:'TD1-3x30', lines:[padTo(a,30), padTo(b,30), padTo(c,30)], score:scoreBlock([a,b,c],30)}); }
+    function stopCamera(){
+      state.running = false;
+      if(state.stream){
+        state.stream.getTracks().forEach(t=>t.stop());
+        state.stream = null;
+      }
     }
-    if(!cands.length) return null; cands.sort((x,y)=>y.score-x.score); return cands[0];
-  }
 
-  function parseTD3(lines){
-    if(!lines || lines.length!==2) return {};
-    const L1=padTo(lines[0],44), L2=padTo(lines[1],44);
-    const docType=L1.slice(0,2).replace('<',''), issuing=L1.slice(2,5);
-    const nameRaw=L1.slice(5); const [surname, givenAndMore]=nameRaw.split('<<'); const given=(givenAndMore||'').replace(/<+/g,' ').trim();
-    const passportNumber=L2.slice(0,9), passportCheck=L2[9], nationality=L2.slice(10,13);
-    const birth=L2.slice(13,19), birthCheck=L2[19], sex=L2[20];
-    const exp=L2.slice(21,27), expCheck=L2[27], opt=L2.slice(28,42), finalCheck=L2[43];
-    const composite = passportNumber + passportCheck + nationality + birth + birthCheck + sex + exp + expCheck + opt;
-    return {
-      format:'TD3-2x44 (Passport)', documentType:docType, issuingCountry:issuing,
-      surname:tidy(surname||''), givenNames:tidy(given||''),
-      documentNumber:passportNumber, documentNumberCheck:passportCheck,
-      nationality, birthDate:yymmddToISO(birth), birthCheck,
-      sex:(sex==='M'||sex==='F')?sex:sex, expiryDate:yymmddToISO(exp), expiryCheck:expCheck,
-      optionalData:opt.replace(/<+$/,''), compositeCheck:finalCheck,
-      checks:{ documentNumber:mrzCheck(passportNumber)===passportCheck, birthDate:mrzCheck(birth)===birthCheck, expiryDate:mrzCheck(exp)===expCheck, composite:mrzCheck(composite)===finalCheck }
-    };
-  }
-  function parseTD1(lines){
-    if(!lines || lines.length!==3) return {};
-    const A=padTo(lines[0],30), B=padTo(lines[1],30), C=padTo(lines[2],30);
-    const docType=A.slice(0,1), issuing=A.slice(2,5), docNum=A.slice(5,14).replace(/<+$/,''), docCheck=A[14], opt1=A.slice(15,30);
-    const birth=B.slice(0,6), birthCheck=B[6], sex=B[7], exp=B.slice(8,14), expCheck=B[14], nationality=B.slice(15,18), opt2=B.slice(18,29), opt2Check=B[29];
-    const [surname, givenRest] = C.split('<<');
-    return {
-      format:'TD1-3x30 (ID)', documentType:docType, issuingCountry:issuing,
-      documentNumber:docNum, documentNumberCheck:docCheck, nationality,
-      birthDate:yymmddToISO(birth), birthCheck, sex:(sex==='M'||sex==='F')?sex:sex,
-      expiryDate:yymmddToISO(exp), expiryCheck:expCheck,
-      optionalData:(opt1+opt2).replace(/<+$/,''), optionalCheck:opt2Check,
-      surname:tidy(surname||''), givenNames:tidy((givenRest||'').replace(/<+/g,' ')),
-      checks:{ documentNumber:mrzCheck(docNum)===docCheck, birthDate:mrzCheck(birth)===birthCheck, expiryDate:mrzCheck(exp)===expCheck }
-    };
-  }
-  function parseTD2(lines){
-    if(!lines || lines.length!==2) return {};
-    const A=padTo(lines[0],36), B=padTo(lines[1],36);
-    const docType=A.slice(0,2).replace('<',''), issuing=A.slice(2,5);
-    const names=A.slice(5); const [surname, givenRest]=names.split('<<');
-    const num=B.slice(0,9), numChk=B[9], nationality=B.slice(10,13), birth=B.slice(13,19), birthChk=B[19], sex=B[20], exp=B.slice(21,27), expChk=B[27], opt=B.slice(28,35), finalChk=B[35];
-    const composite = num + numChk + nationality + birth + birthChk + sex + exp + expChk + opt;
-    return {
-      format:'TD2-2x36 (Travel Document)', documentType:docType, issuingCountry:issuing,
-      surname:tidy(surname||''), givenNames:tidy((givenRest||'').replace(/<+/g,' ')),
-      documentNumber:num, documentNumberCheck:numChk, nationality,
-      birthDate:yymmddToISO(birth), birthCheck, sex:(sex==='M'||sex==='F')?sex:sex,
-      expiryDate:yymmddToISO(exp), expiryCheck:expChk, optionalData:opt.replace(/<+$/,''), compositeCheck:finalChk,
-      checks:{ documentNumber:mrzCheck(num)===numChk, birthDate:mrzCheck(birth)===birthChk, expiryDate:mrzCheck(exp)===expChk, composite:mrzCheck(composite)===finalChk }
-    };
-  }
-
-  function generateFormattedJSON(parsed, block){
-    if(!parsed || !Object.keys(parsed).length) return {error:'No MRZ'};
-    const ft = parsed.format ? parsed.format.split('-')[0] : 'Unknown';
-    return {
-      format: ft, raw: block ? block.lines : [],
-      documentCode: parsed.documentType || '', issuingState: parsed.issuingCountry || '',
-      documentNumber: parsed.documentNumber || '', documentNumberCheck: parsed.documentNumberCheck || '',
-      optionalData1: parsed.optionalData || '', birthDate: parsed.birthDate || '', birthDateCheck: parsed.birthCheck || '',
-      sex: parsed.sex || '', expiryDate: parsed.expiryDate || '', expiryDateCheck: parsed.expiryCheck || '',
-      nationality: parsed.nationality || '', optionalData2:'', finalCheck: parsed.compositeCheck || parsed.optionalCheck || '',
-      surname: parsed.surname || '', givenNames: parsed.givenNames || '', checks: parsed.checks || {}
-    };
-  }
-  function displayResultsInTable(parsed, formatType){
-    if(!parsed || !Object.keys(parsed).length){
-      resultSummary.style.display='none'; resultTable.innerHTML='<p style="color:#9fb3c8">No fue posible extraer datos MRZ.</p>'; return;
-    }
-    let valid=0,total=0; if(parsed.checks){ Object.values(parsed.checks).forEach(ch=>{ if(typeof ch==='boolean'){ total++; if(ch) valid++; } }); }
-    resultSummary.style.display='inline-flex';
-    resultSummary.innerHTML = '<strong>Detectado '+(formatType||'formato desconocido')+'. Checksums: '+valid+'/'+total+' OK</strong>';
-
-    const prettyKey=k=>k.replace(/([A-Z])/g,' $1').replace(/^./,s=>s.toUpperCase()).replace('Given Names','Nombres').replace('Surname','Apellidos');
-    const formatValue=(key,val)=>{
-      if(key==='checks'||key==='format') return '';
-      if((key==='birthDate'||key==='expiryDate') && val) return val;
-      if(key.endsWith('Check') && key!=='compositeCheck' && key!=='optionalCheck'){ const base=key.replace('Check',''); const ok=parsed.checks && parsed.checks[base]; return '<span class="'+(ok?'ok':'fail')+'">'+(ok?'✔ válido':'✖ falló')+'</span>'; }
-      return val||'';
-    };
-
-    let html='<div class="scroll"><table class="result"><thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody>';
-    Object.entries(parsed).forEach(([k,v])=>{
-      if(k==='checks'||k==='format') return;
-      const fv=formatValue(k,v); if(fv==='') return;
-      html += `<tr><td><strong>${prettyKey(k)}</strong></td><td>${fv}</td></tr>`;
+    // ====== Cargar imagen desde archivo
+    document.getElementById('file').addEventListener('change', async (e)=>{
+      const f = e.target.files?.[0]; if(!f) return;
+      const url = URL.createObjectURL(f);
+      $imgPreview.src = url;
+      $imgPreview.onload = async ()=>{
+        URL.revokeObjectURL(url);
+        state.usingImage = true;
+        $video.style.display='none';
+        $imgPreview.style.display='block';
+        const bmp = await imageBitmapFromImg($imgPreview);
+        state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
+        resizeOverlay();
+      };
     });
-    if(parsed.compositeCheck){ const ok=parsed.checks && parsed.checks.composite; html+=`<tr><td><strong>Composite Check</strong></td><td><span class="${ok?'ok':'fail'}">${ok?'✔ válido':'✖ falló'}</span></td></tr>`; }
-    html+='</tbody></table></div>'; resultTable.innerHTML=html;
-  }
 
-  async function processMRZFromSource(src){
-    mrzError.style.display='none'; statusEl.style.display='inline-flex'; statusText.textContent='Cargando modelo…'; prog.value=0;
-    try{
-      const result = await Tesseract.recognize(src, 'eng', {
-        logger:m=>{ if(m.status) statusText.textContent=m.status; if(m.progress!=null) prog.value=m.progress; },
-        tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
+    // ====== Bucle de detección (si hay autoDetect)
+    let frames=0, lastFpsTs=0, lastPromptTs=0;
+    async function loop(ts){
+      if(!state.running) return;
+      if(!$video.videoWidth){ requestAnimationFrame(loop); return; }
+      // fps
+      frames++; if(ts-lastFpsTs>1000){
+        const fps = Math.round(frames*1000/(ts-lastFpsTs));
+        $fpsOverlay.textContent = fps+' fps';
+        $fpsVal.textContent = fps;
+        frames=0; lastFpsTs=ts;
+      }
+
+      // preparar bitmap actual (video)
+      const w=$video.videoWidth,h=$video.videoHeight;
+      const bmp = await createImageBitmap($video, {resizeWidth:w,resizeHeight:h});
+      state.activeBitmap = bmp; state.activeNatural={w,h};
+      drawOverlay();
+
+      if(state.autoDetect && state.workerId){
+        try{
+          const cvimg = new inferencejs.CVImage($video);
+          const preds = await state.engine.infer(state.workerId, cvimg);
+          state.lastDetections = preds||[];
+          drawOverlay();
+
+          const best = _.maxBy(state.lastDetections, p=>p.confidence||0);
+          if(best && (best.confidence||0) >= 0.65 && ts-lastPromptTs>1200){
+            lastPromptTs = ts;
+            confirmCapture(best);
+          }
+        }catch(e){ console.warn('infer error', e); }
+      }
+      requestAnimationFrame(loop);
+    }
+
+    async function confirmCapture(det){
+      const ok = confirm('Se detectó un documento con alta confianza. ¿Deseas capturar esa región?');
+      if(!ok) return;
+      const crop = cropFromDetection(det);
+      await showPreviewBitmap(crop);
+      runOCROnActive('Captura de documento');
+    }
+
+    function cropFromDetection(det){
+      const {w:W,h:H} = state.activeNatural;
+      const {x,y,width,height} = det.bbox; // centro + dimensiones
+      const x0 = Math.max(0, Math.round(x - width/2));
+      const y0 = Math.max(0, Math.round(y - height/2));
+      const ww = Math.min(W - x0, Math.round(width));
+      const hh = Math.min(H - y0, Math.round(height));
+      const off = new OffscreenCanvas(ww, hh);
+      off.getContext('2d').drawImage(state.activeBitmap, x0, y0, ww, hh, 0, 0, ww, hh);
+      return off.transferToImageBitmap();
+    }
+
+    async function showPreviewBitmap(bmp){
+      const c = new OffscreenCanvas(bmp.width, bmp.height);
+      const g = c.getContext('2d');
+      g.drawImage(bmp,0,0);
+      const blob = await c.convertToBlob({type:'image/png', quality:0.92});
+      const url = URL.createObjectURL(blob);
+      $imgPreview.src = url;
+      $imgPreview.onload = ()=>{ URL.revokeObjectURL(url); };
+      state.usingImage = true;
+      $video.style.display='none';
+      $imgPreview.style.display='block';
+      state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
+      setTimeout(resizeOverlay, 100);
+    }
+
+    // ====== Dibujo overlay: detecciones + ROIs (considera letterboxing)
+    function drawOverlay(){
+      const view = $overlay.getBoundingClientRect();
+      const viewW = view.width, viewH = view.height;
+
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+      ctx.clearRect(0,0,$overlay.width,$overlay.height);
+
+      // Escala y offsets si hay letterbox (object-fit: contain)
+      const natW = state.activeNatural.w || 1, natH = state.activeNatural.h || 1;
+      const scale = Math.min(viewW/natW, viewH/natH);
+      const contentW = natW * scale, contentH = natH * scale;
+      const offX = (viewW - contentW)/2, offY = (viewH - contentH)/2;
+
+      // Detecciones (en coords naturales → overlay)
+      for(const p of state.lastDetections){
+        const {x,y,width,height} = p.bbox; // centro + dimensiones (px naturales)
+        const sx = offX + (x - width/2) * scale;
+        const sy = offY + (y - height/2) * scale;
+        const sw = width * scale, sh = height * scale;
+
+        ctx.strokeStyle = '#5ac8fa';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(sx, sy, sw, sh);
+        ctx.fillStyle = 'rgba(90,200,250,.12)';
+        ctx.fillRect(sx, sy, sw, sh);
+        ctx.fillStyle = '#cfe9fb';
+        ctx.font = '12px ui-monospace';
+        const tag = `${p.class||'doc'} ${(p.confidence||0).toFixed(2)}`;
+        ctx.fillText(tag, sx+6, sy+14);
+      }
+
+      // ROIs (0..1 → px overlay; se dibujan sobre el overlay completo)
+      roisDraw({width:viewW, height:viewH});
+    }
+
+    // ====== ROI manager
+    function roisDraw(view){
+      for(const roi of state.rois){
+        const x = roi.x*view.width, y=roi.y*view.height, w=roi.w*view.width, h=roi.h*view.height;
+        const selected = (roi.id===state.selectedRoiId);
+
+        ctx.strokeStyle = selected?'#34d399':'#9fb3c8';
+        ctx.lineWidth = selected?2:1.5;
+        ctx.strokeRect(x,y,w,h);
+        if(selected){
+          ctx.fillStyle='rgba(52,211,153,.07)';
+          ctx.fillRect(x,y,w,h);
+        }
+
+        ctx.fillStyle='#cfe9fb';
+        ctx.font='12px ui-monospace';
+        ctx.fillText(`${roi.name||('ROI '+roi.id)} · ${roi.type||'text'}`, x+6, y+14);
+
+        if(selected){
+          const H=10;
+          const pts=[
+            [x,y], [x+w/2-H/2,y], [x+w-H,y],
+            [x+w-H,y+h/2-H/2], [x+w-H,y+h-H],
+            [x+w/2-H/2,y+h-H], [x,y+h-H],
+            [x,y+h/2-H/2]
+          ];
+          ctx.fillStyle='#5ac8fa';
+          pts.forEach(([px,py])=>{
+            ctx.fillRect(px,py,H,H);
+            ctx.strokeStyle='#00121c'; ctx.lineWidth=1;
+            ctx.strokeRect(px,py,H,H);
+          });
+        }
+      }
+    }
+
+    function updateRoiCount(){ $roiCount.textContent = state.rois.length + ' ROIs'; }
+
+    function syncRoiPropsPanel(){
+      const a = state.rois.find(r=>r.id===state.selectedRoiId);
+      const disabled = !a;
+      [$roiName,$roiType,$roiX,$roiY,$roiW,$roiH].forEach(inp=>{ inp.disabled = disabled; });
+      if(a){
+        $roiName.value = a.name || '';
+        $roiType.value = a.type || 'text';
+        $roiX.value = a.x.toFixed(3);
+        $roiY.value = a.y.toFixed(3);
+        $roiW.value = a.w.toFixed(3);
+        $roiH.value = a.h.toFixed(3);
+      }else{
+        $roiName.value=''; $roiType.value='text'; $roiX.value=''; $roiY.value=''; $roiW.value=''; $roiH.value='';
+      }
+    }
+
+    function addRoiFromRect(px,py,pw,ph){
+      const r = $overlay.getBoundingClientRect();
+      const rx = px / r.width,  ry = py / r.height;
+      const rw = pw / r.width,  rh = ph / r.height;
+
+      const roi = {
+        id: _.uniqueId('roi_'),
+        name: 'ROI',
+        type: 'text',
+        x: Math.max(0, rx),
+        y: Math.max(0, ry),
+        w: Math.max(0.02, Math.min(1, rw)),
+        h: Math.max(0.02, Math.min(1, rh))
+      };
+      state.rois.push(roi);
+      state.selectedRoiId = roi.id;
+      updateRoiCount(); drawOverlay(); syncRoiPropsPanel();
+    }
+
+    function pickRoi(px,py){
+      const r = $overlay.getBoundingClientRect();
+      const rx = px / r.width, ry = py / r.height;
+      for(let i=state.rois.length-1;i>=0;i--){
+        const a=state.rois[i];
+        if(rx>=a.x && ry>=a.y && rx<=a.x+a.w && ry<=a.y+a.h){ return a; }
+      }
+      return null;
+    }
+
+    function removeSelected(){
+      if(!state.selectedRoiId) return;
+      _.remove(state.rois, r=>r.id===state.selectedRoiId);
+      state.selectedRoiId = null; updateRoiCount(); drawOverlay(); syncRoiPropsPanel();
+    }
+
+    // Interacción de ROIs: crear, mover, redimensionar (8 manillas)
+    const drag = {mode:null, roi:null, origin:{x:0,y:0}, handle:null};
+
+    function overlayPointFromEvent(e){
+      const r = $overlay.getBoundingClientRect();
+      const pt = (e.touches? e.touches[0]: e);
+      const x = Math.min(Math.max(pt.clientX - r.left, 0), r.width);
+      const y = Math.min(Math.max(pt.clientY - r.top,  0), r.height);
+      return {x,y};
+    }
+
+    function handleAt(roi,px,py){
+      const r = $overlay.getBoundingClientRect();
+      const x = roi.x*r.width, y=roi.y*r.height, w=roi.w*r.width, h=roi.h*r.height;
+      const H=12;
+      const within=(ax,ay)=> px>=ax && py>=ay && px<=ax+H && py<=ay+H;
+      if(within(x,y)) return 'nw';
+      if(within(x+w/2-H/2,y)) return 'n';
+      if(within(x+w-H,y)) return 'ne';
+      if(within(x+w-H,y+h/2-H/2)) return 'e';
+      if(within(x+w-H,y+h-H)) return 'se';
+      if(within(x+w/2-H/2,y+h-H)) return 's';
+      if(within(x,y+h-H)) return 'sw';
+      if(within(x,y+h/2-H/2)) return 'w';
+      return null;
+    }
+
+    function onDown(e){
+      const pt = overlayPointFromEvent(e);
+      const pick = pickRoi(pt.x,pt.y);
+      if(pick){
+        state.selectedRoiId = pick.id; drawOverlay(); syncRoiPropsPanel();
+        const h = handleAt(pick, pt.x, pt.y);
+        drag.mode = h? 'resize':'move'; drag.roi = _.cloneDeep(pick); drag.origin={x:pt.x,y:pt.y}; drag.handle=h; e.preventDefault();
+      }else{
+        drag.mode='new'; drag.origin={x:pt.x,y:pt.y}; drag.roi=null; e.preventDefault();
+      }
+    }
+    function onMove(e){
+      if(!drag.mode) return;
+      const pt = overlayPointFromEvent(e); const dx=pt.x-drag.origin.x, dy=pt.y-drag.origin.y;
+      const r = $overlay.getBoundingClientRect();
+
+      if(drag.mode==='new'){
+        drawOverlay();
+        ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+        ctx.strokeStyle='#34d399'; ctx.lineWidth=2; ctx.setLineDash([6,6]);
+        ctx.strokeRect(drag.origin.x, drag.origin.y, dx, dy);
+        ctx.setLineDash([]);
+      }
+      if(drag.mode==='move' && drag.roi){
+        const a = _.find(state.rois, {id: state.selectedRoiId}); if(!a) return;
+        const rx = dx / r.width, ry = dy / r.height;
+        a.x = _.clamp(drag.roi.x + rx, 0, 1 - a.w);
+        a.y = _.clamp(drag.roi.y + ry, 0, 1 - a.h);
+        drawOverlay(); syncRoiPropsPanel();
+      }
+      if(drag.mode==='resize' && drag.roi){
+        const a = _.find(state.rois, {id: state.selectedRoiId}); if(!a) return;
+        const rx = dx / r.width, ry = dy / r.height;
+        let {x,y,w,h} = drag.roi;
+        const hnd = drag.handle;
+        if(hnd==='n'||hnd==='ne'||hnd==='nw'){ h = _.clamp(h - ry, 0.02, 1); y = _.clamp(y + ry, 0, y+h); }
+        if(hnd==='s'||hnd==='se'||hnd==='sw'){ h = _.clamp(h + ry, 0.02, 1); }
+        if(hnd==='w'||hnd==='nw'||hnd==='sw'){ w = _.clamp(w - rx, 0.02, 1); x = _.clamp(x + rx, 0, x+w); }
+        if(hnd==='e'||hnd==='ne'||hnd==='se'){ w = _.clamp(w + rx, 0.02, 1); }
+        a.x=x; a.y=y; a.w=w; a.h=h; drawOverlay(); syncRoiPropsPanel();
+      }
+      e.preventDefault();
+    }
+    function onUp(e){
+      if(drag.mode==='new'){
+        const pt = overlayPointFromEvent(e); const x=Math.min(drag.origin.x, pt.x); const y=Math.min(drag.origin.y, pt.y);
+        const w=Math.abs(pt.x-drag.origin.x); const h=Math.abs(pt.y-drag.origin.y);
+        if(w>10 && h>10) addRoiFromRect(x,y,w,h);
+      }
+      drag.mode=null; drag.roi=null; drag.handle=null;
+    }
+
+    $overlay.addEventListener('mousedown', onDown); $overlay.addEventListener('mousemove', onMove); $overlay.addEventListener('mouseup', onUp);
+    $overlay.addEventListener('touchstart', onDown, {passive:false}); $overlay.addEventListener('touchmove', onMove, {passive:false}); $overlay.addEventListener('touchend', onUp);
+    addEventListener('keydown', (e)=>{ if(e.key==='Delete' || e.key==='Backspace') removeSelected(); });
+
+    // Inputs de propiedades ROI
+    [$roiName,$roiType,$roiX,$roiY,$roiW,$roiH].forEach(inp=>{
+      inp.addEventListener('input', ()=>{
+        const a = state.rois.find(r=>r.id===state.selectedRoiId);
+        if(!a) return;
+        if(inp===$roiName){ a.name = $roiName.value; }
+        else if(inp===$roiType){ a.type = $roiType.value; }
+        else{
+          const v = _.clamp(parseFloat(inp.value||'0')||0, 0, 1);
+          if(inp===$roiX) a.x = v;
+          if(inp===$roiY) a.y = v;
+          if(inp===$roiW) a.w = Math.max(0.02, v);
+          if(inp===$roiH) a.h = Math.max(0.02, v);
+        }
+        drawOverlay();
       });
-      statusText.textContent='Analizando texto…';
-      const raw=(result.data?.text||'').replace(/\u0000/g,''); const cleaned=normalizeOCR(raw); const block=findMRZBlock(cleaned);
+    });
+    syncRoiPropsPanel();
 
-      metaEl.style.display='inline-grid'; metaEl.innerHTML = `<div><b>Confianza OCR</b></div><div>${result.data?.confidence?.toFixed?.(1)??'—'}%</div><div><b>Tipo MRZ detectado</b></div><div>${block?.type||'Indeterminado'}</div>`;
-      let parsed={}; if(block?.type==='TD3-2x44') parsed=parseTD3(block.lines); else if(block?.type==='TD1-3x30') parsed=parseTD1(block.lines); else if(block?.type==='TD2-2x36') parsed=parseTD2(block.lines);
-      currentParsedData = generateFormattedJSON(parsed, block);
-      displayResultsInTable(parsed, block?.type);
-      statusText.textContent='Listo';
-      $('#rawText').text(cleaned);
-    }catch(err){
-      statusText.textContent='Error';
-      mrzError.style.display='inline-flex'; mrzError.textContent='MRZ Error: '+(err?.message||err);
-      resultTable.innerHTML='<p style="color:#9fb3c8">No se pudo decodificar MRZ.</p>';
+    // ====== Exportar / Importar plantilla
+    document.getElementById('btnExport').addEventListener('click',()=>{
+      const data = { schema:'roi-template:v1', size: state.activeNatural, rois: state.rois };
+      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'plantilla-roi.json'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+    });
+    document.getElementById('fileImport').addEventListener('change', async (e)=>{
+      const f=e.target.files?.[0]; if(!f) return; const txt = await f.text();
+      try{
+        const j = JSON.parse(txt);
+        if(j && Array.isArray(j.rois)) { state.rois = j.rois.map(r=>({type:'text',...r})); updateRoiCount(); drawOverlay(); syncRoiPropsPanel(); }
+      }catch(err){ alert('JSON inválido'); }
+    });
+
+    // ====== Botones principales
+    document.getElementById('btnStart').addEventListener('click', startCamera);
+    document.getElementById('btnStop').addEventListener('click', stopCamera);
+    document.getElementById('btnShot').addEventListener('click', async ()=>{
+      if(!$video.videoWidth && !$imgPreview.complete) return;
+      const bmp = state.usingImage ? await imageBitmapFromImg($imgPreview) : await createImageBitmap($video);
+      await showPreviewBitmap(bmp);
+    });
+    document.getElementById('btnShotDoc').addEventListener('click', async ()=>{
+      if(!state.workerId) return alert('Modelo no listo');
+      const host = state.usingImage ? $imgPreview : $video;
+      const cvimg = new inferencejs.CVImage(host);
+      const preds = await state.engine.infer(state.workerId, cvimg);
+      if(!preds?.length) return alert('No se detectó documento');
+      const best = _.maxBy(preds, p=>p.confidence||0);
+      const bmp = state.usingImage ? await imageBitmapFromImg($imgPreview) : await createImageBitmap($video);
+      state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
+      const crop = cropFromDetection(best);
+      await showPreviewBitmap(crop);
+      runOCROnActive('Captura de documento');
+    });
+    document.getElementById('btnAddRoi').addEventListener('click', ()=>{
+      const roi = {id:_.uniqueId('roi_'), name:'ROI', type:'text', x:.3, y:.3, w:.4, h:.3};
+      state.rois.push(roi); state.selectedRoiId=roi.id; updateRoiCount(); drawOverlay(); syncRoiPropsPanel();
+    });
+    document.getElementById('btnDeleteRoi').addEventListener('click', removeSelected);
+    document.getElementById('btnClearRois').addEventListener('click', ()=>{ state.rois=[]; state.selectedRoiId=null; updateRoiCount(); drawOverlay(); syncRoiPropsPanel(); });
+    document.getElementById('chkAuto').addEventListener('change',(e)=>{ state.autoDetect = !!e.target.checked; });
+
+    // === NUEVO: Botones de extracción por ROI ===
+    document.getElementById('btnExtractSelected').addEventListener('click', async ()=>{
+      const a = state.rois.find(r=>r.id===state.selectedRoiId);
+      if(!a) return alert('Selecciona un ROI');
+      await extractAndReportROI(a);
+    });
+    document.getElementById('btnExtractAll').addEventListener('click', async ()=>{
+      if(!state.rois.length) return alert('No hay ROIs');
+      for(const r of state.rois){ /* procesar en serie para evitar saturación */ // eslint-disable-line
+        await extractAndReportROI(r);
+      }
+      setStatus('Extracción de todos los ROIs finalizada.');
+    });
+
+    // ====== OCR + Parseo (imagen completa)
+    document.getElementById('btnParseFull').addEventListener('click', ()=>{
+      if(!state.usingImage){ alert('Primero sube una imagen o captura una'); return; }
+      runOCROnActive('Imagen completa');
+    });
+
+    async function imageBitmapFromImg(img){
+      const {naturalWidth:w, naturalHeight:h} = img; return await createImageBitmap(img, {resizeWidth:w, resizeHeight:h});
     }
-  }
 
-  copyMrz.addEventListener('click', async ()=>{
-    const mrzLines = currentParsedData?.raw?.join('\n'); if(!mrzLines) return;
-    try{ await navigator.clipboard.writeText(mrzLines); copyMrz.textContent='¡MRZ copiado!'; setTimeout(()=>copyMrz.textContent='Copiar MRZ',1100); }catch(e){}
-  });
-  copyJson.addEventListener('click', async ()=>{
-    if(!currentParsedData) return;
-    try{ await navigator.clipboard.writeText(JSON.stringify(currentParsedData,null,2)); copyJson.textContent='¡JSON copiado!'; setTimeout(()=>copyJson.textContent='Copiar JSON',1100); }catch(e){}
-  });
+    async function runOCROnActive(contextLabel){
+      if(!state.activeBitmap){ alert('No hay imagen activa'); return; }
+      setStatus(`Procesando OCR (${contextLabel})…`);
+      const c = new OffscreenCanvas(state.activeBitmap.width, state.activeBitmap.height);
+      const g = c.getContext('2d'); g.drawImage(state.activeBitmap,0,0);
+      const blob = await c.convertToBlob({type:'image/png', quality:0.92});
+      const imgUrl = URL.createObjectURL(blob);
+      try{
+        const worker = await Tesseract.createWorker('spa+eng');
+        const { data:{ text } } = await worker.recognize(imgUrl);
+        await worker.terminate();
+        $raw.value = text.trim();
+        parseToTable(text.trim());
+        setStatus('OCR completado.');
+      }catch(err){ console.error(err); setStatus('Error en OCR', true); }
+      finally{ URL.revokeObjectURL(imgUrl); }
+    }
 
-  // Botones vista previa
-  $('#btnMRZFromPreview').on('click', async ()=>{ if(!prevCanvas.width) return; await processMRZFromSource(prevCanvas); });
-  $('#btnOCRPreview').on('click', async ()=>{ if(!prevCanvas.width) return; await runAllParsersOnCanvas(prevCanvas); });
+    function setStatus(msg,isErr){ $status.innerHTML = `<span class="badge ${isErr?'err':'ok'}">${msg}</span>`; }
 
-  // Ejecuta ambos parsers automáticamente sobre un canvas dado
-  async function runAllParsersOnCanvas(cnv){
-    // 1) PDF417
-    await (async ()=>{
-      const dataURL = cnv.toDataURL('image/png'); const im = new Image();
-      await new Promise(res=>{ im.onload=()=>res(); im.src=dataURL; });
-      await decodePDF417FromImageElement(im);
+    // ====== Utilidades de mapeo ROI → píxeles naturales
+    function mapRoiToNatural(roi){
+      // Medidas overlay
+      const view = $overlay.getBoundingClientRect();
+      const viewW = view.width, viewH = view.height;
+      // Medidas naturales
+      const natW = state.activeNatural.w, natH = state.activeNatural.h;
+      if(!natW || !natH) return {x:0,y:0,w:0,h:0};
+
+      // Escala y offset (letterbox)
+      const scale = Math.min(viewW/natW, viewH/natH);
+      const contentW = natW * scale, contentH = natH * scale;
+      const offX = (viewW - contentW)/2, offY = (viewH - contentH)/2;
+
+      // ROI en px overlay
+      const ox = roi.x*viewW, oy = roi.y*viewH, ow = roi.w*viewW, oh = roi.h*viewH;
+
+      // Convertir desde overlay a naturales compensando offset y escala
+      const nx = Math.round((ox - offX)/scale);
+      const ny = Math.round((oy - offY)/scale);
+      const nw = Math.round(ow/scale);
+      const nh = Math.round(oh/scale);
+
+      // Clamp a la imagen natural
+      const x = Math.max(0, Math.min(natW, nx));
+      const y = Math.max(0, Math.min(natH, ny));
+      const w = Math.max(1, Math.min(natW - x, nw));
+      const h = Math.max(1, Math.min(natH - y, nh));
+      return {x,y,w,h};
+    }
+
+    function roiToCanvas(roi){
+      const {x,y,w,h} = mapRoiToNatural(roi);
+      const off = new OffscreenCanvas(w,h);
+      const g = off.getContext('2d');
+      g.drawImage(state.activeBitmap, x,y,w,h, 0,0,w,h);
+      return off;
+    }
+
+    async function canvasToBlobUrl(cnv, type='image/png', quality=0.92){
+      const blob = await cnv.convertToBlob({type, quality});
+      return URL.createObjectURL(blob);
+    }
+
+    function appendRows(rows){
+      const html = rows.map(([k,v])=>`<tr><td class="mono">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('');
+      $tbl.insertAdjacentHTML('beforeend', html);
+    }
+
+    // ====== Extracción por ROI (según tipo)
+    async function extractAndReportROI(roi){
+      if(!state.activeBitmap){ alert('No hay imagen activa'); return; }
+      const cnv = roiToCanvas(roi);
+      const dataUrl = await canvasToBlobUrl(cnv);
+
+      const label = `ROI:${roi.name||roi.id} [${roi.type||'text'}]`;
+      try{
+        switch((roi.type||'text').toLowerCase()){
+          case 'image':{
+            // Descargar imagen del ROI y registrar referencia
+            const a = document.createElement('a');
+            a.href = dataUrl; a.download = `${(roi.name||roi.id)}.png`; a.click();
+            appendRows([[label, 'imagen exportada (.png)']]);
+            setStatus(`Imagen ROI "${roi.name||roi.id}" exportada.`);
+            break;
+          }
+          case 'text':{
+            const text = await ocrCanvas(cnv, 'spa+eng');
+            appendRows([[label, text || '(vacío)']]);
+            setStatus(`Texto extraído de "${roi.name||roi.id}".`);
+            break;
+          }
+          case 'mrz':{
+            const text = await ocrCanvas(cnv, 'eng'); // MRZ suele ser A–Z0–9<
+            const mrz = normalizeRawMRZ(text||'');
+            const parsed = tryParseMRZ(mrz);
+            if(parsed){
+              const rows = Object.entries(parsed).map(([k,v])=>[`${label} · ${k}`, String(v)]);
+              appendRows(rows);
+              setStatus(`MRZ parseado en "${roi.name||roi.id}".`);
+            }else{
+              appendRows([[label, 'No se detectó MRZ válido'], [`${label} · raw`, text||'(vacío)']]);
+              setStatus(`MRZ no reconocido en "${roi.name||roi.id}".`, true);
+            }
+            break;
+          }
+          case 'pdf417':{
+            const res = await decodeBarcodeWithZXing(dataUrl, /*formats*/['PDF_417']);
+            if(res){ appendRows([[label, res.text]]); setStatus(`PDF417 decodificado en "${roi.name||roi.id}".`); }
+            else { appendRows([[label, 'PDF417 no encontrado']]); setStatus(`PDF417 no encontrado en "${roi.name||roi.id}".`, true); }
+            break;
+          }
+          case 'barcode':{
+            const res = await decodeBarcodeWithZXing(dataUrl, /*formats*/'ALL');
+            if(res){ appendRows([[`${label} · ${res.format}`, res.text]]); setStatus(`Código de barras leído en "${roi.name||roi.id}".`); }
+            else { appendRows([[label, 'Sin lectura']]); setStatus(`No se pudo leer código en "${roi.name||roi.id}".`, true); }
+            break;
+          }
+          default:{
+            appendRows([[label, 'Tipo no soportado']]);
+            setStatus(`Tipo no soportado: ${roi.type}`, true);
+          }
+        }
+      }finally{
+        // liberar URL
+        URL.revokeObjectURL(dataUrl);
+      }
+    }
+
+    async function ocrCanvas(cnv, langs='spa+eng'){
+      const url = await canvasToBlobUrl(cnv);
+      try{
+        const worker = await Tesseract.createWorker(langs);
+        const { data:{ text } } = await worker.recognize(url);
+        await worker.terminate();
+        return (text||'').trim();
+      }catch(e){
+        console.error(e); return '';
+      }finally{
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    async function decodeBarcodeWithZXing(dataUrl, formats='ALL'){
+      // Crea un <img> temporal para usar con los decoders del navegador
+      const img = await dataUrlToImage(dataUrl);
+      try{
+        if(formats==='ALL'){
+          const reader = new ZXing.BrowserMultiFormatReader();
+          const res = await reader.decodeFromImage(img).catch(()=>null);
+          return res ? {text:res.getText(), format:String(res.getBarcodeFormat())} : null;
+        }else if(Array.isArray(formats) && formats.includes('PDF_417')){
+          // Intento específico PDF417
+          const pdfReader = new ZXing.BrowserPDF417Reader();
+          const res = await pdfReader.decodeOnce(img).catch(()=>null);
+          return res ? {text:res.getText(), format:'PDF_417'} : null;
+        }
+        return null;
+      }catch(e){
+        console.warn('ZXing decode error', e);
+        return null;
+      }
+    }
+
+    function dataUrlToImage(url){
+      return new Promise((resolve,reject)=>{
+        const img = new Image();
+        img.onload = ()=>resolve(img);
+        img.onerror = reject;
+        img.src = url;
+      });
+    }
+
+    // ====== Heurísticas de parseo (área "Texto crudo OCR")
+    document.getElementById('btnParseRaw').addEventListener('click', ()=>{
+      const txt = ($raw.value||'').trim();
+      if(!txt){ setStatus('No hay texto para parsear.', true); return; }
+      parseToTable(txt);
+      setStatus('Texto crudo parseado.');
+    });
+
+    function parseToTable(raw){
+      const rows = [];
+      const lines = raw.split(/\r?\n+/).map(s=>s.trim()).filter(Boolean);
+      const mrzLines = lines.filter(s=>/<{2,}/.test(s));
+      if(mrzLines.length>=2){
+        const mrz = normalizeRawMRZ(mrzLines.slice(0,3).join('\n'));
+        const parsed = tryParseMRZ(mrz);
+        if(parsed){ for(const [k,v] of Object.entries(parsed)) rows.push([k,v]); commit(rows); return; }
+      }
+      for(const ln of lines){
+        const m = ln.match(/^([^:]{2,48})\s*:\s*(.+)$/);
+        if(m) rows.push([m[1].trim(), m[2].trim()]);
+      }
+      if(!rows.length){ lines.slice(0,50).forEach((v,i)=>rows.push([`Línea ${i+1}`, v])); }
+      commit(rows);
+      function commit(rows){
+        $tbl.innerHTML = rows.map(r=>`<tr><td class="mono">${escapeHtml(r[0])}</td><td>${escapeHtml(r[1])}</td></tr>`).join('');
+      }
+    }
+
+    // ====== MRZ helpers (simplificados)
+    function normalizeRawMRZ(t){
+      return t.replace(/[^\dA-Z<\n]/g,'').replace(/[ \t]+/g,'').toUpperCase().trim();
+    }
+    function splitNames(s){
+      const parts = s.split('<<');
+      const surname = (parts[0]||'').replace(/</g,' ').trim();
+      const given = (parts[1]||'').replace(/</g,' ').trim();
+      return {surname, given};
+    }
+    function tryParseMRZ(mrz){
+      const lines = mrz.split(/\n/);
+      if(lines.length===2){
+        return { Formato:'MRZ (2 líneas)', Línea1:lines[0], Línea2:lines[1] };
+      }
+      if(lines.length===3){
+        const L1 = (lines[0]||'').padEnd(44,'<').slice(0,44);
+        const L2 = (lines[1]||'').padEnd(44,'<').slice(0,44);
+        const L3 = (lines[2]||'').padEnd(44,'<').slice(0,44);
+        const docType = L1.slice(0,2).replace(/</g,'');
+        const issuer = L1.slice(2,5).replace(/</g,'');
+        const nameSec = L1.slice(5);
+        const {surname, given} = splitNames(nameSec);
+        const number = L2.slice(0,9).replace(/</g,'');
+        const nationality = L2.slice(10,13).replace(/</g,'');
+        const birth = L2.slice(13,19);
+        const sex = L2.slice(20,21).replace(/</g,'');
+        const expiry = L2.slice(21,27);
+        return {
+          Formato:'MRZ (TD3)', 'Tipo Doc':docType, Emisor:issuer,
+          Apellidos:surname, Nombres:given, 'N° Documento':number,
+          Nacionalidad:nationality, 'Fecha Nacimiento':fmtYyMmDd(birth), Sexo:sex,
+          'Fecha Expiración':fmtYyMmDd(expiry)
+        };
+      }
+      return null;
+    }
+    function fmtYyMmDd(s){
+      if(!/^\d{6}$/.test(s)) return s;
+      const yy=s.slice(0,2),mm=s.slice(2,4),dd=s.slice(4,6);
+      // Heurística de siglo: si yy > 50 → 1900s, si no → 2000s (ajústalo si lo prefieres distinto)
+      const year = parseInt(yy,10);
+      const century = (year>50)? '19':'20';
+      return `${century}${yy}-${mm}-${dd}`;
+    }
+
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[m]); }
+
+    // ====== Inicio
+    (async function init(){
+      await initEngine();
+      await startCamera();
+      resizeOverlay();
+      syncRoiPropsPanel();
+      updateRoiCount();
     })();
-    // 2) MRZ
-    await processMRZFromSource(cnv);
-  }
-
-  /* =========================================================
-      Acciones por tipo de ROI
-  ========================================================= */
-  function cropFromROI(r){
-    const src=document.createElement('canvas'); src.width=imgCanvas.width; src.height=imgCanvas.height; src.getContext('2d').drawImage(imgCanvas,0,0);
-    const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(r.w)); c.height=Math.max(1,Math.round(r.h));
-    c.getContext('2d').drawImage(src,r.x,r.y,r.w,r.h,0,0,c.width,c.height);
-    return c;
-  }
-
-  async function actionByType(r){
-    const t = r.type;
-    const crop = cropFromROI(r);
-    showOnPreview(crop);
-
-    if(t==='text'){ // OCR general (con parseo general)
-      await runAllParsersOnCanvas(crop);
-    }else if(t==='mrz'){
-      await processMRZFromSource(crop);
-    }else if(t==='pdf417' || t==='barcode'){
-      const dataURL = crop.toDataURL('image/png'); const im = new Image();
-      await new Promise(res=>{ im.onload=()=>res(); im.src=dataURL; });
-      await decodePDF417FromImageElement(im);
-    }else if(t==='image'){
-      const dataURL = crop.toDataURL('image/png');
-      try{ await navigator.clipboard.writeText(dataURL); alert('Imagen ROI exportada a base64 y copiada al portapapeles.'); }catch(e){ alert('Base64 listo. No se pudo copiar automáticamente.'); }
-    }else{
-      // fallback
-      await runAllParsersOnCanvas(crop);
-    }
-  }
-
-  $('#btnProcessROI').on('click', async ()=>{
-    const r = rois.find(x=>x.id===selectedId); if(!r){ alert('Selecciona un ROI.'); return; }
-    // Mantén compatibilidad: OCR + parsers
-    const crop = cropFromROI(r); showOnPreview(crop); await runAllParsersOnCanvas(crop);
-  });
-
-  $('#btnActionByType').on('click', async ()=>{
-    const r = rois.find(x=>x.id===selectedId); if(!r){ alert('Selecciona un ROI.'); return; }
-    await actionByType(r);
-  });
-
-  // Acciones rápidas por tipo
-  $('#btnROI_OCR').on('click', async ()=>{
-    const r = rois.find(x=>x.id===selectedId); if(!r) return;
-    const crop = cropFromROI(r); showOnPreview(crop); await runAllParsersOnCanvas(crop);
-  });
-  $('#btnROI_MRZ').on('click', async ()=>{
-    const r = rois.find(x=>x.id===selectedId); if(!r) return;
-    const crop = cropFromROI(r); showOnPreview(crop); await processMRZFromSource(crop);
-  });
-  $('#btnROI_PDF417').on('click', async ()=>{
-    const r = rois.find(x=>x.id===selectedId); if(!r) return;
-    const crop = cropFromROI(r); showOnPreview(crop);
-    const dataURL = crop.toDataURL('image/png'); const im = new Image();
-    await new Promise(res=>{ im.onload=()=>res(); im.src=dataURL; });
-    await decodePDF417FromImageElement(im);
-  });
-  $('#btnROI_Image').on('click', async ()=>{
-    const r = rois.find(x=>x.id===selectedId); if(!r) return;
-    const crop = cropFromROI(r); const dataURL = crop.toDataURL('image/png');
-    try{ await navigator.clipboard.writeText(dataURL); alert('Imagen ROI exportada a base64 y copiada al portapapeles.'); }catch(e){ alert('Base64 listo. No se pudo copiar automáticamente.'); }
-  });
-
-  /* =========================================================
-      OCR "Imagen Completa" (ya integrado)
-  ========================================================= */
-  $('#btnOCRFull').on('click', async ()=>{
-    if(!baseLoaded){ alert('Carga una imagen primero.'); return; }
-    const tmp=document.createElement('canvas'); tmp.width=imgCanvas.width; tmp.height=imgCanvas.height; tmp.getContext('2d').drawImage(imgCanvas,0,0);
-    showOnPreview(tmp);
-    await runAllParsersOnCanvas(tmp);
-  });
-
-  // Inicializa modelo de detección
-  (async function init(){ await loadModel(); })();
   </script>
 </body>
 </html>
