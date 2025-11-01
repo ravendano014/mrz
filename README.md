@@ -6,6 +6,7 @@ Uses:
 <span style="color:green;">Doc HeatMap OCR</span> [HeatMap & OCR](https://ravendano014.github.io/mrz/DocHeatMap.html)
 <span style="color:green;">Doc ROI PDF417</span> [ROI PDF417](https://ravendano014.github.io/mrz/DocROI.html)
 <span style="color:green;">Doc MRZ IA Detect</span> [MRZ Roboflow](https://ravendano014.github.io/mrz/DocRoboflow.html)
+<span style="color:green;">Doc Parser</span> [MRZ Roboflow](https://ravendano014.github.io/mrz/DocParser.html)
 
 <span style="color:green;">MRZ</span> [MRZ Online Cam Reader](https://ravendano014.github.io/mrz/)
 
