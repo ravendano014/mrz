@@ -18,24 +18,15 @@
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
     h1{font-size:1.1rem;margin:0 0 .25rem 0;color:var(--text)}
-    .app{display:grid;grid-template-columns:370px 1fr;gap:12px;height:100%;}
+    .app{display:grid;grid-template-columns:360px 1fr;gap:12px;height:100%;}
     .left{padding:12px;background:var(--panel);border-right:1px solid var(--border);overflow:auto}
-    .right{display:grid;grid-template-rows:1fr 320px;gap:12px;padding:12px}
-    .toolbar{display:grid;gap:8px}
-    .group{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--muted)}
-    .group h2{font-size:.95rem;margin:.15rem 0 .5rem 0;color:var(--sub)}
-    .row{display:flex;flex-wrap:wrap;gap:8px}
-    button,input[type=file],input[type=text],input[type=number],select{appearance:none;border:none;background:var(--panel);color:var(--text);padding:8px 10px;border-radius:10px;border:1px solid var(--border);cursor:pointer}
-    input[type=text],input[type=number],select{width:100%;cursor:text}
-    select{cursor:pointer}
-    button:hover{border-color:var(--accent)}
-    button.primary{background:linear-gradient(180deg, #132435, #0f1c2a);border-color:#223247}
-    button.good{border-color:#17392c;background:#0e2b21}
-    button.bad{border-color:#3b1e1e;background:#2a1414}
-    label.toggle{display:flex;align-items:center;gap:8px;cursor:pointer}
-    input[type=checkbox]{width:18px;height:18px}
+    .right{display:grid;grid-template-rows:auto 1fr auto auto;gap:12px;padding:12px}
 
-    .stage{position:relative;background:#05080c;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px}
+    .bar h2{font-size:.95rem;margin:0 10px 0 0;color:var(--sub)}
+    .bar .spacer{flex:1 1 auto}
+
+    .stage{position:relative;background:#05080c;border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:320px}
     .layer{position:absolute;inset:0}
     #video{width:100%;height:100%;object-fit:contain;background:#000}
     #imgPreview{width:100%;height:100%;object-fit:contain;display:none}
@@ -51,88 +42,107 @@
     .status{font-size:.9rem;color:var(--sub)}
     .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:#0f1720}
     .ok{color:var(--good)}.warn{color:var(--warn)}.err{color:var(--bad)}
+
+    button,input[type=file],input[type=text],input[type=number],select{
+      appearance:none;border:none;background:var(--panel);color:var(--text);
+      padding:8px 10px;border-radius:10px;border:1px solid var(--border);cursor:pointer
+    }
+    input[type=text],input[type=number],select{width:100%;cursor:text}
+    select{cursor:pointer}
+    button:hover{border-color:var(--accent)}
+    button.primary{background:linear-gradient(180deg, #132435, #0f1c2a);border-color:#223247}
+    button.good{border-color:#17392c;background:#0e2b21}
+    button.bad{border-color:#3b1e1e;background:#2a1414}
+
     .fps{position:absolute;bottom:10px;left:10px;background:rgba(0,0,0,.4);padding:4px 8px;border-radius:8px;border:1px solid var(--border);font-size:.8rem}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+
+    /* Responsive tweak */
+    @media (max-width: 1100px){
+      .app{grid-template-columns:1fr}
+      .left{order:2}
+      .right{order:1}
+      .results{grid-template-columns:1fr}
+    }
   </style>
 </head>
 <body>
   <div class="app">
+    <!-- LADO IZQUIERDO: configuración, ROIs, extracción, estado de modelo -->
     <aside class="left">
       <h1>OCR de Documentos</h1>
-      <div class="toolbar">
-        <div class="group">
-          <h2>Cámara</h2>
-          <div class="row">
-            <button id="btnStart" class="primary">Iniciar</button>
-            <button id="btnStop">Detener</button>
-            <button id="btnShot" class="good">Capturar Imagen</button>
-            <button id="btnShotDoc" class="good">Capturar solo Documento</button>
-          </div>
-          <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <label class="toggle"><input type="checkbox" id="chkAuto"> Auto-detectar documento</label>
-            <span id="fps" class="badge mono">FPS: <span id="fpsVal">—</span></span>
-          </div>
+
+      <div class="card" style="margin-bottom:12px">
+        <h3>ROIs (plantilla)</h3>
+        <div class="status" id="roiCount" style="margin-bottom:6px">0 ROIs</div>
+        <div class="bar" style="padding:8px">
+          <button id="btnAddRoi">Agregar ROI</button>
+          <button id="btnDeleteRoi" class="bad">Eliminar ROI</button>
+          <button id="btnClearRois" class="bad">Limpiar ROIs</button>
+        </div>
+        <div class="bar" style="padding:8px;margin-top:8px">
+          <button id="btnExport">Exportar JSON</button>
+          <input type="file" id="fileImport" accept="application/json" />
         </div>
 
-        <div class="group">
-          <h2>Imagen</h2>
-          <div class="row">
-            <input type="file" id="file" accept="image/*" />
-            <button id="btnParseFull">Extraer y Parsear (Imagen Completa)</button>
-          </div>
+        <!-- Propiedades del ROI seleccionado -->
+        <div class="bar" style="padding:8px;margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input id="roiName" type="text" placeholder="Nombre ROI" />
+          <select id="roiType">
+            <option value="text">text</option>
+            <option value="image">image</option>
+            <option value="mrz">mrz</option>
+            <option value="pdf417">pdf417</option>
+            <option value="barcode">barcode</option>
+          </select>
+          <input id="roiX" type="number" step="0.001" min="0" max="1" placeholder="x (0..1)" />
+          <input id="roiY" type="number" step="0.001" min="0" max="1" placeholder="y (0..1)" />
+          <input id="roiW" type="number" step="0.001" min="0.02" max="1" placeholder="w (0..1)" />
+          <input id="roiH" type="number" step="0.001" min="0.02" max="1" placeholder="h (0..1)" />
         </div>
 
-        <div class="group">
-          <h2>ROIs (plantilla)</h2>
-          <div class="row">
-            <button id="btnAddRoi">Agregar ROI</button>
-            <button id="btnDeleteRoi" class="bad">Eliminar ROI</button>
-            <button id="btnClearRois" class="bad">Limpiar ROIs</button>
-          </div>
-          <div class="row" style="margin-top:6px">
-            <button id="btnExport">Exportar JSON</button>
-            <input type="file" id="fileImport" accept="application/json" />
-          </div>
-          <div class="status" id="roiCount">0 ROIs</div>
-
-          <!-- Propiedades del ROI seleccionado -->
-          <div id="roiProps" class="row" style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <input id="roiName" type="text" placeholder="Nombre ROI" />
-            <select id="roiType">
-              <option value="text">text</option>
-              <option value="image">image</option>
-              <option value="mrz">mrz</option>
-              <option value="pdf417">pdf417</option>
-              <option value="barcode">barcode</option>
-            </select>
-            <input id="roiX" type="number" step="0.001" min="0" max="1" placeholder="x (0..1)" />
-            <input id="roiY" type="number" step="0.001" min="0" max="1" placeholder="y (0..1)" />
-            <input id="roiW" type="number" step="0.001" min="0.02" max="1" placeholder="w (0..1)" />
-            <input id="roiH" type="number" step="0.001" min="0.02" max="1" placeholder="h (0..1)" />
-          </div>
-          <div class="status">Tip: Click para seleccionar · Arrastra dentro para mover · Arrastra bordes/esquinas para redimensionar · Supr/Backspace para borrar.</div>
+        <div class="status" style="margin-top:6px">
+          Tip: Click para seleccionar · Arrastra dentro para mover · Arrastra bordes/esquinas para redimensionar · Supr/Backspace para borrar.
         </div>
+      </div>
 
-        <div class="group">
-          <h2>Extracción por ROI</h2>
-          <div class="row">
-            <button id="btnExtractSelected" class="good">Extraer ROI Seleccionado</button>
-            <button id="btnExtractAll">Extraer todos los ROIs</button>
-          </div>
-          <div class="status">Tipos soportados: <span class="mono">text, image, mrz, pdf417, barcode</span></div>
+      <div class="card" style="margin-bottom:12px">
+        <h3>Extracción por ROI</h3>
+        <div class="bar" style="padding:8px">
+          <button id="btnExtractSelected" class="good">Extraer ROI Seleccionado</button>
+          <button id="btnExtractAll">Extraer todos los ROIs</button>
         </div>
+        <div class="status" style="margin-top:6px">
+          Tipos soportados: <span class="mono">text, image, mrz, pdf417, barcode</span>
+        </div>
+      </div>
 
-        <div class="group">
-          <h2>Modelo de detección</h2>
-          <div class="status">
-            <div>Motor: <span id="sEngine" class="badge">cargando…</span></div>
-            <div>Modelo: <span id="sModel" class="badge">cargando…</span></div>
-          </div>
+      <div class="card">
+        <h3>Modelo de detección</h3>
+        <div class="status" style="display:grid;gap:6px">
+          <div>Motor: <span id="sEngine" class="badge">cargando…</span></div>
+          <div>Modelo: <span id="sModel" class="badge">cargando…</span></div>
         </div>
       </div>
     </aside>
 
+    <!-- LADO DERECHO: barras de control + stage + resultados -->
     <main class="right">
+      <!-- BARRA DE CÁMARA (AHORA ENCIMA DEL STAGE) -->
+      <div class="bar" id="cameraBar">
+        <h2>Cámara</h2>
+        <button id="btnStart" class="primary">Iniciar</button>
+        <button id="btnStop">Detener</button>
+        <button id="btnShot" class="good">Capturar Imagen</button>
+        <button id="btnShotDoc" class="good">Capturar solo Documento</button>
+        <div class="spacer"></div>
+        <label class="status" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="chkAuto" /> Auto-detectar
+        </label>
+        <span id="fps" class="badge mono">FPS: <span id="fpsVal">—</span></span>
+      </div>
+
+      <!-- STAGE -->
       <section id="stage" class="stage">
         <video id="video" class="layer" autoplay muted playsinline></video>
         <img id="imgPreview" class="layer" alt="Previsualización" />
@@ -140,11 +150,19 @@
         <div class="fps mono" id="fpsOverlay">— fps</div>
       </section>
 
+      <!-- BARRA DE IMAGEN (AHORA DEBAJO DEL STAGE) -->
+      <div class="bar" id="imageBar">
+        <h2>Imagen</h2>
+        <input type="file" id="file" accept="image/*" />
+        <button id="btnParseFull">Extraer y Parsear (Imagen Completa)</button>
+      </div>
+
+      <!-- RESULTADOS -->
       <section class="results">
         <div class="card">
           <h3>Texto crudo OCR</h3>
           <textarea id="raw" class="raw" placeholder="Aquí aparecerá el texto crudo…"></textarea>
-          <div class="row" style="margin-top:8px">
+          <div style="margin-top:8px">
             <button id="btnParseRaw" title="Parsear el contenido actual del área de texto sin volver a ejecutar OCR">Parsear Texto Crudo</button>
           </div>
         </div>
@@ -176,14 +194,13 @@
       activeNatural: {w:0,h:0}
     };
 
-    // ====== DOM helpers
+    // ====== DOM
     const $video = document.getElementById('video');
     const $imgPreview = document.getElementById('imgPreview');
     const $overlay = document.getElementById('overlay');
     const ctx = $overlay.getContext('2d');
     const $fpsOverlay = document.getElementById('fpsOverlay');
     const $fpsVal = document.getElementById('fpsVal');
-    const $sEngine = document.getElementById('sEngine');
     const $sModel = document.getElementById('sModel');
     const $raw = document.getElementById('raw');
     const $tbl = document.getElementById('tbl').querySelector('tbody');
@@ -196,13 +213,14 @@
     const $roiW = document.getElementById('roiW');
     const $roiH = document.getElementById('roiH');
 
-    // ====== Inicializar InferenceJS
+    // ====== InferenceJS
     async function initEngine(){
       try{
-        $sEngine.textContent = 'listo';
+        // Mostrar estado (simple)
+        document.getElementById('sEngine').textContent = 'listo';
         state.engine = new inferencejs.InferenceEngine();
         $sModel.textContent = 'cargando…';
-        // Modelo de ejemplo
+        // Carga modelo (ajusta si usas otro)
         state.workerId = await state.engine.startWorker(
           'react-project-wdxr6',
           '1',
@@ -215,7 +233,7 @@
       }
     }
 
-    // ====== Overlay exactamente alineado al host visible
+    // ====== Overlay del mismo tamaño visible que el host
     function resizeOverlay(){
       const host = state.usingImage ? $imgPreview : $video;
       const w = host.clientWidth || host.getBoundingClientRect().width;
@@ -266,12 +284,12 @@
       };
     });
 
-    // ====== Bucle de detección (si hay autoDetect)
+    // ====== Bucle detección
     let frames=0, lastFpsTs=0, lastPromptTs=0;
     async function loop(ts){
       if(!state.running) return;
       if(!$video.videoWidth){ requestAnimationFrame(loop); return; }
-      // fps
+
       frames++; if(ts-lastFpsTs>1000){
         const fps = Math.round(frames*1000/(ts-lastFpsTs));
         $fpsOverlay.textContent = fps+' fps';
@@ -279,7 +297,6 @@
         frames=0; lastFpsTs=ts;
       }
 
-      // preparar bitmap actual (video)
       const w=$video.videoWidth,h=$video.videoHeight;
       const bmp = await createImageBitmap($video, {resizeWidth:w,resizeHeight:h});
       state.activeBitmap = bmp; state.activeNatural={w,h};
@@ -337,7 +354,7 @@
       setTimeout(resizeOverlay, 100);
     }
 
-    // ====== Dibujo overlay: detecciones + ROIs (considera letterboxing)
+    // ====== Dibujo overlay
     function drawOverlay(){
       const view = $overlay.getBoundingClientRect();
       const viewW = view.width, viewH = view.height;
@@ -345,15 +362,15 @@
       ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
       ctx.clearRect(0,0,$overlay.width,$overlay.height);
 
-      // Escala y offsets si hay letterbox (object-fit: contain)
+      // Escala y offset (letterboxing)
       const natW = state.activeNatural.w || 1, natH = state.activeNatural.h || 1;
       const scale = Math.min(viewW/natW, viewH/natH);
       const contentW = natW * scale, contentH = natH * scale;
       const offX = (viewW - contentW)/2, offY = (viewH - contentH)/2;
 
-      // Detecciones (en coords naturales → overlay)
+      // Detecciones
       for(const p of state.lastDetections){
-        const {x,y,width,height} = p.bbox; // centro + dimensiones (px naturales)
+        const {x,y,width,height} = p.bbox;
         const sx = offX + (x - width/2) * scale;
         const sy = offY + (y - height/2) * scale;
         const sw = width * scale, sh = height * scale;
@@ -369,7 +386,7 @@
         ctx.fillText(tag, sx+6, sy+14);
       }
 
-      // ROIs (0..1 → px overlay; se dibujan sobre el overlay completo)
+      // ROIs (dibujados en coordenadas del overlay 0..1)
       roisDraw({width:viewW, height:viewH});
     }
 
@@ -462,7 +479,7 @@
       state.selectedRoiId = null; updateRoiCount(); drawOverlay(); syncRoiPropsPanel();
     }
 
-    // Interacción de ROIs: crear, mover, redimensionar (8 manillas)
+    // Interacción ROIs
     const drag = {mode:null, roi:null, origin:{x:0,y:0}, handle:null};
 
     function overlayPointFromEvent(e){
@@ -579,7 +596,7 @@
       }catch(err){ alert('JSON inválido'); }
     });
 
-    // ====== Botones principales
+    // ====== Botones
     document.getElementById('btnStart').addEventListener('click', startCamera);
     document.getElementById('btnStop').addEventListener('click', stopCamera);
     document.getElementById('btnShot').addEventListener('click', async ()=>{
@@ -600,15 +617,9 @@
       await showPreviewBitmap(crop);
       runOCROnActive('Captura de documento');
     });
-    document.getElementById('btnAddRoi').addEventListener('click', ()=>{
-      const roi = {id:_.uniqueId('roi_'), name:'ROI', type:'text', x:.3, y:.3, w:.4, h:.3};
-      state.rois.push(roi); state.selectedRoiId=roi.id; updateRoiCount(); drawOverlay(); syncRoiPropsPanel();
-    });
-    document.getElementById('btnDeleteRoi').addEventListener('click', removeSelected);
-    document.getElementById('btnClearRois').addEventListener('click', ()=>{ state.rois=[]; state.selectedRoiId=null; updateRoiCount(); drawOverlay(); syncRoiPropsPanel(); });
     document.getElementById('chkAuto').addEventListener('change',(e)=>{ state.autoDetect = !!e.target.checked; });
 
-    // === NUEVO: Botones de extracción por ROI ===
+    // === Extracción por ROI ===
     document.getElementById('btnExtractSelected').addEventListener('click', async ()=>{
       const a = state.rois.find(r=>r.id===state.selectedRoiId);
       if(!a) return alert('Selecciona un ROI');
@@ -616,9 +627,7 @@
     });
     document.getElementById('btnExtractAll').addEventListener('click', async ()=>{
       if(!state.rois.length) return alert('No hay ROIs');
-      for(const r of state.rois){ /* procesar en serie para evitar saturación */ // eslint-disable-line
-        await extractAndReportROI(r);
-      }
+      for(const r of state.rois){ await extractAndReportROI(r); }
       setStatus('Extracción de todos los ROIs finalizada.');
     });
 
@@ -652,30 +661,20 @@
 
     function setStatus(msg,isErr){ $status.innerHTML = `<span class="badge ${isErr?'err':'ok'}">${msg}</span>`; }
 
-    // ====== Utilidades de mapeo ROI → píxeles naturales
+    // ====== ROI → píxeles naturales
     function mapRoiToNatural(roi){
-      // Medidas overlay
       const view = $overlay.getBoundingClientRect();
       const viewW = view.width, viewH = view.height;
-      // Medidas naturales
       const natW = state.activeNatural.w, natH = state.activeNatural.h;
       if(!natW || !natH) return {x:0,y:0,w:0,h:0};
-
-      // Escala y offset (letterbox)
       const scale = Math.min(viewW/natW, viewH/natH);
       const contentW = natW * scale, contentH = natH * scale;
       const offX = (viewW - contentW)/2, offY = (viewH - contentH)/2;
-
-      // ROI en px overlay
       const ox = roi.x*viewW, oy = roi.y*viewH, ow = roi.w*viewW, oh = roi.h*viewH;
-
-      // Convertir desde overlay a naturales compensando offset y escala
       const nx = Math.round((ox - offX)/scale);
       const ny = Math.round((oy - offY)/scale);
       const nw = Math.round(ow/scale);
       const nh = Math.round(oh/scale);
-
-      // Clamp a la imagen natural
       const x = Math.max(0, Math.min(natW, nx));
       const y = Math.max(0, Math.min(natH, ny));
       const w = Math.max(1, Math.min(natW - x, nw));
@@ -701,17 +700,15 @@
       $tbl.insertAdjacentHTML('beforeend', html);
     }
 
-    // ====== Extracción por ROI (según tipo)
+    // ====== Extracción por ROI
     async function extractAndReportROI(roi){
       if(!state.activeBitmap){ alert('No hay imagen activa'); return; }
       const cnv = roiToCanvas(roi);
       const dataUrl = await canvasToBlobUrl(cnv);
-
       const label = `ROI:${roi.name||roi.id} [${roi.type||'text'}]`;
       try{
         switch((roi.type||'text').toLowerCase()){
           case 'image':{
-            // Descargar imagen del ROI y registrar referencia
             const a = document.createElement('a');
             a.href = dataUrl; a.download = `${(roi.name||roi.id)}.png`; a.click();
             appendRows([[label, 'imagen exportada (.png)']]);
@@ -725,7 +722,7 @@
             break;
           }
           case 'mrz':{
-            const text = await ocrCanvas(cnv, 'eng'); // MRZ suele ser A–Z0–9<
+            const text = await ocrCanvas(cnv, 'eng');
             const mrz = normalizeRawMRZ(text||'');
             const parsed = tryParseMRZ(mrz);
             if(parsed){
@@ -739,13 +736,13 @@
             break;
           }
           case 'pdf417':{
-            const res = await decodeBarcodeWithZXing(dataUrl, /*formats*/['PDF_417']);
+            const res = await decodeBarcodeWithZXing(dataUrl, ['PDF_417']);
             if(res){ appendRows([[label, res.text]]); setStatus(`PDF417 decodificado en "${roi.name||roi.id}".`); }
             else { appendRows([[label, 'PDF417 no encontrado']]); setStatus(`PDF417 no encontrado en "${roi.name||roi.id}".`, true); }
             break;
           }
           case 'barcode':{
-            const res = await decodeBarcodeWithZXing(dataUrl, /*formats*/'ALL');
+            const res = await decodeBarcodeWithZXing(dataUrl, 'ALL');
             if(res){ appendRows([[`${label} · ${res.format}`, res.text]]); setStatus(`Código de barras leído en "${roi.name||roi.id}".`); }
             else { appendRows([[label, 'Sin lectura']]); setStatus(`No se pudo leer código en "${roi.name||roi.id}".`, true); }
             break;
@@ -756,7 +753,6 @@
           }
         }
       }finally{
-        // liberar URL
         URL.revokeObjectURL(dataUrl);
       }
     }
@@ -768,15 +764,11 @@
         const { data:{ text } } = await worker.recognize(url);
         await worker.terminate();
         return (text||'').trim();
-      }catch(e){
-        console.error(e); return '';
-      }finally{
-        URL.revokeObjectURL(url);
-      }
+      }catch(e){ console.error(e); return ''; }
+      finally{ URL.revokeObjectURL(url); }
     }
 
     async function decodeBarcodeWithZXing(dataUrl, formats='ALL'){
-      // Crea un <img> temporal para usar con los decoders del navegador
       const img = await dataUrlToImage(dataUrl);
       try{
         if(formats==='ALL'){
@@ -784,7 +776,6 @@
           const res = await reader.decodeFromImage(img).catch(()=>null);
           return res ? {text:res.getText(), format:String(res.getBarcodeFormat())} : null;
         }else if(Array.isArray(formats) && formats.includes('PDF_417')){
-          // Intento específico PDF417
           const pdfReader = new ZXing.BrowserPDF417Reader();
           const res = await pdfReader.decodeOnce(img).catch(()=>null);
           return res ? {text:res.getText(), format:'PDF_417'} : null;
@@ -805,7 +796,7 @@
       });
     }
 
-    // ====== Heurísticas de parseo (área "Texto crudo OCR")
+    // ====== Área "Texto crudo OCR"
     document.getElementById('btnParseRaw').addEventListener('click', ()=>{
       const txt = ($raw.value||'').trim();
       if(!txt){ setStatus('No hay texto para parsear.', true); return; }
@@ -833,7 +824,7 @@
       }
     }
 
-    // ====== MRZ helpers (simplificados)
+    // ====== MRZ helpers
     function normalizeRawMRZ(t){
       return t.replace(/[^\dA-Z<\n]/g,'').replace(/[ \t]+/g,'').toUpperCase().trim();
     }
@@ -873,7 +864,6 @@
     function fmtYyMmDd(s){
       if(!/^\d{6}$/.test(s)) return s;
       const yy=s.slice(0,2),mm=s.slice(2,4),dd=s.slice(4,6);
-      // Heurística de siglo: si yy > 50 → 1900s, si no → 2000s (ajústalo si lo prefieres distinto)
       const year = parseInt(yy,10);
       const century = (year>50)? '19':'20';
       return `${century}${yy}-${mm}-${dd}`;
