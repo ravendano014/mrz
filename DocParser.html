@@ -133,6 +133,7 @@
 <button id="addRoiBtn" class="btn ghost" disabled>➕ Añadir ROI</button>
 <button id="cleanRoiBtn" class="btn ghost" disabled>🧹 Limpiar ROI</button>
 <button id="deleteRoiBtn" class="btn ghost danger" disabled>🗑️ Eliminar ROI</button>
+<button id="roiFullBtn" class="btn ghost" disabled>⛶ ROI a Pantalla</button>
 
     </div>
 
@@ -770,6 +771,14 @@
     return b;
   })();
 
+  const roiFullBtn = $('#roiFullBtn') || (function(){
+    const b = document.createElement('button');
+    b.id = 'roiFullBtn'; b.className = 'btn ghost'; b.textContent = '⛶ ROI a Pantalla'; b.disabled = true;
+    const target = document.querySelector('#captureBtn')?.parentElement || document.body;
+    target.appendChild(b);
+    return b;
+  })();
+
   // Read stream from global scope if present
   function isCamActive(){
     try { return !!window.stream; } catch(e){ return false; }
@@ -820,8 +829,24 @@
   }
   function hasROI(){ return !roiEl.classList.contains('hidden'); }
 
+  function setROICenteredIDLike(){
+    const aspect = 1.586; // ancho/alto de tarjeta ID aproximado
+    const r = stageRect();
+    // Usar ~70% del ancho disponible como punto de partida
+    let w = Math.max(MIN_SIZE_PX, r.width * 0.7);
+    let h = w / aspect;
+    // Si excede alto disponible con un margen del 70%, ajusta por alto
+    if (h > r.height * 0.7){
+      h = Math.max(MIN_SIZE_PX, r.height * 0.7);
+      w = h * aspect;
+    }
+    const l = Math.max(0, (r.width  - w) / 2);
+    const t = Math.max(0, (r.height - h) / 2);
+    Object.assign(roiEl.style, { left: l + 'px', top: t + 'px', width: w + 'px', height: h + 'px' });
+  }
+
   function addROI(){
-    setROIByPercent(ROI_DEFAULTS);
+    setROICenteredIDLike();
     showROI();
   }
   function cleanROI(){
@@ -841,16 +866,25 @@
   }
 
   function updateRoiButtons(){
-    const cam = isCamActive();
-    addRoiBtn.disabled    = !cam;
-    cleanRoiBtn.disabled  = !cam || !hasROI();
-    deleteRoiBtn.disabled = !cam || !hasROI();
-  }
+  addRoiBtn.disabled    = false;
+  const exists = hasROI();
+  cleanRoiBtn.disabled  = !exists;
+  deleteRoiBtn.disabled = !exists;
+  roiFullBtn.disabled   = !exists;
+}
 
-  // Wire buttons
+  function roiToFullScreen(){
+  const r = stageRect();
+  Object.assign(roiEl.style, { left:'0px', top:'0px', width: r.width + 'px', height: r.height + 'px' });
+  clampROIIntoStage();
+  selectROI(true);
+}
+
+// Wire buttons
   addRoiBtn.addEventListener('click', addROI);
   cleanRoiBtn.addEventListener('click', cleanROI);
   deleteRoiBtn.addEventListener('click', deleteROI);
+  roiFullBtn.addEventListener('click', roiToFullScreen);
 
   // Pointer interactions (drag/resize within bounds)
   let dragging = false, resizing = false, handleType = null, startX=0, startY=0, startRect=null;
