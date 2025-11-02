@@ -20,7 +20,7 @@
     h1{font-size:1.1rem;margin:0 0 .25rem 0;color:var(--text)}
     .app{display:grid;grid-template-columns:360px 1fr;gap:12px;height:100%;}
     .left{padding:12px;background:var(--panel);border-right:1px solid var(--border);overflow:auto}
-    .right{display:grid;grid-template-rows:auto 1fr auto auto;gap:12px;padding:12px}
+    .right{display:grid;grid-template-rows:auto auto 1fr auto auto;gap:12px;padding:12px}
 
     .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px}
     .bar h2{font-size:.95rem;margin:0 10px 0 0;color:var(--sub)}
@@ -42,7 +42,7 @@
     th{color:var(--sub);font-weight:600}
     .status{font-size:.9rem;color:var(--sub)}
     .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:#0f1720}
-    .ok{color:var(--good)}.warn{color:var(--warn)}.err{color:var(--bad)}
+    .ok{color:var(--good)}.warn{color:var(--warn)}.err{color:var(--bad)}.info{color:var(--sub)}
 
     button,input[type=file],input[type=text],input[type=number],select{
       appearance:none;border:none;background:var(--panel);color:var(--text);
@@ -69,12 +69,15 @@
       .results{grid-template-columns:1fr}
       .results-panel{max-width:100%}
     }
+
+    /* Desactivar interacciones mientras se cargan modelos */
+    .blocked{pointer-events:none;opacity:.55;filter:grayscale(.1)}
   </style>
 </head>
 <body>
   <div class="app">
     <!-- LADO IZQUIERDO -->
-    <aside class="left">
+    <aside class="left" id="leftPane">
       <h1>OCR de Documentos</h1>
 
       <div class="card" style="margin-bottom:12px">
@@ -126,13 +129,21 @@
           <div>Engine: <span id="sEngine" class="badge">cargando…</span></div>
           <div>Modelo Doc: <span id="sModelDoc" class="badge">—</span></div>
           <div>Modelo MRZ: <span id="sModelMRZ" class="badge">cargando…</span></div>
-          <div>Modelo PDF417: <span id="sModelPDF" class="badge">cargando…</span></div>
+          <div>Modelo PDF417: <span id="sModelPDF" class="badge">—</span></div>
         </div>
       </div>
     </aside>
 
     <!-- LADO DERECHO -->
-    <main class="right">
+    <main class="right" id="rightPane">
+      <!-- Barra de ESTADO GLOBAL (paso a paso) -->
+      <div class="bar" id="statusBar">
+        <h2>Estado</h2>
+        <span id="statusStep" class="badge info">Inicializando…</span>
+        <div class="spacer"></div>
+        <span class="status">Mensajes sobre carga de modelos y acciones automáticas.</span>
+      </div>
+
       <!-- Cámara -->
       <div class="bar" id="cameraBar">
         <h2>Cámara</h2>
@@ -144,7 +155,8 @@
         <div class="spacer"></div>
 
         <label class="status" style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chkAutoDoc" /> Auto-detectar Documento
+          <!-- Debe venir ACTIVADO -->
+          <input type="checkbox" id="chkAutoDoc" checked /> Auto-detectar Documento
         </label>
 
         <label class="status" style="display:flex;align-items:center;gap:6px">
@@ -177,10 +189,12 @@
         <button id="btnDetectPDF" class="primary">Detectar PDF417 en Imagen</button>
         <div class="spacer"></div>
         <label class="status" style="display:flex;align-items:center;gap:8px">
+          <!-- Auto-MRZ al cargar/capturar activo -->
           <input type="checkbox" id="chkAutoMRZ" checked /> Auto-MRZ al cargar/capturar
         </label>
         <label class="status" style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chkAutoPDF" checked /> Auto-PDF417 al cargar/capturar
+          <!-- Debe iniciar DESACTIVADO -->
+          <input type="checkbox" id="chkAutoPDF" /> Auto-PDF417 al cargar/capturar
         </label>
       </div>
 
@@ -208,7 +222,7 @@
           <div id="mrzSummary" class="status hidden" style="margin-top:14px"></div>
           <div id="mrzTable" class="results-scroll" style="margin-top:6px"></div>
 
-          <!-- >>> NUEVO: Tabla de Resultados (ROIs) debajo de MRZ <<< -->
+          <!-- >>> Tabla de Resultados (ROIs) debajo de MRZ <<< -->
           <div style="margin-top:14px">
             <div class="status"><strong>Tabla de Resultados (ROIs)</strong></div>
             <div id="roiResults" class="results-scroll" style="margin-top:6px"></div>
@@ -246,7 +260,10 @@
       mrzAutoRoiId: null,
 
       // Auto PDF417 (imagen)
-      pdfAutoRoiId: null
+      pdfAutoRoiId: null,
+
+      // Señal para encadenar PDF417 tras MRZ
+      mrzPipelineDone: false
     };
 
     // ====== DOM refs
@@ -276,6 +293,10 @@
     const $chkAutoMRZ = document.getElementById('chkAutoMRZ');
     const $chkAutoPDF = document.getElementById('chkAutoPDF');
 
+    const $leftPane = document.getElementById('leftPane');
+    const $rightPane = document.getElementById('rightPane');
+    const $statusStep = document.getElementById('statusStep');
+
     // Resultados específicos
     const pdf417Summary = document.getElementById('pdf417Summary');
     const pdf417Error   = document.getElementById('pdf417Error');
@@ -283,28 +304,52 @@
     const mrzSummary    = document.getElementById('mrzSummary');
     const mrzTable      = document.getElementById('mrzTable');
 
-    // >>> NUEVO: contenedor de la tabla de resultados de ROIs
+    // Contenedor de la tabla de resultados de ROIs
     const roiResults = document.getElementById('roiResults');
 
-    // ====== InferenceJS: carga engine + modelos
+    // ====== Utilidades de UI (bloqueo/desbloqueo y pasos)
+    function allInteractiveElements(){
+      return Array.from(document.querySelectorAll('button, input, select, textarea'));
+    }
+    function setUIEnabled(enabled){
+      const els = allInteractiveElements();
+      els.forEach(el=>{
+        // No bloqueamos la barra de estado
+        if(el.id==='statusStep') return;
+        el.disabled = !enabled;
+      });
+      // Efecto visual
+      $leftPane.classList.toggle('blocked', !enabled);
+      $rightPane.classList.toggle('blocked', !enabled);
+      // Pero dejamos clicables los controles de cámara/imagen para feedback visual
+      document.getElementById('statusBar').classList.remove('blocked');
+    }
+    function setStep(msg, cls='info'){
+      $statusStep.classList.remove('ok','warn','err','info');
+      $statusStep.classList.add(cls);
+      $statusStep.textContent = msg;
+    }
+
+    // ====== InferenceJS: carga engine + modelos (DOC + MRZ), dejando PDF417 para después del MRZ
     async function initEngine(){
       try{
+        setStep('Inicializando motor de inferencia…','info');
         $sEngine.textContent = 'inicializando…';
         state.engine = new inferencejs.InferenceEngine();
         $sEngine.textContent = 'listo';
 
-        // (Opcional) modelo de documento
-        try{
-          $sModelDoc.textContent = 'cargando…';
-          state.docWorkerId = await state.engine.startWorker(
-            'react-project-wdxr6',
-            '1',
-            'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
-          );
-          $sModelDoc.textContent = 'OK';
-        }catch(e){ console.warn('Modelo Doc opcional:', e); $sModelDoc.textContent = '—'; }
+        // Modelo de Documento
+        setStep('Cargando modelo de Documento…','info');
+        $sModelDoc.textContent = 'cargando…';
+        state.docWorkerId = await state.engine.startWorker(
+          'react-project-wdxr6',
+          '1',
+          'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
+        );
+        $sModelDoc.textContent = 'OK';
 
         // Modelo MRZ
+        setStep('Cargando modelo MRZ…','info');
         $sModelMRZ.textContent = 'cargando…';
         state.mrzWorkerId = await state.engine.startWorker(
           'mrz-ye7hu-5jxuj',
@@ -313,7 +358,22 @@
         );
         $sModelMRZ.textContent = 'OK';
 
-        // Modelo PDF417 (detección bbox)
+        // PDF417: NO cargar todavía; se cargará tras MRZ
+        $sModelPDF.textContent = '—';
+
+        setStep('Modelos listos. Abriendo cámara…','ok');
+      }catch(err){
+        console.error(err);
+        $sEngine.textContent = 'error';
+        setStep('Error cargando modelos. Revisa la consola.','err');
+      }
+    }
+
+    // ====== Carga PDF417 tras MRZ
+    async function ensurePdfModelLoaded(){
+      if(state.pdfWorkerId) return true;
+      try{
+        setStep('Cargando modelo PDF417…','info');
         $sModelPDF.textContent = 'cargando…';
         state.pdfWorkerId = await state.engine.startWorker(
           'pdf417-kl4vz-hl0le',
@@ -321,11 +381,28 @@
           'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2'
         );
         $sModelPDF.textContent = 'OK';
-      }catch(err){
-        console.error(err);
-        $sEngine.textContent = 'error';
-        if(!state.mrzWorkerId) $sModelMRZ.textContent = 'error';
-        if(!state.pdfWorkerId) $sModelPDF.textContent = 'error';
+        setStep('Modelo PDF417 listo.','ok');
+        return true;
+      }catch(e){
+        console.error(e);
+        $sModelPDF.textContent = 'error';
+        setStep('Error cargando PDF417.','err');
+        return false;
+      }
+    }
+
+    // ====== Descarga/stop de modelo Doc
+    async function unloadDocModel(){
+      try{
+        if(state.docWorkerId){
+          setStep('Descargando modelo de Documento…','info');
+          await state.engine.stopWorker(state.docWorkerId);
+          state.docWorkerId = null;
+          $sModelDoc.textContent = '—';
+          setStep('Modelo de Documento descargado.','ok');
+        }
+      }catch(e){
+        console.warn('No se pudo descargar modelo doc', e);
       }
     }
 
@@ -354,7 +431,13 @@
         $video.style.display = 'block';
         requestAnimationFrame(loop);
         setTimeout(resizeOverlay, 150);
-      }catch(err){ console.error(err); }
+        setStep('Cámara lista. Auto-Doc y Auto-MRZ activos.','ok');
+        // Lanzar detección inicial de Documento y MRZ cuando hay frames
+        setTimeout(()=>kickstartAutoFlows(), 400);
+      }catch(err){
+        console.error(err);
+        setStep('Error al iniciar cámara.','err');
+      }
     }
     function stopCamera(){
       state.running = false;
@@ -362,6 +445,33 @@
         state.stream.getTracks().forEach(t=>t.stop());
         state.stream = null;
       }
+    }
+
+    // Arranque de flujos automáticos tras cargar/abrir cámara
+    async function kickstartAutoFlows(){
+      // Auto-detectar Documento (checkbox ya viene activo)
+      if($chkAutoDoc.checked && state.docWorkerId){
+        setStep('Detectando Documento (inicio)…','info');
+        try{
+          const host = state.usingImage ? $imgPreview : $video;
+          const preds = await state.engine.infer(state.docWorkerId, new inferencejs.CVImage(host));
+          const best = preds && preds.length ? _.maxBy(preds, p=>p.confidence||0) : null;
+          if(best && (best.confidence||0) >= 0.65){
+            await confirmCapture(best);
+            setStep('Documento capturado. Ejecutando Auto-MRZ…','info');
+          }else{
+            setStep('No se detectó Documento aún. Continúa Auto-Doc.','warn');
+          }
+        }catch(e){
+          console.warn('Auto-doc inicial: ', e);
+        }
+      }
+      // Forzar una corrida MRZ inicial si hay imagen/cámara
+      if(state.mrzWorkerId){
+        await detectMRZFlow('Inicio');
+      }
+      // Al terminar arranque, habilitar UI
+      setUIEnabled(true);
     }
 
     // ====== Cargar imagen
@@ -378,7 +488,7 @@
         state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
         resizeOverlay();
         if($chkAutoMRZ.checked) { detectMRZFlow('Imagen cargada'); }
-        if($chkAutoPDF.checked) { detectPDF417Flow('Imagen cargada'); }
+        if($chkAutoPDF.checked && state.pdfWorkerId) { detectPDF417Flow('Imagen cargada'); }
       };
     });
 
@@ -400,7 +510,7 @@
       state.activeBitmap = bmp; state.activeNatural={w,h};
       drawOverlay();
 
-      // Auto-detect Doc (opcional)
+      // Auto-detect Doc
       if($chkAutoDoc.checked && state.docWorkerId){
         try{
           const cvimg = new inferencejs.CVImage($video);
@@ -514,7 +624,7 @@
       await showPreviewBitmap(crop);
       runOCROnActive('Captura de documento');
       if($chkAutoMRZ.checked) { detectMRZFlow('Tras captura de documento'); }
-      if($chkAutoPDF.checked) { detectPDF417Flow('Tras captura de documento'); }
+      if($chkAutoPDF.checked && state.pdfWorkerId) { detectPDF417Flow('Tras captura de documento'); }
     }
 
     function cropFromDetection(det){
@@ -543,7 +653,7 @@
       state.activeBitmap = bmp; state.activeNatural={w:bmp.width,h:bmp.height};
       setTimeout(resizeOverlay, 100);
       if($chkAutoMRZ.checked) { detectMRZFlow('Captura estática'); }
-      if($chkAutoPDF.checked) { detectPDF417Flow('Captura estática'); }
+      if($chkAutoPDF.checked && state.pdfWorkerId) { detectPDF417Flow('Captura estática'); }
     }
 
     // ====== Dibujo overlay
@@ -1112,6 +1222,12 @@
         renderPairsTo(mrzTable, enriched);
         // Registrar también en la tabla global de ROIs (cuando provenga de ROI text genérico)
         addRoiResult({name:'(Texto crudo)', type:'text'}, enriched);
+
+        // >>> Al tener MRZ y mostrar tabla por primera vez, encadenar flujo PDF417
+        if(!state.mrzPipelineDone){
+          state.mrzPipelineDone = true;
+          afterMrzDetectedSequence().catch(console.warn);
+        }
         return;
       }catch(_){}
       // Si no es MRZ, intentar key:value
@@ -1128,6 +1244,22 @@
       mrzSummary.innerHTML = "<strong>Resultados</strong> — <span class='warn'>Texto genérico (no MRZ).</span>";
       renderPairsTo(mrzTable, rows);
       addRoiResult({name:'(Texto crudo)', type:'text'}, rows);
+    }
+
+    // Encadenar: descargar Doc, cargar PDF417 y preguntar si activar Auto-PDF417
+    async function afterMrzDetectedSequence(){
+      setUIEnabled(false);
+      await unloadDocModel();
+      const ok = await ensurePdfModelLoaded();
+      setUIEnabled(true);
+      if(ok){
+        const ask = confirm('MRZ detectado y tabla mostrada.\n¿Deseas activar Auto-PDF417 al cargar/capturar?');
+        if(ask){
+          $chkAutoPDF.checked = true;
+          // Si ya hay imagen activa, correr una vez
+          if(state.activeBitmap) detectPDF417Flow('Auto tras MRZ');
+        }
+      }
     }
 
     // ====== Extracción por ROI
@@ -1149,7 +1281,6 @@
       try{
         switch((roi.type||'text').toLowerCase()){
           case 'image':{
-            // Se exporta imagen; en la tabla anotamos referencia
             addRoiResult(roi, {'Imagen exportada': (roi.name||roi.id)+'.png'});
             const a = document.createElement('a'); a.href = dataUrl; a.download = `${(roi.name||roi.id)}.png`; a.click();
             setStatus(`Imagen ROI "${roi.name||roi.id}" exportada.`);
@@ -1174,6 +1305,12 @@
               renderPairsTo(mrzTable, enriched);
               addRoiResult(roi, enriched);
               setStatus(`MRZ parseado en "${roi.name||roi.id}".`);
+
+              // >>> Encadenar PDF417 tras MRZ
+              if(!state.mrzPipelineDone){
+                state.mrzPipelineDone = true;
+                afterMrzDetectedSequence().catch(console.warn);
+              }
             }catch(e){
               mrzSummary.classList.remove('hidden');
               mrzSummary.innerHTML = "<strong>Resultados</strong> — <span class='err'>MRZ no reconocido.</span>";
@@ -1231,7 +1368,7 @@
       }
     }
 
-    // >>> NUEVO: Tabla de Resultados (ROIs) — helpers
+    // Tabla de Resultados (ROIs)
     function ensureRoiResultsTable(){
       if(document.getElementById('roiResultsTable')) return;
       roiResults.innerHTML = `
@@ -1306,7 +1443,11 @@
 
     // ====== Inicio
     (async function init(){
+      // Bloquear toda la UI mientras se cargan los modelos Doc+MRZ
+      setUIEnabled(false);
+      setStep('Preparando…','info');
       await initEngine();
+      setStep('Iniciando cámara…','info');
       await startCamera();
       resizeOverlay();
       syncRoiPropsPanel();
@@ -1315,6 +1456,8 @@
       // Listeners switches
       $chkAutoMrzCam.addEventListener('change', ()=>{ state.autoMrzCam = $chkAutoMrzCam.checked; });
       $mrzInterval.addEventListener('input', ()=>{ /* throttling leído en loop */ });
+
+      // NOTA: La UI se habilita dentro de kickstartAutoFlows() una vez lanzadas las auto-detecciones
     })();
 
     // ====== Botones utilitarios de ROIs
@@ -1331,47 +1474,6 @@
        ===  CÓDIGO DE PDF417: Parseo DUI + helpers                                      ===
        ===================================================================================== */
 
-    // ========= PDF417 con @zxing/library (UMD) =========
-    async function processPDF417(){
-      pdf417Error.classList.add('hidden');
-      try{
-        // Asegúrate de que la imagen esté cargada completamente
-        await ensureImageLoaded($imgPreview);
-
-        // 1) Intento directo con el lector de alto nivel
-        const reader = new ZXing.BrowserPDF417Reader();
-        let result = null;
-        try{
-          result = await reader.decodeFromImageElement($imgPreview);
-        }catch(e1){
-          // 2) Fallback: dibujar en canvas (por si el elemento <img> no está en el DOM visible)
-          const canvas = document.createElement('canvas');
-          const ctx2 = canvas.getContext('2d');
-          canvas.width = $imgPreview.naturalWidth || $imgPreview.width;
-          canvas.height = $imgPreview.naturalHeight || $imgPreview.height;
-          if (!canvas.width || !canvas.height) throw e1;
-
-          ctx2.drawImage($imgPreview, 0, 0, canvas.width, canvas.height);
-          result = await reader.decodeFromCanvas(canvas);
-        }
-
-        // Extraer texto y parsear formato DUI
-        tryAutoParseDUIFromPDF417(result);
-      }catch(err){
-        pdf417Error.classList.remove('hidden');
-        pdf417Error.textContent = 'PDF417 Error: ' + (err?.message || err);
-        pdf417Table.innerHTML = '<p class="muted">No se pudo decodificar PDF417.</p>';
-      }
-    }
-
-    function ensureImageLoaded(img){
-      return new Promise((resolve, reject)=>{
-        if (img.complete && img.naturalWidth > 0) return resolve();
-        img.onload = ()=> resolve();
-        img.onerror = (e)=> reject(e);
-      });
-    }
-
     // ========= DUI Auto-Parse (desde texto de PDF417) =========
     let currentDuiRawText = null;
     let currentDuiJSON = null;
@@ -1382,107 +1484,45 @@
 
       if (!rawText){
         pdf417Summary.classList.add('hidden');
-        pdf417Table.innerHTML = '<p class="muted">No se encontró Texto crudo del PDF417 para parsear.</p>';
-        currentDuiJSON = null;
+        pdf417Error.classList.remove('hidden');
+        pdf417Error.textContent = 'No se encontró texto en el PDF417.';
+        pdf417Table.innerHTML = '';
         return;
       }
 
       const parsed = parseDUIFromRaw(rawText);
-      if (!parsed){
-        pdf417Summary.classList.add('hidden');
-        pdf417Table.innerHTML = '<p class="muted">El Texto crudo no coincide con el formato esperado (separado por <code>||</code>).</p>';
-        currentDuiJSON = null;
-        return;
+      if(parsed && parsed.fields){
+        pdf417Summary.classList.remove('hidden');
+        pdf417Summary.innerHTML = "<strong>Resultados</strong> — <span class='ok'>DUI (PDF417 imagen) parseado.</span>";
+        renderPairsTo(pdf417Table, parsed.fields);
+      }else{
+        pdf417Summary.classList.remove('hidden');
+        pdf417Summary.innerHTML = "<strong>Resultados</strong> — <span class='warn'>PDF417 decodificado (texto crudo).</span>";
+        renderPairsTo(pdf417Table, {'Texto': rawText});
       }
-
-      currentDuiJSON = parsed.toJSON;
-      pdf417Summary.classList.remove('hidden');
-      pdf417Summary.innerHTML = "<strong>Resultados</strong> — <span class='ok'>DUI (PDF417 imagen) parseado.</span>";
-      pdf417Table.innerHTML = renderKVTable(parsed.fields);
     }
 
-    function extractRawTextFromPdf417(obj){
+    function extractRawTextFromPdf417(resultObj){
       try{
-        if (!obj) return null;
-
-        if (typeof obj.getText === 'function'){
-          const t = obj.getText();
-          if (t && typeof t === 'string' && t.trim()) return t.trim();
-        }
-        if (typeof obj === 'string'){
-          try { obj = JSON.parse(obj); } catch(e){
-            if (obj.includes('||')) return obj.trim();
-            return null;
-          }
-        }
-        if (Array.isArray(obj)){
-          for (const it of obj){
-            const t = extractRawTextFromPdf417(it);
-            if (t) return t;
-          }
-        }
-        const candidates = [
-          obj?.text, obj?.Text, obj?.rawText, obj?.RawText,
-          obj?.result?.text, obj?.result?.Text, obj?.result?.rawText,
-          obj?.[0]?.text, obj?.[0]?.Text, obj?.[0]?.rawText
-        ];
-        for (const c of candidates){
-          if (typeof c === 'string' && c.trim()) return c.trim();
-        }
-        for (const k of Object.keys(obj)){
-          const v = obj[k];
-          if (typeof v === 'string' && v.includes('||')) return v.trim();
-        }
-      }catch(e){ console.warn('extractRawTextFromPdf417 error:', e); }
-      return null;
+        if(!resultObj) return '';
+        if(typeof resultObj.getText === 'function') return String(resultObj.getText()||'');
+        if(resultObj.text) return String(resultObj.text||'');
+        return '';
+      }catch(e){ return ''; }
     }
 
     function parseDUIFromRaw(raw){
-      if (!raw || typeof raw !== 'string') return null;
-      const parts = raw.split('||');
-      if (parts.length < 17) return null;
-
-      const FIELDS = [
-        'Número de DUI',
-        'Primer Apellido',
-        'Segundo Apellido y Nombres',
-        'Número de Emisión',
-        'Firma Digital',
-        'Lugar de Nacimiento',
-        'Municipio',
-        'Profesión u Oficio',
-        'Sexo',
-        'Fecha de Nacimiento',
-        'Fecha de Emisión',
-        'Código de Zona',
-        'Categoría',
-        'Estdo Familiar',
-        'Nacionalidad',
-        'Segunda Firma Digital',
-        'Código de Verificación'
-      ];
-
-      const obj = {};
-      FIELDS.forEach((name, idx)=>{ obj[name] = (parts[idx] ?? '').trim(); });
-
-      return {
-        fields: obj,
-        toJSON: obj,
-        raw
-      };
-    }
-
-    function renderKVTable(obj){
-      let html = '<div class="scroll-wrap">';
-      html += '<table class="result-table"><thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody>';
-      for (const [k,v] of Object.entries(obj)){
-        const vv = (v ?? '') === '' ? '<span class="muted">—</span>' : escapeHtml(String(v));
-        html += `<tr><td><strong>${escapeHtml(k)}</strong></td><td>${vv}</td></tr>`;
-      }
-      html += '</tbody></table></div>';
-      return html;
+      // Ejemplo de parseo a partir de texto (adaptar a tu formato AAMVA/loc.)
+      if(!raw) return null;
+      // Aquí puedes mapear al esquema esperado; mantenemos ejemplo genérico
+      const fields = {};
+      raw.split(/\r?\n/).forEach((line,i)=>{
+        const m = line.match(/^([^:]+):\s*(.+)$/);
+        if(m){ fields[m[1].trim()] = m[2].trim(); }
+        else if(line.trim()){ fields['Línea '+(i+1)] = line.trim(); }
+      });
+      return {fields};
     }
   </script>
 </body>
-
 </html>
