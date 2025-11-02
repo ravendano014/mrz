@@ -134,6 +134,8 @@
 <button id="cleanRoiBtn" class="btn ghost" disabled>🧹 Limpiar ROI</button>
 <button id="deleteRoiBtn" class="btn ghost danger" disabled>🗑️ Eliminar ROI</button>
 <button id="roiFullBtn" class="btn ghost" disabled>⛶ ROI a Pantalla</button>
+<button id="roiExpandBtn" class="btn ghost" disabled>+⛶ Ampliar ROI</button>
+<button id="roiShrinkBtn" class="btn ghost" disabled>-⛶ Reducir ROI</button>
 
     </div>
 
@@ -771,7 +773,9 @@
     return b;
   })();
 
-  const roiFullBtn = $('#roiFullBtn') || (function(){
+  const roiFullBtn = $('#roiFullBtn')
+  const roiExpandBtn = $('#roiExpandBtn')
+  const roiShrinkBtn = $('#roiShrinkBtn') || (function(){
     const b = document.createElement('button');
     b.id = 'roiFullBtn'; b.className = 'btn ghost'; b.textContent = '⛶ ROI a Pantalla'; b.disabled = true;
     const target = document.querySelector('#captureBtn')?.parentElement || document.body;
@@ -871,6 +875,8 @@
   cleanRoiBtn.disabled  = !exists;
   deleteRoiBtn.disabled = !exists;
   roiFullBtn.disabled   = !exists;
+  roiExpandBtn.disabled = !exists;
+  roiShrinkBtn.disabled = !exists;
 }
 
   function roiToFullScreen(){
@@ -880,11 +886,32 @@
   selectROI(true);
 }
 
-// Wire buttons
+
+  function roiExpandShrink(scale){
+    const r = stageRect();
+    const rr = roiEl.getBoundingClientRect();
+    let w = rr.width * scale;
+    let h = rr.height * scale;
+    let l = rr.left - r.left - (w - rr.width)/2;
+    let t = rr.top - r.top - (h - rr.height)/2;
+    w = Math.max(MIN_SIZE_PX, Math.min(w, r.width));
+    h = Math.max(MIN_SIZE_PX, Math.min(h, r.height));
+    l = Math.min(Math.max(0, l), r.width - w);
+    t = Math.min(Math.max(0, t), r.height - h);
+    Object.assign(roiEl.style, {left:l+'px', top:t+'px', width:w+'px', height:h+'px'});
+    clampROIIntoStage();
+    selectROI(true);
+  }
+  function roiExpand(){ roiExpandShrink(1.05); }
+  function roiShrink(){ roiExpandShrink(0.95); }
+
+  // Wire buttons
   addRoiBtn.addEventListener('click', addROI);
   cleanRoiBtn.addEventListener('click', cleanROI);
   deleteRoiBtn.addEventListener('click', deleteROI);
   roiFullBtn.addEventListener('click', roiToFullScreen);
+  roiExpandBtn.addEventListener('click', roiExpand);
+  roiShrinkBtn.addEventListener('click', roiShrink);
 
   // Pointer interactions (drag/resize within bounds)
   let dragging = false, resizing = false, handleType = null, startX=0, startY=0, startRect=null;
@@ -993,3 +1020,4 @@
 
 </body>
 </html>
+
