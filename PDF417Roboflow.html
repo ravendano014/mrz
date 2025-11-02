@@ -243,6 +243,10 @@
           <div>
             <label>Vista previa ROI (imagen o cámara)</label>
             <div class="preview"><canvas id="roiPreview" width="200" height="150"></canvas></div>
+            <!-- NUEVO: Botón para extraer/parsear directamente la vista previa ROI -->
+            <div class="row" style="margin-top:6px">
+              <button id="btnExtractFromRoiPreview" class="success">⤓ Extraer y parsear Vista previa ROI</button>
+            </div>
           </div>
           <div>
             <label>JSON parseado</label>
@@ -370,7 +374,6 @@
     function updateFPS() {
       const now = performance.now();
       const delta = now - lastTS;
-      lastTS = now;
       const fps = 1000 / delta;
       fpsSMA.push(fps);
       if (fpsSMA.length > 20) fpsSMA.shift();
@@ -630,7 +633,7 @@
     }
     function fitPreview(img){
       const W = imgCanvasPreview.width = imgCanvasPreview.clientWidth || 640;
-      const H = imgCanvasPreview.height = Math.round(W * (img.naturalHeight/img.naturalWidth));
+      const H = Math.round(W * (img.naturalHeight/img.naturalWidth));
       drawSize.w = W; drawSize.h = H;
       imgCtx.clearRect(0,0,W,H);
       imgCtx.drawImage(img, 0, 0, W, H);
@@ -981,6 +984,35 @@
         const parsed = smartParse(raw); renderResult(parsed, raw);
       }else setStatus('No se detectó PDF417 en el ROI','bad');
     });
+
+    // ====== NUEVO: Extraer y parsear directamente la Vista previa ROI ======
+    $('#btnExtractFromRoiPreview').on('click', async ()=>{
+      // Comprobamos si hay contenido dibujado en la vista previa
+      const w = roiPreview.width, h = roiPreview.height;
+      try{
+        const data = roiCtx.getImageData(0, 0, w, h).data;
+        let hasPixels = false;
+        for (let i = 3; i < data.length; i += 4) { // mirar canal alfa
+          if (data[i] !== 0) { hasPixels = true; break; }
+        }
+        if (!hasPixels) {
+          setStatus('No hay vista previa ROI para procesar','info');
+          return;
+        }
+      }catch{
+        // Si getImageData falla por alguna razón, intentamos igualmente decodificar
+      }
+
+      const raw = await decodeFromCanvas(roiPreview);
+      if(raw){
+        setStatus('Código detectado desde Vista previa ROI','ok');
+        const parsed = smartParse(raw);
+        renderResult(parsed, raw);
+      }else{
+        setStatus('No se detectó código en la Vista previa ROI','bad');
+      }
+    });
+
     $('#btnParse').on('click', ()=>{
       const raw = $('#txtRaw').val();
       const parsed = smartParse(raw);
@@ -1236,3 +1268,4 @@
   </script>
 </body>
 </html>
+
