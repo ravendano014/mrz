@@ -554,12 +554,7 @@
           canvas.height = preview.naturalHeight || preview.height;
           if (!canvas.width || !canvas.height) throw e1;
           ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
-          result = await (async ()=>{
-  const __canvas = canvas;
-  const __dataURL = __canvas.toDataURL('image/png');
-  // Use decodeFromImageUrl to avoid missing decodeFromCanvas in some builds
-  return await reader.decodeFromImageUrl(__dataURL);
-})();
+          result = await reader.decodeFromCanvas(canvas);
         }
         tryAutoParseDUIFromPDF417(result);
       }catch(err){
