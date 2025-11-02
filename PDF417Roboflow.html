@@ -30,7 +30,7 @@
     #overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; z-index:2; }
 
     #panel{
-      position:fixed; top:0; right:0; height:100%; width:min(520px, 44vw);
+      position:fixed; top:0; right:0; height:100%; width:min(560px, 46vw);
       background:linear-gradient(180deg,var(--panel),#0b1117); border-left:1px solid var(--line);
       padding:14px 14px 120px; overflow:auto; box-shadow:-8px 0 24px rgba(0,0,0,.35); z-index:3;
     }
@@ -71,16 +71,15 @@
     th{ position:sticky; top:0; background:#0f1820; z-index:1 }
 
     .status{
-      position:fixed; left:12px; right:calc(min(520px, 44vw) + 12px); bottom:12px;
+      position:sticky; top:-2px; z-index:5; /* barra al tope del panel */
       display:flex; gap:8px; align-items:center; flex-wrap:wrap;
       padding:10px 12px; border-radius:12px; background:#0d1318cc; backdrop-filter: blur(4px);
-      border:1px solid var(--line); z-index: 4;
+      border:1px solid var(--line); margin-bottom:8px;
     }
     .pill{ padding:4px 8px; border-radius:999px; font-weight:700; letter-spacing:.3px; border:1px solid var(--line); background:#0f161ccc }
     .ok{ color:#c9ffd9; border-color:#1f4e2c; background:#0e2316 }
     .bad{ color:#ffd3d3; border-color:#5a1f1f; background:#2a1010 }
     .info{ color:#d2e8ff; border-color:#1d3f61; background:#0f1f2d }
-    .fps{ margin-left:auto }
 
     .spacer{ height:6px }
     .hidden{ display:none !important }
@@ -112,6 +111,15 @@
     .roi-controls .row{ align-items:center }
     .roi-controls .row .grow{ flex:1 }
     .roi-controls .row .tight{ display:flex; gap:6px }
+
+    /* Pie de estado global (se mantiene) */
+    #statusBottom{
+      position:fixed; left:12px; right:calc(min(560px, 46vw) + 12px); bottom:12px;
+      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+      padding:10px 12px; border-radius:12px; background:#0d1318cc; backdrop-filter: blur(4px);
+      border:1px solid var(--line); z-index: 4;
+    }
+    .fps{ margin-left:auto }
   </style>
 </head>
 <body>
@@ -129,10 +137,20 @@
   <!-- Panel -->
   <aside id="panel">
     <h1>PDF417 — cámara e imagen (ROI preciso + Auto-captura)</h1>
-    <p class="sub">Roboflow (InferenceJS), **Capturar ROI (cámara)** manual/automática desde bbox, ROI preciso en imagen, y parseo JSON.</p>
+    <p class="sub">Roboflow (InferenceJS), captura de ROI (cámara), ROI preciso en imagen y parseo JSON.</p>
 
-    <!-- Cámara -->
-    <div class="row">
+    <!-- ===== TOP: Barra de estado + control de modelos ===== -->
+    <div class="status" id="statusTop">
+      <span class="pill info" id="sModel">Modelo: cargando…</span>
+      <span class="pill info" id="sDec">Decoder: inicializando…</span>
+      <button id="btnLoadModel" class="success">Cargar modelo</button>
+      <button id="btnUnloadModel" class="danger">Descargar modelo</button>
+      <span class="pill info" id="sHitTop" style="display:none">Detectado</span>
+      <span class="pill bad" id="sMissTop" style="display:none">Sin detección</span>
+    </div>
+
+    <!-- ===== CÁMARA: controles arriba ===== -->
+    <div class="row seg">
       <button id="btnStart" class="primary">▶ Iniciar cámara</button>
       <button id="btnStop" class="danger">■ Detener cámara</button>
       <button id="btnFlip">↺ Cambiar cámara</button>
@@ -147,10 +165,23 @@
         <label class="small">Umbral conf. ≥ <input type="number" id="numThresh" min="0" max="1" step="0.01" value="0.60" /></label>
         <label class="small">Pausa (s) <input type="number" id="numCooldown" min="0" max="30" step="0.5" value="2.5" /></label>
       </div>
-      <p class="sub" style="margin-top:6px">Si la confianza de la detección supera el umbral, se captura el ROI automáticamente y se pausa el disparo por el tiempo indicado.</p>
+      <p class="sub" style="margin-top:6px">Si la confianza supera el umbral, se captura el ROI y se pausa el disparo el tiempo indicado.</p>
     </div>
 
-    <!-- Imagen -->
+    <!-- ===== VISTA PREVIA A PROCESAR (nueva, justo después de cámara) ===== -->
+    <div class="seg">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <label class="small" style="display:flex; gap:8px; align-items:center">
+          <input type="checkbox" id="chkShowCamShot" checked /> Mostrar vista previa capturada desde cámara
+        </label>
+        <span class="tag">Última captura</span>
+      </div>
+      <div class="preview" id="wrapCamShot">
+        <canvas id="camShotPreview" width="320" height="240"></canvas>
+      </div>
+    </div>
+
+    <!-- ===== IMAGEN: opciones y ROI preciso (ahora después de la vista previa) ===== -->
     <div class="row seg">
       <div class="tabs">
         <div class="tab active" data-pane="pane-img">Imagen</div>
@@ -171,9 +202,7 @@
         <canvas id="imgCanvasPreview" class="hidden" tabindex="0" aria-label="Canvas de imagen con ROI"></canvas>
 
         <div class="hintbox">
-          Arrastra dentro del rectángulo para mover; usa los 8 puntos (esquinas/lados) para redimensionar.
-          Móvil: un dedo mueve; dos dedos (pinch) escalan. Con el canvas enfocado: flechas mueven (Shift = 5 px),
-          +/- cambia tamaño (Shift = x3).
+          Arrastra dentro del rectángulo para mover; usa los 8 puntos para redimensionar. En móvil: un dedo mueve, dos dedos escalan. Con el canvas enfocado: flechas mueven (Shift = 5 px), +/- cambia tamaño (Shift = x3).
         </div>
 
         <!-- Controles de tamaño del ROI (ancho) -->
@@ -193,7 +222,7 @@
           <p class="sub">Ajusta el ancho alrededor del centro del ROI sin moverlo.</p>
         </div>
 
-        <!-- NUEVO: Controles de altura del ROI -->
+        <!-- Controles de altura del ROI -->
         <div class="seg roi-controls">
           <label class="small">Altura del ROI</label>
           <div class="row">
@@ -209,7 +238,6 @@
           </div>
           <p class="sub">Ajusta <strong>solo</strong> la altura alrededor del centro del ROI.</p>
         </div>
-        <!-- FIN NUEVO -->
 
         <div class="grid split2" style="margin-top:8px">
           <div>
@@ -236,6 +264,7 @@
       </div>
     </div>
 
+    <!-- Resto: tabla de resultados -->
     <div class="spacer"></div>
     <div class="grid">
       <label>Tabla</label>
@@ -246,10 +275,9 @@
     <p class="sub">Consejo: acerca el código al centro del encuadre y evita reflejos.</p>
   </aside>
 
-  <div class="status" id="status">
+  <!-- Pie de estado global (se mantiene, solo reubicado como id distinto) -->
+  <div class="status" id="statusBottom">
     <span class="pill info" id="sCam">Cámara: detenida</span>
-    <span class="pill info" id="sModel">Modelo: cargando…</span>
-    <span class="pill info" id="sDec">Decoder: inicializando…</span>
     <span class="pill ok hidden" id="sHit">Detectado</span>
     <span class="pill bad hidden" id="sMiss">Sin detección</span>
     <span class="pill info fps" id="sFPS">FPS: —</span>
@@ -267,7 +295,12 @@
     const octx = overlay.getContext('2d');
     const helpMessage = document.getElementById('helpMessage');
 
-    const sCam = $('#sCam'), sModel = $('#sModel'), sDec = $('#sDec'), sHit = $('#sHit'), sMiss = $('#sMiss'), sFPS = $('#sFPS');
+    // Top status & model
+    const sModel = $('#sModel'), sDec = $('#sDec');
+    const sHitTop = $('#sHitTop'), sMissTop = $('#sMissTop');
+
+    // Bottom status
+    const sCam = $('#sCam'), sHit = $('#sHit'), sMiss = $('#sMiss'), sFPS = $('#sFPS');
     const tagDetector = $('#tag-detector');
 
     // Imagen / ROI
@@ -275,6 +308,12 @@
     const imgCtx = imgCanvasPreview.getContext('2d');
     const roiPreview = document.getElementById('roiPreview');
     const roiCtx = roiPreview.getContext('2d');
+
+    // Nueva vista previa de la cámara a procesar
+    const camShotPreview = document.getElementById('camShotPreview');
+    const camShotCtx = camShotPreview.getContext('2d');
+    const chkShowCamShot = document.getElementById('chkShowCamShot');
+    const wrapCamShot = document.getElementById('wrapCamShot');
 
     // ====== Estado ======
     let facingMode = 'environment';
@@ -353,8 +392,8 @@
     }
 
     function setHit(ok){
-      if (ok){ sHit.removeClass('hidden'); sMiss.addClass('hidden'); $('#btnCaptureCamROI').prop('disabled', false); }
-      else { sMiss.removeClass('hidden'); sHit.addClass('hidden'); $('#btnCaptureCamROI').prop('disabled', true); }
+      if (ok){ sHit.removeClass('hidden'); sMiss.addClass('hidden'); sHitTop.show(); sMissTop.hide(); $('#btnCaptureCamROI').prop('disabled', false); }
+      else { sMiss.removeClass('hidden'); sHit.addClass('hidden'); sHitTop.hide(); sMissTop.show(); $('#btnCaptureCamROI').prop('disabled', true); }
     }
 
     function escapeHtml(str){
@@ -372,12 +411,8 @@
     }
 
     function setStatus(msg, type){
-      const el = document.getElementById('status');
-      el.textContent = msg;
-      el.className = 'status';
-      if(type==='ok') el.classList.add('ok');
-      else if(type==='bad') el.classList.add('bad');
-      else el.classList.add('info');
+      // Preserve: ahora usamos solo logs de consola; la UI principal se actualiza con pills
+      console[type==='bad'?'error':'log']('[status]', msg);
     }
 
     // ====== Cámara ======
@@ -426,6 +461,14 @@
         sModel.removeClass('ok info').addClass('bad').text('Modelo: error');
         console.error(e);
       }
+    }
+
+    async function unloadModel(){
+      try{
+        if(workerId!=null){ await engine.stopWorker(workerId); }
+      }catch(e){ console.warn('No se pudo detener el worker', e); }
+      workerId = null;
+      sModel.removeClass('ok bad').addClass('info').text('Modelo: descargado');
     }
 
     // ====== Decoder (BarcodeDetector nativo → fallback ZXing) ======
@@ -532,7 +575,16 @@
       const cctx = crop.getContext('2d');
       cctx.drawImage(frame, rx, ry, rw, rh, 0, 0, rw, rh);
 
-      // Preview en panel
+      // NUEVO: reflejar siempre la última captura en la vista previa dedicada
+      if (chkShowCamShot.checked) {
+        camShotCtx.clearRect(0,0,camShotPreview.width,camShotPreview.height);
+        const scale = Math.min(camShotPreview.width / rw, camShotPreview.height / rh);
+        const dw = Math.round(rw * scale), dh = Math.round(rh * scale);
+        const dx = Math.round((camShotPreview.width - dw)/2), dy = Math.round((camShotPreview.height - dh)/2);
+        camShotCtx.drawImage(crop, 0, 0, rw, rh, dx, dy, dw, dh);
+      }
+
+      // Preview existente en panel (ROI compacto)
       roiCtx.clearRect(0,0,roiPreview.width,roiPreview.height);
       const scale = Math.min(roiPreview.width / rw, roiPreview.height / rh);
       const dw = Math.round(rw * scale), dh = Math.round(rh * scale);
@@ -548,6 +600,11 @@
       }
     }
 
+    // Mostrar/ocultar vista previa nueva
+    chkShowCamShot.addEventListener('change', ()=>{
+      wrapCamShot.style.display = chkShowCamShot.checked ? '' : 'none';
+    });
+
     // ====== Imagen (carga + preview) ======
     function loadImageFile(file){
       return new Promise((resolve,reject)=>{
@@ -561,7 +618,7 @@
             sourceMode = 'image'; imgLoaded = true;
             baselineRoi = {...roi};
             setRoiScaleUI(100);   // ancho
-            setRoiHeightUI(100);  // alto (nuevo)
+            setRoiHeightUI(100);  // alto
             resolve();
           };
           img.onerror = reject;
@@ -828,7 +885,7 @@
     // ====== Parsers ======
     function parseUSDL(str){
       const CodeToKey = { DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes", DBA:"dateOfExpiry", DCS:"lastName", DAC:"firstName", DAD:"middleName", DBD:"dateOfIssue", DBB:"dateOfBirth", DBC:"sex", DAY:"eyeColor", DAU:"height", DAG:"addressStreet", DAI:"addressCity", DAJ:"addressState", DAK:"addressPostalCode", DAQ:"documentNumber", DCF:"documentDiscriminator", DCG:"issuer", DDE:"lastNameTruncated", DDF:"firstNameTruncated", DDG:"middleNameTruncated", DAZ:"hairColor", DAH:"addressStreet2", DCI:"placeOfBirth", DCJ:"auditInformation", DCK:"inventoryControlNumber", DBN:"otherLastName", DBG:"otherFirstName", DBS:"otherSuffixName", DCU:"nameSuffix", DCE:"weightRange", DCL:"race", DCM:"standardVehicleClassification", DCN:"standardEndorsementCode", DCO:"standardRestrictionCode", DCP:"jurisdictionVehicleClassificationDescription", DCQ:"jurisdictionEndorsementCodeDescription", DCR:"jurisdictionRestrictionCodeDescription", DDA:"complianceType", DDB:"dateCardRevised", DDC:"dateOfExpiryHazmatEndorsement", DDD:"limitedDurationDocumentIndicator", DAW:"weightLb", DAX:"weightKg", DDH:"dateAge18", DDI:"dateAge19", DDJ:"dateAge21", DDK:"organDonor", DDL:"veteran" };
-      const lines = String(str||'').trim().split(/\r?\n/).map(l => l.replace(/[^\t\n\r\x20-\x7E]/g, '').trim());
+      const lines = String(str||'').trim().split(/\r?\n/).map(l => l.replace('[^\t\n\r\x20-\x7E]/g', '').trim());
       const props = {}; let started=false;
       for(let i=0;i<lines.length;i++){
         const line = lines[i];
@@ -877,6 +934,10 @@
       if(running) startCamera();
     });
     $('#btnCaptureCamROI').on('click', captureRoiFromCamera);
+
+    // Carga/descarga manual de modelo (nueva UI, sin cambiar funcionalidad existente)
+    $('#btnLoadModel').on('click', loadModel);
+    $('#btnUnloadModel').on('click', unloadModel);
 
     // Auto-captura toggles
     $('#chkAuto').on('change', function(){ isAuto = !!this.checked; setStatus(isAuto?'Auto-captura ON':'Auto-captura OFF','info'); });
@@ -1106,7 +1167,7 @@
       roi = {x,y,w,h};
     }
 
-    // ====== NUEVO: CONTROLES DE ALTURA (slider) ======
+    // ====== CONTROLES DE ALTURA (slider) ======
     const $rngH = $('#rngRoiHScale');
     const $lblH = $('#lblRoiHScale');
     $('#btnRoiHMinus').on('click', ()=> { setRoiHeightUI(($rngH.val()|0) - 10); });
@@ -1142,7 +1203,6 @@
 
       roi = {x,y,w,h};
     }
-    // ====== FIN NUEVO ======
 
     // Sincronización de sliders desde el ROI actual
     function updateRoiSlidersFromCurrent(){
