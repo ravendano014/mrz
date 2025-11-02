@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Document Scanner — PDF417 & MRZ</title>
+  <title>Document Scanner — PDF417 & MRZ + Cámara</title>
 
   <!-- ZXing (UMD) expone window.ZXing.* para códigos de barras (incluye PDF417) -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
@@ -31,221 +31,76 @@
       --radius:14px;
       --shadow: 0 10px 30px rgba(0,0,0,.35);
     }
-    /* Light theme */
     :root[data-theme="light"]{
-      --bg:#f6f7fb;
-      --panel:#ffffff;
-      --panel-alt:#f7f8fc;
-      --text:#1f2937;
-      --text-dim:#4b5563;
-      --primary:#2563eb;
-      --primary-700:#1e40af;
-      --success:#16a34a;
-      --success-700:#166534;
-      --danger:#dc2626;
-      --danger-700:#991b1b;
-      --muted:#e8ecf7;
-      --border:#e5e7eb;
-      --chip:#eef2ff;
-      --shadow: 0 8px 24px rgba(0,0,0,.08);
+      --bg:#f6f7fb; --panel:#ffffff; --panel-alt:#f7f8fc; --text:#1f2937; --text-dim:#4b5563;
+      --primary:#2563eb; --primary-700:#1e40af; --success:#16a34a; --success-700:#166534; --danger:#dc2626; --danger-700:#991b1b;
+      --muted:#e8ecf7; --border:#e5e7eb; --chip:#eef2ff; --shadow: 0 8px 24px rgba(0,0,0,.08);
     }
 
-    /* ===== BASE ===== */
     *{box-sizing: border-box}
     html, body{height:100%}
     body{
-      margin:0 auto;
-      max-width:1200px;
-      padding:24px;
+      margin:0 auto; max-width:1200px; padding:24px;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-      background:var(--bg);
-      color:var(--text);
-      line-height:1.6;
+      background:var(--bg); color:var(--text); line-height:1.6;
     }
-    h1{
-      margin:0 0 6px 0;
-      font-size: clamp(24px, 2.5vw, 34px);
-      letter-spacing:.2px;
-    }
-    .subtitle{
-      margin:0;
-      color:var(--text-dim);
-      font-size: clamp(13px, 1.6vw, 16px);
-    }
-    .header{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:12px;
-      padding-bottom:18px;
-      margin-bottom:18px;
-      border-bottom:1px solid var(--border);
-    }
+    h1{ margin:0 0 6px 0; font-size: clamp(24px, 2.5vw, 34px); letter-spacing:.2px; }
+    .subtitle{ margin:0; color:var(--text-dim); font-size: clamp(13px, 1.6vw, 16px); }
+    .header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-bottom:18px; margin-bottom:18px; border-bottom:1px solid var(--border); }
 
-    /* ===== CONTROLS ===== */
-    .controls{
-      display:flex;
-      flex-wrap: wrap;
-      gap:12px;
-      margin-bottom:18px;
-      align-items:center;
-    }
-    .btn{
-      appearance:none;
-      border:1px solid transparent;
-      border-radius:10px;
-      padding:10px 14px;
-      font-weight:600;
-      cursor:pointer;
-      transition: .15s ease-in-out;
-      box-shadow:none;
-      background:var(--primary);
-      color:white;
-    }
+    .controls{ display:flex; flex-wrap: wrap; gap:12px; margin-bottom:18px; align-items:center; }
+    .btn{ appearance:none; border:1px solid transparent; border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer; transition:.15s; background:var(--primary); color:white; }
     .btn:hover{ background:var(--primary-700) }
     .btn:disabled{ opacity:.6; cursor:not-allowed }
-    .btn.success{ background:var(--success) }
-    .btn.success:hover{ background:var(--success-700) }
-    .btn.danger{ background:var(--danger) }
-    .btn.danger:hover{ background:var(--danger-700) }
-    .btn.ghost{
-      background:transparent;
-      border-color:var(--border);
-      color:var(--text);
-    }
+    .btn.success{ background:var(--success) } .btn.success:hover{ background:var(--success-700) }
+    .btn.danger{ background:var(--danger) } .btn.danger:hover{ background:var(--danger-700) }
+    .btn.ghost{ background:transparent; border-color:var(--border); color:var(--text); }
     .btn.ghost:hover{ background:var(--panel-alt) }
+    .chip{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:var(--chip); border:1px solid var(--border); color:var(--text-dim); font-size:12px; font-weight:600; }
+    input[type="file"]{ padding:8px; background:var(--panel); border:1px dashed var(--border); border-radius:10px; color:var(--text-dim); max-width: 320px; }
 
-    .chip{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:6px 10px; border-radius:999px;
-      background:var(--chip); border:1px solid var(--border);
-      color:var(--text-dim); font-size:12px; font-weight:600;
-    }
-    input[type="file"]{
-      padding:8px;
-      background:var(--panel);
-      border:1px dashed var(--border);
-      border-radius:10px;
-      color:var(--text-dim);
-      max-width: 320px;
-    }
+    .image-wrap{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px; box-shadow: var(--shadow); margin-bottom:18px; }
+    .image-title{ display:flex; align-items:center; gap:10px; font-weight:700; margin-bottom:12px; color:var(--text-dim); }
+    #preview{ display:block; max-width:100%; max-height:320px; width:auto; height:auto; border-radius:10px; border:1px solid var(--border); background: var(--panel-alt); object-fit: contain; }
 
-    /* ===== LAYOUT ===== */
-    .image-wrap{
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:16px;
-      box-shadow: var(--shadow);
-      margin-bottom:18px;
-    }
-    .image-title{
-      display:flex; align-items:center; gap:10px;
-      font-weight:700; margin-bottom:12px; color:var(--text-dim);
-    }
-    #preview{
-      display:block;
-      max-width:100%;
-      max-height:320px;
-      width:auto; height:auto;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background: var(--panel-alt);
-      object-fit: contain;
-    }
+    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; }
+    @media (max-width: 860px){ .grid{ grid-template-columns: 1fr } }
 
-    .grid{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:18px;
-    }
-    @media (max-width: 860px){
-      .grid{ grid-template-columns: 1fr }
-    }
+    .panel{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px; box-shadow: var(--shadow); min-height: 420px; display:flex; flex-direction:column; }
+    .panel h3{ margin:0 0 12px 0; font-size:18px; color:var(--text); }
+    .muted{ color:var(--text-dim); font-size:13px; }
 
-    .panel{
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:16px;
-      box-shadow: var(--shadow);
-      min-height: 420px;
-      display:flex; flex-direction:column;
-    }
-    .panel h3{
-      margin:0 0 12px 0;
-      font-size:18px;
-      color:var(--text);
-    }
-    .muted{
-      color:var(--text-dim);
-      font-size:13px;
-    }
+    .scroll-wrap{ position: relative; overflow: auto; border-radius:10px; border:1px solid var(--border); background:var(--panel-alt); flex:1; max-height: 300px; }
 
-    /* ===== RESULT WRAPPERS (Scroll) ===== */
-    .scroll-wrap{
-      position: relative;
-      overflow: auto;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background:var(--panel-alt);
-      flex:1;
-      max-height: 300px;
-    }
+    table.result-table{ width: max-content; border-collapse: collapse; font-size:14px; }
+    .result-table thead th{ position: sticky; top: 0; background: var(--panel); z-index: 1; color:var(--text-dim); font-weight:700; border-bottom:1px solid var(--border); }
+    .result-table th, .result-table td{ padding:8px 10px; text-align:left; white-space: nowrap; border-bottom:1px dashed var(--border); }
+    .result-table tbody tr:nth-child(odd){ background: rgba(255,255,255,.02); }
 
-    /* ===== TABLAS ===== */
-    table.result-table{
-      width: max-content;         /* Mantén el ancho natural de columnas */
-      border-collapse: collapse;
-      font-size:14px;
-    }
-    .result-table thead th{
-      position: sticky; top: 0;
-      background: var(--panel);
-      z-index: 1;
-      color:var(--text-dim); font-weight:700;
-      border-bottom:1px solid var(--border);
-    }
-    .result-table th, .result-table td{
-      padding:8px 10px; text-align:left;
-      white-space: nowrap;        /* No envolver: conserva ancho "original" */
-      border-bottom:1px dashed var(--border);
-    }
-    .result-table tbody tr:nth-child(odd){
-      background: rgba(255,255,255,.02);
-    }
-
-    .ok{ color: var(--success); font-weight:700 }
-    .fail{ color: var(--danger); font-weight:700 }
-
-    .status, .meta, .summary{
-      display:flex; gap:10px; align-items:center;
-      margin:10px 0; padding:10px 12px;
-      border-radius:10px; background:var(--panel-alt);
-      border:1px solid var(--border);
-      color:var(--text-dim);
-      font-size:13px;
-    }
+    .ok{ color: var(--success); font-weight:700 } .fail{ color: var(--danger); font-weight:700 }
+    .status, .meta, .summary{ display:flex; gap:10px; align-items:center; margin:10px 0; padding:10px 12px; border-radius:10px; background:var(--panel-alt); border:1px solid var(--border); color:var(--text-dim); font-size:13px; }
     .status progress{ flex:1; height:10px }
     .hidden{ display:none }
-
     .spacer{ flex:1 }
+    .kbd{ font-family: var(--mono); font-size:12px; padding:2px 6px; border-radius:6px; border:1px solid var(--border); background:var(--panel-alt); color:var(--text-dim); }
 
-    .kbd{
-      font-family: var(--mono);
-      font-size:12px;
-      padding:2px 6px; border-radius:6px;
-      border:1px solid var(--border);
-      background:var(--panel-alt);
-      color:var(--text-dim);
-    }
+    /* ====== Cámara ====== */
+    .camera-wrap{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px; box-shadow: var(--shadow); margin-bottom:18px; }
+    .video-stage{ position:relative; width:100%; max-height:420px; overflow:hidden; background:var(--panel-alt); border:1px solid var(--border); border-radius:10px; }
+    video#camera{ display:block; width:100%; height:auto; transform-origin:center center; }
+    .roi{ position:absolute; border:2px dashed var(--primary); background:rgba(59,130,246,.08); border-radius:8px; cursor:move; }
+    .handle{ position:absolute; width:14px; height:14px; border-radius:50%; background:var(--primary); border:2px solid white; }
+    .handle.br{ right:-8px; bottom:-8px; cursor:nwse-resize; }
+    .handle.tr{ right:-8px; top:-8px; cursor:nesw-resize; }
+    .handle.bl{ left:-8px; bottom:-8px; cursor:nesw-resize; }
+    .handle.tl{ left:-8px; top:-8px; cursor:nwse-resize; }
   </style>
 </head>
 <body>
   <header class="header">
     <div>
       <h1>Document Scanner</h1>
-      <p class="subtitle">Extrae datos de <b>PDF417</b> y texto <b>MRZ</b> de documentos</p>
+      <p class="subtitle">Extrae datos de <b>PDF417</b> y texto <b>MRZ</b> de documentos — ahora con <b>vista previa desde cámara</b></p>
     </div>
     <div class="controls" style="margin:0">
       <span class="chip" id="themeChip">Tema</span>
@@ -253,6 +108,35 @@
     </div>
   </header>
 
+  <!-- ====== Controles de Cámara ====== -->
+  <section class="camera-wrap">
+    <div class="controls" style="margin-bottom:10px">
+      <button id="camStart" class="btn success">Iniciar cámara</button>
+      <button id="camStop" class="btn danger" disabled>Detener</button>
+      <button id="camSwitch" class="btn ghost" disabled>Cambiar cámara</button>
+      <select id="camSelect" class="btn ghost" style="min-width:220px" title="Seleccionar cámara" disabled></select>
+      <span class="spacer"></span>
+      <button id="zoom100" class="btn ghost" disabled>Zoom 100%</button>
+      <button id="zoom150" class="btn ghost" disabled>Zoom 150%</button>
+      <button id="zoom250" class="btn ghost" disabled>Zoom 250%</button>
+      <button id="torchBtn" class="btn ghost" disabled>🔦 Lámpara</button>
+      <button id="captureBtn" class="btn" disabled>📸 Capturar a Vista Previa</button>
+    </div>
+
+    <div class="video-stage" id="videoStage">
+      <video id="camera" playsinline muted></video>
+      <!-- ROI inicial centrado -->
+      <div id="roi" class="roi" style="left:20%; top:15%; width:60%; height:60%">
+        <div class="handle tl"></div>
+        <div class="handle tr"></div>
+        <div class="handle bl"></div>
+        <div class="handle br"></div>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:10px">Consejo: Ajusta el <b>ROI</b> (arrastrar o redimensionar) y usa <b>Capturar a Vista Previa</b> para enviar el recorte a la sección de imagen y luego decodificar.</p>
+  </section>
+
+  <!-- ====== Carga / Vista previa de imagen ====== -->
   <section class="controls">
     <input type="file" id="file" accept="image/*"/>
     <button id="decodeBtn" class="btn success">Decodificar documento</button>
@@ -312,17 +196,38 @@
     const resultTable = $('#resultTable');
     const themeToggle = $('#themeToggle');
 
-    // New elements for DUI auto-parse
+    // DUI copy
     const pdf417Summary = $('#pdf417Summary');
     const pdf417Table = $('#pdf417Table');
     const copyDuiJson = $('#copyDuiJson');
     const copyRawText = $('#copyRawText');
+
+    // Cámara DOM
+    const camStart = $('#camStart');
+    const camStop = $('#camStop');
+    const camSwitch = $('#camSwitch');
+    const camSelect = $('#camSelect');
+    const cameraEl = $('#camera');
+    const videoStage = $('#videoStage');
+    const roiEl = $('#roi');
+    const zoom100 = $('#zoom100');
+    const zoom150 = $('#zoom150');
+    const zoom250 = $('#zoom250');
+    const torchBtn = $('#torchBtn');
+    const captureBtn = $('#captureBtn');
 
     let currentImageBlob = null;
     let currentParsedData = null;
     let currentDuiJSON = null;
     let currentDuiRawText = null;
     let isProcessing = false;
+
+    // Cámara state
+    let stream = null;
+    let currentDeviceId = null;
+    let deviceList = [];
+    let currentScale = 1;
+    let torchOn = false;
 
     // ========= Tema (Dark/Light) =========
     const getPreferredTheme = () => {
@@ -341,7 +246,7 @@
       applyTheme(next);
     });
 
-    // ========= Arrastrar & soltar =========
+    // ========= Drag & drop =========
     ['dragenter','dragover'].forEach(evt =>
       document.addEventListener(evt, e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; })
     );
@@ -384,8 +289,6 @@
         setTimeout(()=>copyJson.textContent='Copiar JSON', 1100);
       }catch(err){ console.error(err); }
     });
-
-    // New copy buttons for DUI
     copyDuiJson.addEventListener('click', async () => {
       if (!currentDuiJSON) return;
       try{
@@ -407,13 +310,14 @@
     decodeBtn.addEventListener('click', async () => {
       if (isProcessing) return;
       if (!currentImageBlob && !preview.src){
-        alert('Primero selecciona una imagen.');
+        alert('Primero selecciona una imagen o captura desde la cámara.');
         return;
       }
       isProcessing = true;
       decodeBtn.disabled = true;
-      resetResults();
       try{
+        resetResults();
+        await ensureImageLoaded(preview);
         await processPDF417();
         await processMRZ();
       }catch(err){
@@ -424,31 +328,218 @@
       }
     });
 
+    // ========= Cámara: helpers =========
+    async function listCameras(){
+      try{
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        deviceList = devices.filter(d=>d.kind==='videoinput');
+        camSelect.innerHTML = '';
+        deviceList.forEach((d,i)=>{
+          const opt = document.createElement('option');
+          opt.value = d.deviceId; opt.textContent = d.label || `Cámara ${i+1}`;
+          camSelect.appendChild(opt);
+        });
+        camSelect.disabled = deviceList.length === 0;
+        camSwitch.disabled = deviceList.length <= 1;
+      }catch(e){ console.warn('enumerateDevices:', e); }
+    }
+
+    function enableCamUI(enabled){
+      camStop.disabled = !enabled;
+      camSwitch.disabled = !enabled || deviceList.length<=1;
+      camSelect.disabled = !enabled || deviceList.length===0;
+      zoom100.disabled = zoom150.disabled = zoom250.disabled = !enabled;
+      torchBtn.disabled = !enabled;
+      captureBtn.disabled = !enabled;
+    }
+
+    async function startCamera(){
+      try{
+        if (stream) stopCamera();
+        // Preferir trasera en móviles si no hay selección
+        const facing = currentDeviceId ? undefined : { ideal: 'environment' };
+        const constraints = {
+          video: {
+            deviceId: currentDeviceId ? { exact: currentDeviceId } : undefined,
+            facingMode: facing,
+            width: { ideal: 1920 },
+            height:{ ideal: 1080 }
+          },
+          audio: false
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        cameraEl.srcObject = stream;
+        await cameraEl.play();
+        await listCameras();
+        // Seleccionar en el combo la activa
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        currentDeviceId = settings.deviceId || currentDeviceId;
+        if (currentDeviceId){ camSelect.value = currentDeviceId; }
+        enableCamUI(true);
+        setZoom(1);
+      }catch(e){
+        console.error('startCamera:', e);
+        alert('No se pudo iniciar la cámara: ' + (e.message||e));
+      }
+    }
+
+    function stopCamera(){
+      if (stream){
+        stream.getTracks().forEach(t=>t.stop());
+        stream = null;
+      }
+      cameraEl.srcObject = null;
+      enableCamUI(false);
+      torchOn = false;
+    }
+
+    async function switchCamera(){
+      if (!deviceList.length) return;
+      const idx = deviceList.findIndex(d=>d.deviceId===currentDeviceId);
+      const nextIdx = (idx + 1) % deviceList.length;
+      currentDeviceId = deviceList[nextIdx].deviceId;
+      await startCamera();
+    }
+
+    function setZoom(scale){
+      currentScale = scale;
+      cameraEl.style.transform = `scale(${scale})`;
+    }
+
+    async function toggleTorch(){
+      try{
+        if (!stream) return;
+        const track = stream.getVideoTracks()[0];
+        const caps = track.getCapabilities?.();
+        if (!caps || !caps.torch){
+          alert('La linterna no está soportada por esta cámara/navegador.');
+          return;
+        }
+        torchOn = !torchOn;
+        await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+        torchBtn.textContent = torchOn ? '🔦 Lámpara (ON)' : '🔦 Lámpara';
+      }catch(e){
+        console.warn('torch:', e);
+        alert('No se pudo cambiar la linterna: ' + (e.message||e));
+      }
+    }
+
+    function getRoiRect(){
+      const stageRect = videoStage.getBoundingClientRect();
+      const roiRect = roiEl.getBoundingClientRect();
+      const x = roiRect.left - stageRect.left;
+      const y = roiRect.top - stageRect.top;
+      return { x, y, w: roiRect.width, h: roiRect.height, stageRect };
+    }
+
+    async function captureToPreview(){
+      if (!stream) return;
+      const video = cameraEl;
+      // Tamaño real del frame del video
+      const vw = video.videoWidth; const vh = video.videoHeight;
+      if (!vw || !vh){ alert('La cámara aún no está lista.'); return; }
+
+      // Relación entre el tamaño mostrado y el tamaño real
+      const stage = videoStage.getBoundingClientRect();
+      const vidRect = video.getBoundingClientRect();
+      const scaleX = vw / vidRect.width;
+      const scaleY = vh / vidRect.height;
+
+      // ROI relativo al stage
+      const { x, y, w, h } = getRoiRect();
+      // Convertir ROI mostrado -> coordenadas en video
+      const sx = (x - (vidRect.left - stage.left)) * scaleX;
+      const sy = (y - (vidRect.top - stage.top)) * scaleY;
+      const sw = w * scaleX;
+      const sh = h * scaleY;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.min(vw, sw|0));
+      canvas.height = Math.max(1, Math.min(vh, sh|0));
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      const dataURL = canvas.toDataURL('image/png');
+      preview.src = dataURL;
+      currentImageBlob = null; // usamos el dataURL
+      resetResults();
+    }
+
+    // ====== ROI: mover / redimensionar ======
+    let dragging = false, resizing = false, handleType = null, startX=0, startY=0, startRect=null;
+
+    roiEl.addEventListener('pointerdown', (e)=>{
+      const target = e.target;
+      if (target.classList.contains('handle')){
+        resizing = true; dragging = false;
+        handleType = [...target.classList].find(c=>['tl','tr','bl','br'].includes(c));
+      } else {
+        dragging = true; resizing = false; handleType = null;
+      }
+      startX = e.clientX; startY = e.clientY;
+      const r = roiEl.getBoundingClientRect();
+      const s = videoStage.getBoundingClientRect();
+      startRect = { left:r.left - s.left, top:r.top - s.top, width:r.width, height:r.height };
+      roiEl.setPointerCapture(e.pointerId);
+    });
+
+    roiEl.addEventListener('pointermove', (e)=>{
+      if (!dragging && !resizing) return;
+      const dx = e.clientX - startX; const dy = e.clientY - startY;
+      let { left, top, width, height } = startRect;
+      const stageW = videoStage.clientWidth, stageH = videoStage.clientHeight;
+
+      if (dragging){
+        left = Math.min(Math.max(0, left + dx), stageW - width);
+        top  = Math.min(Math.max(0, top  + dy), stageH - height);
+      }
+      if (resizing){
+        if (handleType==='br'){ width += dx; height += dy; }
+        if (handleType==='tr'){ width += dx; height -= dy; top += dy; }
+        if (handleType==='bl'){ width -= dx; left += dx; height += dy; }
+        if (handleType==='tl'){ width -= dx; left += dx; height -= dy; top += dy; }
+        width = Math.min(Math.max(40, width), stageW - left);
+        height= Math.min(Math.max(40, height), stageH - top);
+      }
+      roiEl.style.left = left + 'px';
+      roiEl.style.top  = top  + 'px';
+      roiEl.style.width= width+ 'px';
+      roiEl.style.height=height+ 'px';
+    });
+
+    roiEl.addEventListener('pointerup', (e)=>{ dragging = resizing = false; handleType=null; roiEl.releasePointerCapture(e.pointerId); });
+
+    // ========= Eventos de cámara =========
+    camStart.addEventListener('click', async ()=>{
+      await startCamera();
+    });
+    camStop.addEventListener('click', ()=>{ stopCamera(); });
+    camSwitch.addEventListener('click', async ()=>{ await switchCamera(); });
+    camSelect.addEventListener('change', async (e)=>{ currentDeviceId = e.target.value || null; await startCamera(); });
+    zoom100.addEventListener('click', ()=> setZoom(1));
+    zoom150.addEventListener('click', ()=> setZoom(1.5));
+    zoom250.addEventListener('click', ()=> setZoom(2.5));
+    torchBtn.addEventListener('click', ()=> toggleTorch());
+    captureBtn.addEventListener('click', ()=> captureToPreview());
+
     // ========= PDF417 con @zxing/library (UMD) =========
     async function processPDF417(){
       pdf417Error.classList.add('hidden');
       try{
-        // Asegúrate de que la imagen esté cargada completamente
         await ensureImageLoaded(preview);
-
-        // 1) Intento directo con el lector de alto nivel
         const reader = new ZXing.BrowserPDF417Reader();
         let result = null;
         try{
           result = await reader.decodeFromImageElement(preview);
         }catch(e1){
-          // 2) Fallback: dibujar en canvas (por si el elemento <img> no está en el DOM visible)
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           canvas.width = preview.naturalWidth || preview.width;
           canvas.height = preview.naturalHeight || preview.height;
           if (!canvas.width || !canvas.height) throw e1;
-
           ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
           result = await reader.decodeFromCanvas(canvas);
         }
-
-        // Extraer texto y parsear formato DUI
         tryAutoParseDUIFromPDF417(result);
       }catch(err){
         pdf417Error.classList.remove('hidden');
@@ -469,22 +560,17 @@
     function tryAutoParseDUIFromPDF417(resultObj){
       const rawText = extractRawTextFromPdf417(resultObj);
       currentDuiRawText = rawText || null;
-
       if (!rawText){
         pdf417Summary.classList.add('hidden');
         pdf417Table.innerHTML = '<p class="muted">No se encontró Texto crudo del PDF417 para parsear.</p>';
-        currentDuiJSON = null;
-        return;
+        currentDuiJSON = null; return;
       }
-
       const parsed = parseDUIFromRaw(rawText);
       if (!parsed){
         pdf417Summary.classList.add('hidden');
         pdf417Table.innerHTML = '<p class="muted">El Texto crudo no coincide con el formato esperado (separado por <code>||</code>).</p>';
-        currentDuiJSON = null;
-        return;
+        currentDuiJSON = null; return;
       }
-
       currentDuiJSON = parsed.toJSON;
       pdf417Summary.classList.remove('hidden');
       pdf417Summary.innerHTML = "<strong>Resultados</strong> — <span class='ok'>DUI (PDF417 imagen) parseado.</span>";
@@ -492,42 +578,21 @@
     }
 
     function extractRawTextFromPdf417(obj){
-      // Soporta:
-      // - ZXing Result (UMD) con getText()
-      // - objetos con .text / .rawText
-      // - cadenas JSON serializadas o arreglos de resultados
       try{
         if (!obj) return null;
-
         if (typeof obj.getText === 'function'){
           const t = obj.getText();
           if (t && typeof t === 'string' && t.trim()) return t.trim();
         }
         if (typeof obj === 'string'){
-          try { obj = JSON.parse(obj); } catch(e){
-            // Si es una cadena que YA es el texto crudo con ||
-            if (obj.includes('||')) return obj.trim();
-            return null;
-          }
+          try { obj = JSON.parse(obj); } catch(e){ if (obj.includes('||')) return obj.trim(); return null; }
         }
         if (Array.isArray(obj)){
-          for (const it of obj){
-            const t = extractRawTextFromPdf417(it);
-            if (t) return t;
-          }
+          for (const it of obj){ const t = extractRawTextFromPdf417(it); if (t) return t; }
         }
-        const candidates = [
-          obj?.text, obj?.Text, obj?.rawText, obj?.RawText,
-          obj?.result?.text, obj?.result?.Text, obj?.result?.rawText,
-          obj?.[0]?.text, obj?.[0]?.Text, obj?.[0]?.rawText
-        ];
-        for (const c of candidates){
-          if (typeof c === 'string' && c.trim()) return c.trim();
-        }
-        for (const k of Object.keys(obj)){
-          const v = obj[k];
-          if (typeof v === 'string' && v.includes('||')) return v.trim();
-        }
+        const candidates = [ obj?.text, obj?.Text, obj?.rawText, obj?.RawText, obj?.result?.text, obj?.result?.rawText, obj?.[0]?.text, obj?.[0]?.rawText ];
+        for (const c of candidates){ if (typeof c === 'string' && c.trim()) return c.trim(); }
+        for (const k of Object.keys(obj)){ const v = obj[k]; if (typeof v === 'string' && v.includes('||')) return v.trim(); }
       }catch(e){ console.warn('extractRawTextFromPdf417 error:', e); }
       return null;
     }
@@ -536,35 +601,11 @@
       if (!raw || typeof raw !== 'string') return null;
       const parts = raw.split('||');
       if (parts.length < 17) return null;
-
       const FIELDS = [
-        'Número de DUI',
-        'Primer Apellido',
-        'Segundo Apellido y Nombres',
-        'Número de Emisión',
-        'Firma Digital',
-        'Lugar de Nacimiento',
-        'Municipio',
-        'Profesión u Oficio',
-        'Sexo',
-        'Fecha de Nacimiento',
-        'Fecha de Emisión',
-        'Código de Zona',
-        'Categoría',
-        'Estdo Familiar',
-        'Nacionalidad',
-        'Segunda Firma Digital',
-        'Código de Verificación'
+        'Número de DUI','Primer Apellido','Segundo Apellido y Nombres','Número de Emisión','Firma Digital','Lugar de Nacimiento','Municipio','Profesión u Oficio','Sexo','Fecha de Nacimiento','Fecha de Emisión','Código de Zona','Categoría','Estdo Familiar','Nacionalidad','Segunda Firma Digital','Código de Verificación'
       ];
-
-      const obj = {};
-      FIELDS.forEach((name, idx)=>{ obj[name] = (parts[idx] ?? '').trim(); });
-
-      return {
-        fields: obj,
-        toJSON: obj,
-        raw
-      };
+      const obj = {}; FIELDS.forEach((name, idx)=>{ obj[name] = (parts[idx] ?? '').trim(); });
+      return { fields: obj, toJSON: obj, raw };
     }
 
     function renderKVTable(obj){
@@ -584,40 +625,24 @@
       statusEl.classList.remove('hidden');
       statusText.textContent = 'Cargando modelo…';
       prog.value = 0;
-
       try{
         const result = await Tesseract.recognize(
           currentImageBlob || preview.src,
           'eng',
-          {
-            logger: m => {
-              if (m.status) statusText.textContent = m.status;
-              if (m.progress != null) prog.value = m.progress;
-            },
-            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
-          }
+          { logger: m => { if (m.status) statusText.textContent = m.status; if (m.progress != null) prog.value = m.progress; }, tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<' }
         );
-
         statusText.textContent = 'Analizando texto…';
         const raw = (result.data?.text || '').replace(/\u0000/g,'');
         const cleaned = normalizeOCR(raw);
         const block = findMRZBlock(cleaned);
-
         metaEl.classList.remove('hidden');
-        metaEl.innerHTML = toKV({
-          'Confianza OCR': (result.data?.confidence != null) ? result.data.confidence.toFixed(1)+'%' : '—',
-          'Tipo MRZ detectado': block?.type || 'Indeterminado',
-          'Líneas MRZ crudas': block ? block.lines.join(' | ') : '—'
-        });
-
+        metaEl.innerHTML = toKV({ 'Confianza OCR': (result.data?.confidence != null) ? result.data.confidence.toFixed(1)+'%' : '—', 'Tipo MRZ detectado': block?.type || 'Indeterminado', 'Líneas MRZ crudas': block ? block.lines.join(' | ') : '—' });
         let parsed = {};
         if (block?.type === 'TD3-2x44') parsed = parseTD3(block.lines);
         else if (block?.type === 'TD1-3x30') parsed = parseTD1(block.lines);
         else if (block?.type === 'TD2-2x36') parsed = parseTD2(block.lines);
-
         currentParsedData = generateFormattedJSON(parsed, block);
         displayResultsInTable(parsed, block?.type);
-
         statusText.textContent = 'Listo';
       }catch(err){
         statusText.textContent = 'Error';
@@ -628,32 +653,14 @@
     }
 
     // ========= Utilidades =========
-    function toKV(obj){
-      return Object.entries(obj).map(([k,v])=> `<div><b>${escapeHtml(k)}</b></div><div>${escapeHtml(String(v))}</div>`).join('');
-    }
-    function escapeHtml(s){
-      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
-    }
-
+    function toKV(obj){ return Object.entries(obj).map(([k,v])=> `<div><b>${escapeHtml(k)}</b></div><div>${escapeHtml(String(v))}</div>`).join(''); }
+    function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
     const MRZ_CHARS = /^[A-Z0-9<]+$/;
-    function normalizeOCR(text){
-      return text
-        .replace(/[\u2014\u2013\-]/g,'-')
-        .replace(/[\u00D8]/g,'O')
-        .replace(/[\u00A0\t]+/g,' ')
-        .replace(/[\r]+/g,'\n')
-        .split('\n')
-        .map(l=>l.trim().toUpperCase())
-        .join('\n');
-    }
+    function normalizeOCR(text){ return text.replace(/[\u2014\u2013\-]/g,'-').replace(/[\u00D8]/g,'O').replace(/[\u00A0\t]+/g,' ').replace(/[\r]+/g,'\n').split('\n').map(l=>l.trim().toUpperCase()).join('\n'); }
     function padTo(s,n){ return (s + '<'.repeat(Math.max(0, n - s.length))).slice(0,n) }
-    function looksLikeMRZLine(s){
-      const t = s.replace(/\s+/g,'');
-      return t.length >= 28 && MRZ_CHARS.test(t);
-    }
+    function looksLikeMRZLine(s){ const t = s.replace(/\s+/g,''); return t.length >= 28 && MRZ_CHARS.test(t); }
     function findMRZBlock(cleaned){
-      const lines = cleaned.split(/\n+/).map(l=>l.replace(/\s+/g,''))
-        .filter(l => l.length >= 20 && /[A-Z0-9]/.test(l));
+      const lines = cleaned.split(/\n+/).map(l=>l.replace(/\s+/g,'')).filter(l => l.length >= 20 && /[A-Z0-9]/.test(l));
       if (!lines.length) return null;
       const candidates = [];
       for (let i=0;i<lines.length;i++){
@@ -673,245 +680,35 @@
       }
       if (!candidates.length) return null;
       candidates.sort((x,y)=> y.score - x.score);
-      const best = candidates[0];
-      return best;
+      return candidates[0];
     }
-    function scoreBlock(lines, targetLen){
-      let s=0;
-      for (const l of lines){
-        const len = l.length;
-        const near = 1 - Math.min(1, Math.abs(targetLen - len)/targetLen);
-        const charset = MRZ_CHARS.test(l) ? 1 : 0;
-        s += (near*.7 + charset*.3);
-      }
-      return s/lines.length;
-    }
-    function valOf(ch){
-      if (ch === '<') return 0;
-      if (ch >= '0' && ch <= '9') return ch.charCodeAt(0) - 48;
-      if (ch >= 'A' && ch <= 'Z') return ch.charCodeAt(0) - 55;
-      return 0;
-    }
-    function mrzCheck(str){
-      const w=[7,3,1]; let sum=0;
-      for (let i=0;i<str.length;i++) sum += valOf(str[i]) * w[i%3];
-      return String(sum % 10);
-    }
+    function scoreBlock(lines, targetLen){ let s=0; for (const l of lines){ const len = l.length; const near = 1 - Math.min(1, Math.abs(targetLen - len)/targetLen); const charset = MRZ_CHARS.test(l) ? 1 : 0; s += (near*.7 + charset*.3);} return s/lines.length; }
+    function valOf(ch){ if (ch === '<') return 0; if (ch >= '0' && ch <= '9') return ch.charCodeAt(0) - 48; if (ch >= 'A' && ch <= 'Z') return ch.charCodeAt(0) - 55; return 0; }
+    function mrzCheck(str){ const w=[7,3,1]; let sum=0; for (let i=0;i<str.length;i++) sum += valOf(str[i]) * w[i%3]; return String(sum % 10); }
     function tidy(s){ return s.replace(/<+/g,' ').trim().replace(/\s+/g,' ') }
-    function yymmddToISO(s){
-      if (!/^[0-9]{6}$/.test(s)) return null;
-      const yy = parseInt(s.slice(0,2),10);
-      const mm = parseInt(s.slice(2,4),10);
-      const dd = parseInt(s.slice(4,6),10);
-      const yyyy = (yy >= 50 ? 1900 + yy : 2000 + yy);
-      if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-      return `${String(yyyy).padStart(4,'0')}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
-    }
+    function yymmddToISO(s){ if (!/^[0-9]{6}$/.test(s)) return null; const yy = parseInt(s.slice(0,2),10); const mm = parseInt(s.slice(2,4),10); const dd = parseInt(s.slice(4,6),10); const yyyy = (yy >= 50 ? 1900 + yy : 2000 + yy); if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null; return `${String(yyyy).padStart(4,'0')}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`; }
 
-    function parseTD3(lines){
-      if (!lines || lines.length !== 2) return {};
-      const L1 = padTo(lines[0],44);
-      const L2 = padTo(lines[1],44);
-      const docType = L1.slice(0,2).replace('<','');
-      const issuing = L1.slice(2,5);
-      const nameRaw = L1.slice(5);
-      const [surname, givenAndMore] = nameRaw.split('<<');
-      const given = (givenAndMore || '').replace(/<+/g,' ').trim();
-      const passportNumber = L2.slice(0,9);
-      const passportCheck = L2[9];
-      const nationality = L2.slice(10,13);
-      const birthYYMMDD = L2.slice(13,19);
-      const birthCheck = L2[19];
-      const sex = L2[20];
-      const expYYMMDD = L2.slice(21,27);
-      const expCheck = L2[27];
-      const optData = L2.slice(28,42);
-      const finalCheck = L2[43];
-      const composite = passportNumber + passportCheck + nationality + birthYYMMDD + birthCheck + sex + expYYMMDD + expCheck + optData;
-      return {
-        format:'TD3-2x44 (Passport)',
-        documentType:docType,
-        issuingCountry:issuing,
-        surname: tidy(surname||''),
-        givenNames: tidy(given||''),
-        documentNumber: passportNumber,
-        documentNumberCheck: passportCheck,
-        nationality,
-        birthDate: yymmddToISO(birthYYMMDD),
-        birthCheck,
-        sex: (sex==='M'||sex==='F')?sex:sex,
-        expiryDate: yymmddToISO(expYYMMDD),
-        expiryCheck: expCheck,
-        optionalData: optData.replace(/<+$/,''),
-        compositeCheck: finalCheck,
-        checks:{
-          documentNumber: mrzCheck(passportNumber) === passportCheck,
-          birthDate: mrzCheck(birthYYMMDD) === birthCheck,
-          expiryDate: mrzCheck(expYYMMDD) === expCheck,
-          composite: mrzCheck(composite) === finalCheck
-        }
-      };
-    }
-    function parseTD1(lines){
-      if (!lines || lines.length !== 3) return {};
-      const A = padTo(lines[0],30);
-      const B = padTo(lines[1],30);
-      const C = padTo(lines[2],30);
-      const docType = A.slice(0,1);
-      const issuing = A.slice(2,5);
-      const docNum = A.slice(5,14).replace(/<+$/,'');
-      const docCheck = A[14];
-      const opt1 = A.slice(15,30);
-      const birthYYMMDD = B.slice(0,6);
-      const birthCheck = B[6];
-      const sex = B[7];
-      const expYYMMDD = B.slice(8,14);
-      const expCheck = B[14];
-      const nationality = B.slice(15,18);
-      const opt2 = B.slice(18,29);
-      const opt2Check = B[29];
-      const [surname, givenRest] = C.split('<<');
-      return {
-        format:'TD1-3x30 (ID)',
-        documentType:docType,
-        issuingCountry:issuing,
-        documentNumber:docNum,
-        documentNumberCheck:docCheck,
-        nationality,
-        birthDate:yymmddToISO(birthYYMMDD),
-        birthCheck,
-        sex:(sex==='M'||sex==='F')?sex:sex,
-        expiryDate:yymmddToISO(expYYMMDD),
-        expiryCheck:expCheck,
-        optionalData:(opt1+opt2).replace(/<+$/,''),
-        optionalCheck:opt2Check,
-        surname: tidy(surname||''),
-        givenNames: tidy((givenRest||'').replace(/<+/g,' ')),
-        checks:{
-          documentNumber: mrzCheck(docNum) === docCheck,
-          birthDate: mrzCheck(birthYYMMDD) === birthCheck,
-          expiryDate: mrzCheck(expYYMMDD) === expCheck
-        }
-      };
-    }
-    function parseTD2(lines){
-      if (!lines || lines.length !== 2) return {};
-      const A = padTo(lines[0],36);
-      const B = padTo(lines[1],36);
-      const docType = A.slice(0,2).replace('<','');
-      const issuing = A.slice(2,5);
-      const namesRaw = A.slice(5);
-      const [surname, givenRest] = namesRaw.split('<<');
-      const docNum = B.slice(0,9);
-      const docCheck = B[9];
-      const nationality = B.slice(10,13);
-      const birthYYMMDD = B.slice(13,19);
-      const birthCheck = B[19];
-      const sex = B[20];
-      const expYYMMDD = B.slice(21,27);
-      const expCheck = B[27];
-      const opt = B.slice(28,35);
-      const finalCheck = B[35];
-      const composite = docNum + docCheck + nationality + birthYYMMDD + birthCheck + sex + expYYMMDD + expCheck + opt;
-      return {
-        format:'TD2-2x36 (Travel Document)',
-        documentType:docType,
-        issuingCountry:issuing,
-        surname: tidy(surname||''),
-        givenNames: tidy((givenRest||'').replace(/<+/g,' ')),
-        documentNumber:docNum,
-        documentNumberCheck:docCheck,
-        nationality,
-        birthDate:yymmddToISO(birthYYMMDD),
-        birthCheck,
-        sex:(sex==='M'||sex==='F')?sex:sex,
-        expiryDate:yymmddToISO(expYYMMDD),
-        expiryCheck:expCheck,
-        optionalData: opt.replace(/<+$/,''),
-        compositeCheck: finalCheck,
-        checks:{
-          documentNumber: mrzCheck(docNum) === docCheck,
-          birthDate: mrzCheck(birthYYMMDD) === birthCheck,
-          expiryDate: mrzCheck(expYYMMDD) === expCheck,
-          composite: mrzCheck(composite) === finalCheck
-        }
-      };
-    }
+    function parseTD3(lines){ if (!lines || lines.length !== 2) return {}; const L1 = padTo(lines[0],44); const L2 = padTo(lines[1],44); const docType = L1.slice(0,2).replace('<',''); const issuing = L1.slice(2,5); const nameRaw = L1.slice(5); const [surname, givenAndMore] = nameRaw.split('<<'); const given = (givenAndMore || '').replace(/<+/g,' ').trim(); const passportNumber = L2.slice(0,9); const passportCheck = L2[9]; const nationality = L2.slice(10,13); const birthYYMMDD = L2.slice(13,19); const birthCheck = L2[19]; const sex = L2[20]; const expYYMMDD = L2.slice(21,27); const expCheck = L2[27]; const optData = L2.slice(28,42); const finalCheck = L2[43]; const composite = passportNumber + passportCheck + nationality + birthYYMMDD + birthCheck + sex + expYYMMDD + expCheck + optData; return { format:'TD3-2x44 (Passport)', documentType:docType, issuingCountry:issuing, surname: tidy(surname||''), givenNames: tidy(given||''), documentNumber: passportNumber, documentNumberCheck: passportCheck, nationality, birthDate: yymmddToISO(birthYYMMDD), birthCheck, sex: (sex==='M'||sex==='F')?sex:sex, expiryDate: yymmddToISO(expYYMMDD), expiryCheck: expCheck, optionalData: optData.replace(/<+$/,''), compositeCheck: finalCheck, checks:{ documentNumber: mrzCheck(passportNumber) === passportCheck, birthDate: mrzCheck(birthYYMMDD) === birthCheck, expiryDate: mrzCheck(expYYMMDD) === expCheck, composite: mrzCheck(composite) === finalCheck } } }
+    function parseTD1(lines){ if (!lines || lines.length !== 3) return {}; const A = padTo(lines[0],30); const B = padTo(lines[1],30); const C = padTo(lines[2],30); const docType = A.slice(0,1); const issuing = A.slice(2,5); const docNum = A.slice(5,14).replace(/<+$/,''); const docCheck = A[14]; const opt1 = A.slice(15,30); const birthYYMMDD = B.slice(0,6); const birthCheck = B[6]; const sex = B[7]; const expYYMMDD = B.slice(8,14); const expCheck = B[14]; const nationality = B.slice(15,18); const opt2 = B.slice(18,29); const opt2Check = B[29]; const [surname, givenRest] = C.split('<<'); return { format:'TD1-3x30 (ID)', documentType:docType, issuingCountry:issuing, documentNumber:docNum, documentNumberCheck:docCheck, nationality, birthDate:yymmddToISO(birthYYMMDD), birthCheck, sex:(sex==='M'||sex==='F')?sex:sex, expiryDate:yymmddToISO(expYYMMDD), expiryCheck:expCheck, optionalData:(opt1+opt2).replace(/<+$/,''), optionalCheck:opt2Check, surname: tidy(surname||''), givenNames: tidy((givenRest||'').replace(/<+/g,' ')), checks:{ documentNumber: mrzCheck(docNum) === docCheck, birthDate: mrzCheck(birthYYMMDD) === birthCheck, expiryDate: mrzCheck(expYYMMDD) === expCheck } } }
+    function parseTD2(lines){ if (!lines || lines.length !== 2) return {}; const A = padTo(lines[0],36); const B = padTo(lines[1],36); const docType = A.slice(0,2).replace('<',''); const issuing = A.slice(2,5); const namesRaw = A.slice(5); const [surname, givenRest] = namesRaw.split('<<'); const docNum = B.slice(0,9); const docCheck = B[9]; const nationality = B.slice(10,13); const birthYYMMDD = B.slice(13,19); const birthCheck = B[19]; const sex = B[20]; const expYYMMDD = B.slice(21,27); const expCheck = B[27]; const opt = B.slice(28,35); const finalCheck = B[35]; const composite = docNum + docCheck + nationality + birthYYMMDD + birthCheck + sex + expYYMMDD + expCheck + opt; return { format:'TD2-2x36 (Travel Document)', documentType:docType, issuingCountry:issuing, surname: tidy(surname||''), givenNames: tidy((givenRest||'').replace(/<+/g,' ')), documentNumber:docNum, documentNumberCheck:docCheck, nationality, birthDate:yymmddToISO(birthYYMMDD), birthCheck, sex:(sex==='M'||sex==='F')?sex:sex, expiryDate:yymmddToISO(expYYMMDD), expiryCheck:expCheck, optionalData: opt.replace(/<+$/,''), compositeCheck: finalCheck, checks:{ documentNumber: mrzCheck(docNum) === docCheck, birthDate: mrzCheck(birthYYMMDD) === birthCheck, expiryDate: mrzCheck(expYYMMDD) === expCheck, composite: mrzCheck(composite) === finalCheck } } }
 
-    // ===== Formato JSON + tabla =====
-    function generateFormattedJSON(parsed, block){
-      if (!parsed || Object.keys(parsed).length === 0) return { error:"Could not extract MRZ data" };
-      const formatType = parsed.format ? parsed.format.split('-')[0] : 'Unknown';
-      return {
-        format: formatType,
-        raw: block ? block.lines : [],
-        documentCode: parsed.documentType || '',
-        issuingState: parsed.issuingCountry || '',
-        documentNumber: parsed.documentNumber || '',
-        documentNumberCheck: parsed.documentNumberCheck || '',
-        optionalData1: parsed.optionalData || '',
-        birthDate: parsed.birthDate || '',
-        birthDateCheck: parsed.birthCheck || '',
-        sex: parsed.sex || '',
-        expiryDate: parsed.expiryDate || '',
-        expiryDateCheck: parsed.expiryCheck || '',
-        nationality: parsed.nationality || '',
-        optionalData2: '',
-        finalCheck: parsed.compositeCheck || parsed.optionalCheck || '',
-        surname: parsed.surname || '',
-        givenNames: parsed.givenNames || '',
-        checks: parsed.checks || {}
-      };
-    }
+    function generateFormattedJSON(parsed, block){ if (!parsed || Object.keys(parsed).length === 0) return { error:"Could not extract MRZ data" }; const formatType = parsed.format ? parsed.format.split('-')[0] : 'Unknown'; return { format: formatType, raw: block ? block.lines : [], documentCode: parsed.documentType || '', issuingState: parsed.issuingCountry || '', documentNumber: parsed.documentNumber || '', documentNumberCheck: parsed.documentNumberCheck || '', optionalData1: parsed.optionalData || '', birthDate: parsed.birthDate || '', birthDateCheck: parsed.birthCheck || '', sex: parsed.sex || '', expiryDate: parsed.expiryDate || '', expiryDateCheck: parsed.expiryCheck || '', nationality: parsed.nationality || '', optionalData2: '', finalCheck: parsed.compositeCheck || parsed.optionalCheck || '', surname: parsed.surname || '', givenNames: parsed.givenNames || '', checks: parsed.checks || {} } }
+
     function displayResultsInTable(parsed, formatType){
-      if (!parsed || Object.keys(parsed).length === 0){
-        resultSummary.classList.add('hidden');
-        resultTable.innerHTML = '<p class="muted">No fue posible extraer datos MRZ.</p>';
-        return;
-      }
-      let valid=0,total=0;
-      if (parsed.checks){
-        Object.values(parsed.checks).forEach(ch=>{ if (typeof ch === 'boolean'){ total++; if (ch) valid++; } });
-      }
+      if (!parsed || Object.keys(parsed).length === 0){ resultSummary.classList.add('hidden'); resultTable.innerHTML = '<p class="muted">No fue posible extraer datos MRZ.</p>'; return; }
+      let valid=0,total=0; if (parsed.checks){ Object.values(parsed.checks).forEach(ch=>{ if (typeof ch === 'boolean'){ total++; if (ch) valid++; } }); }
       resultSummary.classList.remove('hidden');
-      resultSummary.innerHTML = '<strong>Detectado '
-        + (formatType || 'formato desconocido')
-        + '. Checksums: '+valid+'/'+total+' OK</strong>';
-
+      resultSummary.innerHTML = '<strong>Detectado ' + (formatType || 'formato desconocido') + '. Checksums: '+valid+'/'+total+' OK</strong>';
       let html = '<div class="scroll-wrap">';
       html += '<table class="result-table"><thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody>';
-      const prettyKey = k => k
-        .replace(/([A-Z])/g,' $1')
-        .replace(/^./, s=>s.toUpperCase())
-        .replace('Given Names','Nombres')
-        .replace('Surname','Apellidos');
-      const formatValue = (key, value)=>{
-        if (key==='checks' || key==='format') return '';
-        if ((key==='birthDate' || key==='expiryDate') && value){
-          return value;
-        }
-        if (key.endsWith('Check') && key!=='compositeCheck' && key!=='optionalCheck'){
-          const base = key.replace('Check','');
-          const ok = parsed.checks && parsed.checks[base];
-          return '<span class="'+(ok?'ok':'fail')+'">'+(ok?'✔ válido':'✖ falló')+'</span>';
-        }
-        return value || '';
-      };
-      Object.entries(parsed).forEach(([k,v])=>{
-        if (k==='checks' || k==='format') return;
-        const fv = formatValue(k,v);
-        if (fv==='') return;
-        html += `<tr><td><strong>${prettyKey(k)}</strong></td><td>${fv}</td></tr>`;
-      });
-      if (parsed.compositeCheck){
-        const ok = parsed.checks && parsed.checks.composite;
-        html += `<tr><td><strong>Composite Check</strong></td><td><span class="${ok?'ok':'fail'}">${ok?'✔ válido':'✖ falló'}</span></td></tr>`;
-      }
+      const prettyKey = k => k.replace(/([A-Z])/g,' $1').replace(/^./, s=>s.toUpperCase()).replace('Given Names','Nombres').replace('Surname','Apellidos');
+      const formatValue = (key, value)=>{ if (key==='checks' || key==='format') return ''; if ((key==='birthDate' || key==='expiryDate') && value){ return value; } if (key.endsWith('Check') && key!=='compositeCheck' && key!=='optionalCheck'){ const base = key.replace('Check',''); const ok = parsed.checks && parsed.checks[base]; return '<span class="'+(ok?'ok':'fail')+'">'+(ok?'✔ válido':'✖ falló')+'</span>'; } return value || ''; };
+      Object.entries(parsed).forEach(([k,v])=>{ if (k==='checks' || k==='format') return; const fv = formatValue(k,v); if (fv==='') return; html += `<tr><td><strong>${prettyKey(k)}</strong></td><td>${fv}</td></tr>`; });
+      if (parsed.compositeCheck){ const ok = parsed.checks && parsed.checks.composite; html += `<tr><td><strong>Composite Check</strong></td><td><span class="${ok?'ok':'fail'}">${ok?'✔ válido':'✖ falló'}</span></td></tr>`; }
       html += '</tbody></table></div>';
       resultTable.innerHTML = html;
     }
 
-    // ========= Reset =========
     function resetResults(){
       pdf417Error.classList.add('hidden'); pdf417Error.textContent = '';
       mrzError.classList.add('hidden'); mrzError.textContent = '';
@@ -921,9 +718,12 @@
       resultTable.innerHTML = '';
       pdf417Summary.classList.add('hidden'); pdf417Summary.innerHTML = '';
       pdf417Table.innerHTML = '';
-      currentParsedData = null;
-      currentDuiJSON = null;
-      currentDuiRawText = null;
+      currentParsedData = null; currentDuiJSON = null; currentDuiRawText = null;
+    }
+
+    // ===== Inicial =====
+    if (!('mediaDevices' in navigator)){
+      camStart.disabled = true; camStop.disabled = true; camSwitch.disabled = true; camSelect.disabled = true; captureBtn.disabled = true; torchBtn.disabled = true; zoom100.disabled = zoom150.disabled = zoom250.disabled = true;
     }
   </script>
 </body>
