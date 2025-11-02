@@ -94,6 +94,14 @@
     .handle.tr{ right:-8px; top:-8px; cursor:nesw-resize; }
     .handle.bl{ left:-8px; bottom:-8px; cursor:nesw-resize; }
     .handle.tl{ left:-8px; top:-8px; cursor:nwse-resize; }
+  
+/* ROI seleccionado: borde y resplandor */
+.roi.selected{
+  border:2px solid var(--primary);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.25), 0 8px 24px rgba(59,130,246,.25);
+}
+.roi.hidden{ display:none !important; }
+
   </style>
 </head>
 <body>
@@ -121,6 +129,11 @@
       <button id="zoom250" class="btn ghost" disabled>Zoom 250%</button>
       <button id="torchBtn" class="btn ghost" disabled>🔦 Lámpara</button>
       <button id="captureBtn" class="btn" disabled>📸 Capturar a Vista Previa</button>
+        
+<button id="addRoiBtn" class="btn ghost" disabled>➕ Añadir ROI</button>
+<button id="cleanRoiBtn" class="btn ghost" disabled>🧹 Limpiar ROI</button>
+<button id="deleteRoiBtn" class="btn ghost danger" disabled>🗑️ Eliminar ROI</button>
+
     </div>
 
     <div class="video-stage" id="videoStage">
@@ -726,5 +739,223 @@
       camStart.disabled = true; camStop.disabled = true; camSwitch.disabled = true; camSelect.disabled = true; captureBtn.disabled = true; torchBtn.disabled = true; zoom100.disabled = zoom150.disabled = zoom250.disabled = true;
     }
   </script>
+
+<script>
+// ===== ROI Controls Patch (auto-injected) =====
+(function(){
+  const $ = (s)=>document.querySelector(s);
+  const videoStage = $('#videoStage');
+  const cameraEl = $('#camera');
+  const roiEl = $('#roi');
+  const addRoiBtn = $('#addRoiBtn') || (function(){
+    // fallback create if not present
+    const b = document.createElement('button');
+    b.id = 'addRoiBtn'; b.className = 'btn ghost'; b.textContent = '➕ Añadir ROI'; b.disabled = true;
+    const target = document.querySelector('#captureBtn')?.parentElement || document.body;
+    target.appendChild(b);
+    return b;
+  })();
+  const cleanRoiBtn = $('#cleanRoiBtn') || (function(){
+    const b = document.createElement('button');
+    b.id = 'cleanRoiBtn'; b.className = 'btn ghost'; b.textContent = '🧹 Limpiar ROI'; b.disabled = true;
+    const target = document.querySelector('#captureBtn')?.parentElement || document.body;
+    target.appendChild(b);
+    return b;
+  })();
+  const deleteRoiBtn = $('#deleteRoiBtn') || (function(){
+    const b = document.createElement('button');
+    b.id = 'deleteRoiBtn'; b.className = 'btn ghost danger'; b.textContent = '🗑️ Eliminar ROI'; b.disabled = true;
+    const target = document.querySelector('#captureBtn')?.parentElement || document.body;
+    target.appendChild(b);
+    return b;
+  })();
+
+  // Read stream from global scope if present
+  function isCamActive(){
+    try { return !!window.stream; } catch(e){ return false; }
+  }
+
+  const ROI_DEFAULTS = { lPct:20, tPct:15, wPct:60, hPct:60 };
+  const MIN_SIZE_PX = 40;
+
+  function stageRect(){ return videoStage.getBoundingClientRect(); }
+
+  function setROIByPercent({lPct, tPct, wPct, hPct}){
+    const r = stageRect();
+    const l = Math.round(r.width * (lPct/100));
+    const t = Math.round(r.height* (tPct/100));
+    const w = Math.max(MIN_SIZE_PX, Math.round(r.width * (wPct/100)));
+    const h = Math.max(MIN_SIZE_PX, Math.round(r.height* (hPct/100)));
+    roiEl.style.left = l + 'px';
+    roiEl.style.top  = t + 'px';
+    roiEl.style.width= Math.min(r.width - l,  w) + 'px';
+    roiEl.style.height=Math.min(r.height- t,  h) + 'px';
+  }
+
+  function clampROIIntoStage(){
+    const r = stageRect();
+    const rr = roiEl.getBoundingClientRect();
+    let l = rr.left - r.left;
+    let t = rr.top  - r.top;
+    let w = rr.width;
+    let h = rr.height;
+    w = Math.max(MIN_SIZE_PX, Math.min(w, r.width  - l));
+    h = Math.max(MIN_SIZE_PX, Math.min(h, r.height - t));
+    l = Math.min(Math.max(0, l), r.width  - w);
+    t = Math.min(Math.max(0, t), r.height - h);
+    Object.assign(roiEl.style, {
+      left: l + 'px', top: t + 'px', width: w + 'px', height: h + 'px'
+    });
+  }
+
+  function showROI(){
+    roiEl.classList.remove('hidden');
+    selectROI(true);
+    updateRoiButtons();
+  }
+  function hideROI(){
+    roiEl.classList.add('hidden');
+    selectROI(false);
+    updateRoiButtons();
+  }
+  function hasROI(){ return !roiEl.classList.contains('hidden'); }
+
+  function addROI(){
+    setROIByPercent(ROI_DEFAULTS);
+    showROI();
+  }
+  function cleanROI(){
+    if (!hasROI()) return;
+    setROIByPercent(ROI_DEFAULTS);
+    clampROIIntoStage();
+    selectROI(true);
+  }
+  function deleteROI(){
+    if (!hasROI()) return;
+    hideROI();
+  }
+
+  function selectROI(on){
+    if (on){ roiEl.classList.add('selected'); }
+    else   { roiEl.classList.remove('selected'); }
+  }
+
+  function updateRoiButtons(){
+    const cam = isCamActive();
+    addRoiBtn.disabled    = !cam;
+    cleanRoiBtn.disabled  = !cam || !hasROI();
+    deleteRoiBtn.disabled = !cam || !hasROI();
+  }
+
+  // Wire buttons
+  addRoiBtn.addEventListener('click', addROI);
+  cleanRoiBtn.addEventListener('click', cleanROI);
+  deleteRoiBtn.addEventListener('click', deleteROI);
+
+  // Pointer interactions (drag/resize within bounds)
+  let dragging = false, resizing = false, handleType = null, startX=0, startY=0, startRect=null;
+
+  roiEl.addEventListener('pointerdown', (e)=>{
+    if (roiEl.classList.contains('hidden')) return;
+    const target = e.target;
+    selectROI(true);
+    if (target.classList.contains('handle')){
+      resizing = true; dragging = false;
+      handleType = [...target.classList].find(c=>['tl','tr','bl','br'].includes(c));
+    } else {
+      dragging = true; resizing = false; handleType = null;
+    }
+    startX = e.clientX; startY = e.clientY;
+    const r = roiEl.getBoundingClientRect();
+    const s = stageRect();
+    startRect = { left:r.left - s.left, top:r.top - s.top, width:r.width, height:r.height };
+    roiEl.setPointerCapture(e.pointerId);
+  });
+
+  roiEl.addEventListener('pointermove', (e)=>{
+    if (!dragging && !resizing) return;
+    const dx = e.clientX - startX; const dy = e.clientY - startY;
+    let { left, top, width, height } = startRect;
+    const r = stageRect();
+
+    if (dragging){
+      left = Math.min(Math.max(0, left + dx), r.width - width);
+      top  = Math.min(Math.max(0, top  + dy), r.height - height);
+    }
+    if (resizing){
+      if (handleType==='br'){ width += dx; height += dy; }
+      if (handleType==='tr'){ width += dx; height -= dy; top += dy; }
+      if (handleType==='bl'){ width -= dx; left += dx; height += dy; }
+      if (handleType==='tl'){ width -= dx; left += dx; height -= dy; top += dy; }
+      width  = Math.min(Math.max(MIN_SIZE_PX, width ), r.width  - left);
+      height = Math.min(Math.max(MIN_SIZE_PX, height), r.height - top );
+    }
+    Object.assign(roiEl.style, {
+      left: left + 'px', top: top + 'px',
+      width: width + 'px', height: height + 'px'
+    });
+  });
+
+  roiEl.addEventListener('pointerup', (e)=>{
+    dragging = resizing = false; handleType=null;
+    try{ roiEl.releasePointerCapture(e.pointerId); }catch{}
+    clampROIIntoStage();
+  });
+
+  // Double click selects
+  roiEl.addEventListener('dblclick', ()=>{ if (!roiEl.classList.contains('hidden')) selectROI(true); });
+
+  // Click outside (on stage) deselects
+  videoStage.addEventListener('pointerdown', (e)=>{
+    if (e.target === roiEl || e.target.classList.contains('handle')) return;
+    selectROI(false);
+  });
+
+  // Delete/Backspace removes ROI if selected (and not typing in input/textarea)
+  document.addEventListener('keydown', (e)=>{
+    if ((e.key === 'Delete' || e.key === 'Backspace') && hasROI() && roiEl.classList.contains('selected')){
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (!/INPUT|TEXTAREA/.test(tag)){
+        e.preventDefault();
+        deleteROI();
+      }
+    }
+  });
+
+  // Wrap enableCamUI to update ROI buttons
+  if (typeof window.enableCamUI === 'function'){
+    const _enableCamUI = window.enableCamUI;
+    window.enableCamUI = function(enabled){
+      _enableCamUI.call(this, enabled);
+      updateRoiButtons();
+      if (!enabled) { selectROI(false); }
+    }
+  } else {
+    // If not present, still update on load
+    updateRoiButtons();
+  }
+
+  // Wrap captureToPreview and switchCamera to refresh buttons
+  ['captureToPreview','switchCamera'].forEach(fnName=>{
+    if (typeof window[fnName] === 'function'){
+      const _fn = window[fnName];
+      window[fnName] = async function(){
+        const r = _fn.apply(this, arguments);
+        try{ await r; }catch{}
+        updateRoiButtons();
+        return r;
+      }
+    }
+  });
+
+  // On resize keep ROI inside stage
+  window.addEventListener('resize', ()=>{ if (hasROI()) clampROIIntoStage(); updateRoiButtons(); });
+
+  // Initial state: ensure ROI visible but unselected; buttons disabled until cam active
+  selectROI(false);
+  updateRoiButtons();
+})();
+</script>
+
 </body>
 </html>
