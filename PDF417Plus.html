@@ -47,6 +47,17 @@
     .roi-controls{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
     .roi-controls .block{background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem}
     .row-controls{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+    /* Vista previa */
+    .previewWrap{display:grid;gap:.6rem}
+    .previewBox{display:grid;grid-template-columns:160px 1fr;gap:1rem;align-items:start}
+    @media (max-width:700px){.previewBox{grid-template-columns:1fr}}
+    .preview{width:100%;max-width:100%;border:1px solid var(--muted);border-radius:.6rem;background:#0a0f15}
+    textarea.mono{width:100%;min-height:120px;background:#0a0f15;border:1px solid var(--muted);color:var(--text);border-radius:.6rem;padding:.5rem;resize:vertical}
+    table{width:100%;border-collapse:collapse;background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden}
+    th,td{padding:.5rem .6rem;border-bottom:1px solid #273245;vertical-align:top}
+    th{background:#0c121a;text-align:left}
+    .parseRow{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap}
+    select{background:#0f141c;border:1px solid var(--muted);color:var(--text);padding:.35rem .5rem;border-radius:.4rem}
   </style>
 </head>
 <body>
@@ -73,6 +84,7 @@
             <button class="btn" id="btnFreeze" disabled>Congelar & Decodificar</button>
             <button class="btn" id="btnUnfreeze" disabled>Descongelar</button>
             <button class="btn" id="btnTorch" disabled>Linterna</button>
+            <button class="btn" id="btnCapture" disabled>Capturar a Vista Previa</button>
           </div>
           <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
             <label class="small">Zoom <input type="range" min="1" max="5" step="0.1" value="1" id="zoom"></label>
@@ -92,12 +104,10 @@
           </div>
         </div>
 
-        <!-- Controles de ROI: sliders y mover arriba/abajo -->
+        <!-- Controles de ROI -->
         <div class="roi-controls" style="margin-top: .8rem">
           <div class="block">
-            <div class="row-controls">
-              <strong>Dimensiones del ROI</strong>
-            </div>
+            <div class="row-controls"><strong>Dimensiones del ROI</strong></div>
             <div class="grid" style="margin-top:.5rem">
               <label class="small">Ancho (%)
                 <input type="range" min="5" max="100" step="1" id="roiWidth">
@@ -108,13 +118,13 @@
             </div>
           </div>
           <div class="block">
-            <div class="row-controls">
-              <strong>Posición del ROI</strong>
-            </div>
+            <div class="row-controls"><strong>Posición del ROI</strong></div>
             <div class="row-controls" style="margin-top:.5rem">
+              <button class="btn" id="btnLeft">Izquierda</button>
+              <button class="btn" id="btnRight">Derecha</button>
               <button class="btn" id="btnUp">Subir</button>
               <button class="btn" id="btnDown">Bajar</button>
-              <!-- (Opcional) podrías añadir Izq/Der más tarde -->
+              <button class="btn" id="btnCenter">Centrar</button>
             </div>
           </div>
         </div>
@@ -124,7 +134,7 @@
     </div>
 
     <div class="card">
-      <h3>Resultados</h3>
+      <h3>Resultados (en vivo)</h3>
       <div class="content">
         <div class="kv">
           <div>Último estado</div><div id="lastStatus" class="mono">–</div>
@@ -137,27 +147,48 @@
     </div>
   </div>
 
+  <!-- Vista previa y extracción/parseo offline -->
   <div class="row" style="padding-top:0">
     <div class="card">
-      <h3>Diagnóstico</h3>
-      <div class="content">
-        <div class="kv">
-          <div>Resolución</div><div id="diagRes">–</div>
-          <div>Tamaño ROI</div><div id="diagRoi">–</div>
-          <div>Hints</div><div id="diagHints" class="mono">PDF_417 only</div>
-          <div>Notas</div><div id="diagNotes">Usa “Congelar” para un pase pesado si el live falla.</div>
+      <h3>Vista previa (Base64) & Carga de imagen</h3>
+      <div class="content previewWrap">
+        <div class="previewBox">
+          <img id="previewImg" class="preview" alt="Vista previa" />
+          <div>
+            <div class="row-controls" style="margin-bottom:.6rem">
+              <input type="file" id="imgUpload" accept="image/*" class="btn" />
+              <button class="btn" id="btnExtractPreview" disabled>Extraer de Vista Previa (Texto crudo)</button>
+              <div class="parseRow">
+                <button class="btn" id="btnParse" disabled>Parsear Datos</button>
+                <label class="small">Perfil de parseo
+                  <select id="parseProfile">
+                    <option value="auto" selected>Auto (DUI SV → Genérico)</option>
+                    <option value="dui-sv">DUI El Salvador</option>
+                    <option value="generic">Genérico</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <label class="small">Data URL (Base64):</label>
+            <textarea id="previewB64" class="mono" readonly placeholder="Aquí aparecerá la imagen capturada o cargada como data URL (Base64)"></textarea>
+          </div>
+        </div>
+        <div>
+          <label class="small">Texto crudo extraído:</label>
+          <textarea id="rawText" class="mono" readonly placeholder="Usa 'Extraer de Vista Previa' para decodificar el PDF417 desde la imagen."></textarea>
         </div>
       </div>
     </div>
+
     <div class="card">
-      <h3>Cómo mejora la precisión</h3>
+      <h3>Tabla de resultados (parseo)</h3>
       <div class="content">
-        <ul>
-          <li>Recorte manual (ROI) para alimentar solo el código.</li>
-          <li>De-dupe (exige dos lecturas idénticas seguidas).</li>
-          <li>Pase <em>Try Harder</em> al congelar (costoso pero robusto).</li>
-          <li>Controles de linterna y zoom (si hay soporte).</li>
-        </ul>
+        <table id="tblResults">
+          <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+          <tbody id="tblBody">
+            <tr><td colspan="2" style="opacity:.8">Sin datos. Carga o captura una vista previa, extrae el texto, y luego “Parsear Datos”.</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -194,11 +225,24 @@
       zoom: document.getElementById('zoom'),
       autoDecode: document.getElementById('autoDecode'),
       tryHarder: document.getElementById('tryHarder'),
-      // NUEVOS
+      // ROI controls
       roiWidth: document.getElementById('roiWidth'),
       roiHeight: document.getElementById('roiHeight'),
       btnUp: document.getElementById('btnUp'),
       btnDown: document.getElementById('btnDown'),
+      btnLeft: document.getElementById('btnLeft'),
+      btnRight: document.getElementById('btnRight'),
+      btnCenter: document.getElementById('btnCenter'),
+      // Preview section
+      btnCapture: document.getElementById('btnCapture'),
+      imgUpload: document.getElementById('imgUpload'),
+      previewImg: document.getElementById('previewImg'),
+      previewB64: document.getElementById('previewB64'),
+      btnExtractPreview: document.getElementById('btnExtractPreview'),
+      btnParse: document.getElementById('btnParse'),
+      parseProfile: document.getElementById('parseProfile'),
+      rawText: document.getElementById('rawText'),
+      tblBody: document.getElementById('tblBody'),
     };
 
     // --- Estado
@@ -207,16 +251,16 @@
     let activeDeviceId = null;
     let frozen = false;
     let processing = false;
-    let wantFPS = 8;              // ~8 fps en vivo para no bloquear UI
+    let wantFPS = 8;              // ~8 fps
     let lastProc = 0, fps = 0, lastTick = 0;
 
-    // De-dupe
+    // De-dupe live
     let lastText = '', dedupCount = 0, dedupTarget = 2;
 
     // ZXing Reader (JS)
     let ZX = null, reader = null, hints = null;
 
-    // Canvas interno para decodificar ROI (HTMLCanvas, no OffscreenCanvas)
+    // Canvas interno para decodificar ROI y para capturas
     const workCanvas = document.createElement('canvas');
     const workCtx = workCanvas.getContext('2d', { willReadFrequently:true });
 
@@ -232,12 +276,14 @@
     }
     function setRoiPct({left,top,width,height}){
       const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-      const L = clamp(left, 0, 100 - width);
-      const T = clamp(top,  0, 100 - height);
+      const W = width  ?? pct(els.roi.style.width);
+      const H = height ?? pct(els.roi.style.height);
+      const L = clamp(left ?? pct(els.roi.style.left), 0, 100 - W);
+      const T = clamp(top  ?? pct(els.roi.style.top),  0, 100 - H);
       els.roi.style.left   = L + '%';
       els.roi.style.top    = T + '%';
-      els.roi.style.width  = clamp(width, 5, 100) + '%';
-      els.roi.style.height = clamp(height,5, 100) + '%';
+      els.roi.style.width  = clamp(W, 5, 100) + '%';
+      els.roi.style.height = clamp(H, 5, 100) + '%';
       updateDiagnostics();
       syncRoiSliders();
     }
@@ -255,7 +301,6 @@
 
     async function startCam(){
       try{
-        // Init ZXing si no está
         await ensureZXing();
 
         devices = await listCams();
@@ -273,6 +318,7 @@
         els.btnStop.disabled = false;
         els.btnSwitch.disabled = devices.length>1 ? false : true;
         els.btnFreeze.disabled = false;
+        els.btnCapture.disabled = false;
         els.sCam.textContent = `Cámara: ${track.label || 'activa'}`;
         els.sCam.className = 'pill ok';
 
@@ -292,7 +338,7 @@
     function stopCam(){
       frozen=false; processing=false; lastText=''; dedupCount=0; updateDedup();
       if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
-      els.btnStop.disabled = true; els.btnSwitch.disabled=true; els.btnFreeze.disabled=true; els.btnUnfreeze.disabled=true; els.btnTorch.disabled=true;
+      els.btnStop.disabled = true; els.btnSwitch.disabled=true; els.btnFreeze.disabled=true; els.btnUnfreeze.disabled=true; els.btnTorch.disabled=true; els.btnCapture.disabled=true;
       els.sCam.textContent = 'Cámara: detenida'; els.sCam.className='pill';
     }
 
@@ -306,10 +352,8 @@
 
     function bindCapabilities(){
       const caps = track.getCapabilities?.() || {};
-      // Linterna
       if(caps.torch){ els.btnTorch.disabled=false; els.sTorch.textContent='Linterna: off'; els.sTorch.className='pill'; }
       else{ els.btnTorch.disabled=true; els.sTorch.textContent='Linterna: n/d'; els.sTorch.className='pill'; }
-      // Zoom
       if(caps.zoom){
         els.zoom.min = caps.zoom.min ?? 1; els.zoom.max = caps.zoom.max ?? 5; els.zoom.step = caps.zoom.step ?? 0.1;
         els.zoom.value = track.getSettings?.().zoom ?? 1;
@@ -326,7 +370,7 @@
         await track.applyConstraints({ advanced: [{ torch: on }] });
         els.sTorch.textContent = `Linterna: ${on?'on':'off'}`;
         els.sTorch.className = on? 'pill ok':'pill';
-      }catch{ /* no-op */ }
+      }catch{}
     }
 
     async function setZoom(val){
@@ -343,7 +387,7 @@
     window.addEventListener('resize', sizeOverlay);
 
     // --- ROI UX (ratón)
-    (function(){
+    ;(function(){
       const roi = els.roi; const stage = els.stage; let drag=null; let start={};
       function pxToPct(dx,dy){
         const r = stage.getBoundingClientRect();
@@ -373,34 +417,24 @@
       window.addEventListener('mouseup',()=> drag=null);
     })();
 
-    // --- ROI UX (táctil: 1 dedo mueve, 2 dedos escalan desde el centro)
-    (function(){
+    // --- ROI UX táctil (1 dedo mueve, 2 dedos escalan)
+    ;(function(){
       const stage = els.stage, roi = els.roi;
       let tState = null;
-
       function getTouches(e){ return Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY,id:t.identifier})); }
       function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
-      function center(a,b){ return {x:(a.x+b.x)/2, y:(a.y+b.y)/2}; }
       function stageRect(){ return stage.getBoundingClientRect(); }
-      function pxToPctPoint(x,y){
-        const r = stageRect();
-        return { x: (x - r.left) / r.width * 100, y: (y - r.top) / r.height * 100 };
-      }
 
       roi.addEventListener('touchstart', (e)=>{
         e.preventDefault();
         const touches = getTouches(e);
         const r0 = getRoiPct();
         if(touches.length === 1){
-          // mover
           tState = {mode:'move', startTouch:touches[0], start:r0};
         }else if(touches.length >= 2){
-          // escalar
           const [a,b] = touches;
           const d0 = dist(a,b);
-          const c0 = center(a,b);
-          const cPct = pxToPctPoint(c0.x, c0.y);
-          tState = {mode:'pinch', d0, cPct, start:r0};
+          tState = {mode:'pinch', d0, start:r0};
         }
       }, {passive:false});
 
@@ -409,8 +443,7 @@
         e.preventDefault();
         const touches = getTouches(e);
         const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-
-        if(tState.mode==='move' && touches.length===1){
+        if(touches.length===1 && tState.mode==='move'){
           const s = stageRect();
           const dx = (touches[0].x - tState.startTouch.x)/s.width*100;
           const dy = (touches[0].y - tState.startTouch.y)/s.height*100;
@@ -418,26 +451,21 @@
           const L = clamp(tState.start.left + dx, 0, 100 - W);
           const T = clamp(tState.start.top + dy, 0, 100 - H);
           setRoiPct({left:L, top:T, width:W, height:H});
-        }else if(tState.mode==='pinch' && touches.length>=2){
+        }else if(touches.length>=2 && tState.mode==='pinch'){
           const [a,b] = touches;
           const d1 = dist(a,b);
-          const scale = clamp(d1 / (tState.d0||1), 0.5, 3); // límites de escala
+          const scale = clamp(d1 / (tState.d0||1), 0.5, 3);
           const start = tState.start;
-
-          // Escalado uniforme desde el centro guardando el centro del ROI
           const cx = start.left + start.width/2;
           const cy = start.top  + start.height/2;
           let newW = clamp(start.width * scale, 5, 100);
           let newH = clamp(start.height * scale, 5, 100);
-          // Reposicionar para mantener centro
           let newL = cx - newW/2;
           let newT = cy - newH/2;
-          // Ajustar si se sale
           if(newL < 0) newL = 0;
           if(newT < 0) newT = 0;
           if(newL + newW > 100) newL = 100 - newW;
           if(newT + newH > 100) newT = 100 - newH;
-
           setRoiPct({left:newL, top:newT, width:newW, height:newH});
         }
       }, {passive:false});
@@ -446,10 +474,9 @@
       window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
     })();
 
-    // --- Bucle de procesamiento
+    // --- Bucle de procesamiento en vivo
     function loop(ts){
       if(!els.video.srcObject) return;
-      // FPS simple
       if(lastTick){ const dt = ts - lastTick; fps = 1000/dt; els.sFps.textContent = 'Proc: ' + Math.round(Math.min(fps, wantFPS)) + ' fps'; }
       lastTick = ts || performance.now();
 
@@ -458,7 +485,6 @@
     }
 
     function requestVideoFrame(cb){
-      // Mantener this correcto
       if (typeof els.video.requestVideoFrameCallback === 'function') {
         els.video.requestVideoFrameCallback(cb);
       } else {
@@ -481,7 +507,6 @@
 
     async function freezeAndDecode(){
       frozen = true; els.btnUnfreeze.disabled=false; els.btnFreeze.disabled=true;
-      // Pase normal y si falla, tryHarder
       let out = await decodeROI(false);
       if(!out && els.tryHarder.checked){
         out = await decodeROI(true);
@@ -491,12 +516,11 @@
 
     function unfreeze(){ frozen=false; els.btnUnfreeze.disabled=true; els.btnFreeze.disabled=false; }
 
-    // --- Decodificar desde ROI con ZXing JS
+    // --- Decodificar desde ROI (video) con ZXing JS
     async function decodeROI(tryHarder=false){
       if(!reader) return null;
       const v = els.video; if(!v.videoWidth) return null;
 
-      // Mapear ROI (en % del stage) a píxeles del video considerando object-fit: cover
       const stageRect = els.stage.getBoundingClientRect();
       const vw = v.videoWidth, vh = v.videoHeight;
       const roiPct = rectPct(els.roi);
@@ -513,11 +537,9 @@
       const sw = Math.max(1, Math.round(roiPx.w/scale));
       const sh = Math.max(1, Math.round(roiPx.h/scale));
 
-      // Pintar en canvas HTML (no Offscreen) y decodificar
       workCanvas.width = sw; workCanvas.height = sh;
       workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
 
-      // Ajustar hints (TRY_HARDER solo cuando se solicita)
       const { DecodeHintType } = ZX;
       if(tryHarder){ hints.set(DecodeHintType.TRY_HARDER, true); }
       else { hints.delete(DecodeHintType.TRY_HARDER); }
@@ -526,16 +548,14 @@
         const res = await reader.decodeFromCanvas(workCanvas);
         if(res && typeof res.getText === 'function'){
           const points = (typeof res.getResultPoints === 'function') ? res.getResultPoints() : null;
-          // Diagnóstico UI
-          els.diagRes.textContent = `${vw}×${vh}`;
+          els.outText.textContent = res.getText();
+          els.outPos.textContent = points ? JSON.stringify(points) : '(sin puntos)';
           els.diagRoi.textContent = `${sw}×${sh}`;
           if(sw < 380) els.sTips.textContent = 'Tip: acércate (ROI < 400 px de ancho)';
           else els.sTips.textContent = 'Tip: mantén estable y reduce reflejos';
           return { text: res.getText(), points, backend:'js', tryHarder };
         }
-      }catch(e){
-        // Nada: suele lanzar cuando no hay lectura válida
-      }
+      }catch(e){ /* sin lectura válida */ }
       return null;
     }
 
@@ -553,24 +573,288 @@
       return { scale: rs, dx, dy };
     }
 
-    // --- Manejar resultados
+    // --- Manejar resultados live
     function handleDecode(res, heavy){
       if(!res) return;
-
       if(res.text && res.text === lastText){ dedupCount++; } else { lastText = res.text; dedupCount = 1; }
       updateDedup();
-
-      els.outText.textContent = res.text || '';
-      els.outPos.textContent = res.points ? JSON.stringify(res.points) : '(sin puntos)';
       els.lastStatus.textContent = `Decoded (JS) ${res.tryHarder? 'TRY_HARDER' : (heavy ? 'heavy' : 'live')}`;
-
-      if(dedupCount >= dedupTarget){
-        pulse(els.outText);
-      }
+      if(dedupCount >= dedupTarget){ pulse(els.outText); }
     }
 
     function updateDedup(){ els.outDedup.textContent = `${dedupCount} / ${dedupTarget}`; }
     function pulse(el){ el.animate([{boxShadow:'0 0 0 0 rgba(88,179,104,.6)'},{boxShadow:'0 0 0 14px rgba(88,179,104,0)'}],{duration:800}); }
+
+    // --- Capturar a Vista Previa (Base64) desde ROI
+    function captureToPreview(){
+      if(!els.video.videoWidth) return;
+      const v = els.video;
+      const stageRect = els.stage.getBoundingClientRect();
+      const vw = v.videoWidth, vh = v.videoHeight;
+      const roiPct = rectPct(els.roi);
+      const cover = coverMapping(vw, vh, stageRect.width, stageRect.height);
+      const roiPx = {
+        x: Math.round((roiPct.left/100)*stageRect.width - cover.dx),
+        y: Math.round((roiPct.top/100)*stageRect.height - cover.dy),
+        w: Math.round((roiPct.width/100)*stageRect.width),
+        h: Math.round((roiPct.height/100)*stageRect.height)
+      };
+      const scale = cover.scale;
+      const sx = Math.max(0, Math.round(roiPx.x/scale));
+      const sy = Math.max(0, Math.round(roiPx.y/scale));
+      const sw = Math.max(1, Math.round(roiPx.w/scale));
+      const sh = Math.max(1, Math.round(roiPx.h/scale));
+
+      workCanvas.width = sw; workCanvas.height = sh;
+      workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      const dataUrl = workCanvas.toDataURL('image/png');
+      els.previewImg.src = dataUrl;
+      els.previewB64.value = dataUrl;
+      enablePreviewActions();
+    }
+
+    // --- Cargar imagen (archivo) a Vista Previa
+    els.imgUpload.addEventListener('change', async (e)=>{
+      const file = e.target.files?.[0];
+      if(!file) return;
+      const readerFile = new FileReader();
+      readerFile.onload = ()=>{
+        els.previewImg.src = readerFile.result;
+        els.previewB64.value = String(readerFile.result || '');
+        enablePreviewActions();
+      };
+      readerFile.readAsDataURL(file);
+    });
+
+    function enablePreviewActions(){
+      els.btnExtractPreview.disabled = !els.previewImg.src;
+      els.btnParse.disabled = !els.previewImg.src;
+    }
+
+    // --- Extraer de Vista Previa (Texto crudo)
+    async function extractFromPreview(){
+      await ensureZXing();
+      const img = els.previewImg;
+      if(!img.src){ alert('No hay vista previa'); return; }
+      try{
+        await ensureImageLoaded(img);
+        let res = null;
+        try{
+          res = await reader.decodeFromImageElement(img);
+        }catch(e1){
+          const c = document.createElement('canvas');
+          const cx = c.getContext('2d', { willReadFrequently:true });
+          c.width = img.naturalWidth || img.width;
+          c.height = img.naturalHeight || img.height;
+          cx.drawImage(img, 0, 0, c.width, c.height);
+          res = await reader.decodeFromCanvas(c);
+        }
+        const text = res?.getText ? res.getText() : '';
+        els.rawText.value = text || '(sin lectura)';
+        if(text) pulse(els.rawText);
+      }catch(err){
+        els.rawText.value = '(sin lectura)';
+      }
+    }
+
+    // ============================
+    //  Parseo dedicado: DUI — SV
+    // ============================
+    function parseDUI_SV(text){
+      const rows = [];
+      const add = (k,v)=>{ if(v){ rows.push([k, v.trim()]); } };
+
+      const T = normalizeSpaces(text.toUpperCase());
+
+      // DUI: ########-# o 9 dígitos
+      let dui = matchOne(T, /\b\d{8}-\d\b/) || matchOne(T, /\b\d{9}\b/);
+      if(dui && !dui.includes('-')) dui = dui.slice(0,8) + '-' + dui.slice(8);
+      add('DUI', dui);
+
+      // NIT: ####-######-###-# o 14 díg (con o sin guiones)
+      let nit = matchOne(T, /\b\d{4}-\d{6}-\d{3}-\d\b/) || matchOne(T, /\b\d{14}\b/);
+      if(nit && /^\d{14}$/.test(nit)) nit = nit.replace(/^(\d{4})(\d{6})(\d{3})(\d)$/, '$1-$2-$3-$4');
+      add('NIT', nit);
+
+      // Fechas (NAC/EMI/EXP) — múltiples formatos
+      const dateAny = /(\d{4}[\/\-]\d{2}[\/\-]\d{2})|(\d{2}[\/\-]\d{2}[\/\-]\d{4})|(\d{8})/;
+      const getDate = (labelRe)=>{
+        const near = matchNearLabel(T, labelRe, dateAny, 40);
+        if(!near) return null;
+        return normalizeDate(near);
+      };
+      add('FECHA_NAC', getDate(/\b(NAC|NACIMIENTO|F\.? NAC\.?)\b/));
+      add('FECHA_EMI', getDate(/\b(EMI|EMISION|F\.? EMI\.?)\b/));
+      add('FECHA_EXP', getDate(/\b(EXP|EXPIR|VENC|F\.? EXP\.?)\b/));
+
+      // Sexo
+      const sexo = matchNearLabel(T, /\b(SEXO|SEX)\b/, /\b(M|F|MASCULINO|FEMENINO)\b/, 20);
+      add('SEXO', normSexo(sexo));
+
+      // Nacionalidad
+      add('NACIONALIDAD', matchNearLabel(T, /\b(NAC\.?|NACIONALIDAD)\b/, /\b[SALVADORE(ÑA|NO)S?]|EL\s+SALVADOR|SV\b/, 40) || guessNationality(T));
+
+      // Departamento / Municipio (heurístico por etiquetas)
+      add('DEPARTAMENTO', matchNearLabel(T, /\b(DEPARTAMENTO|DEPTO)\b/, /[A-ZÁÉÍÓÚÜÑ ]{3,}/, 40));
+      add('MUNICIPIO',   matchNearLabel(T, /\b(MUNICIPIO|MPO)\b/, /[A-ZÁÉÍÓÚÜÑ ]{3,}/, 40));
+
+      // Nombres y apellidos (líneas mayúsculas sin dígitos)
+      const nameLines = T.split(/\r?\n/).map(s=>s.trim()).filter(s=>s && !/\d/.test(s) && s.length>=3);
+      // Heurística: primera línea larga → apellidos; segunda → nombres
+      let apellidos=null, nombres=null, nombreCompleto=null;
+      if(nameLines.length>=2){
+        apellidos = pickNameLine(nameLines[0]);
+        nombres   = pickNameLine(nameLines[1]);
+      }else if(nameLines.length===1){
+        nombreCompleto = pickNameLine(nameLines[0]);
+      }
+      if(!nombreCompleto && (nombres||apellidos)){
+        nombreCompleto = [nombres, apellidos].filter(Boolean).join(' ');
+      }
+      add('APELLIDOS', apellidos);
+      add('NOMBRES', nombres);
+      add('NOMBRE_COMPLETO', nombreCompleto);
+
+      // Confianza mínima: tener DUI o (NOMBRE_COMPLETO y FECHA_NAC)
+      const score = (dui?1:0) + (nombreCompleto?1:0) + (rows.filter(([k,v])=>k.startsWith('FECHA_') && v).length?1:0);
+      return { rows, score };
+    }
+
+    function normalizeSpaces(s){ return s.replace(/[ \t]+/g,' ').replace(/\u00A0/g,' ').trim(); }
+    function matchOne(s, re){ const m = s.match(re); return m? m[0] : null; }
+    function matchNearLabel(s, labelRe, valueRe, span){
+      // Busca "LABEL .... VALUE" en una ventana corta
+      const re = new RegExp(labelRe.source + `[\\s\\S]{0,${span}}` + valueRe.source);
+      const m = s.match(re);
+      if(m){ const m2 = m[0].match(valueRe); return m2? m2[0] : null; }
+      return null;
+    }
+    function normalizeDate(raw){
+      if(!raw) return null;
+      const r = raw.replace(/[^\d]/g,'');
+      if(r.length===8){
+        // yyyymmdd o ddmmyyyy — adivinar: si empieza con 19/20, interpretamos yyyymmdd
+        if(/^19|20/.test(r)) return `${r.slice(0,4)}-${r.slice(4,6)}-${r.slice(6,8)}`;
+        return `${r.slice(4,8)}-${r.slice(2,4)}-${r.slice(0,2)}`;
+      }
+      // intenta parsers comunes
+      const a = raw.replace(/[\.\s]/g,'').replace(/_/g,'-').replace(/\//g,'-');
+      const m = a.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if(m) return m[0];
+      const m2 = a.match(/(\d{2})-(\d{2})-(\d{4})/);
+      if(m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
+      return raw;
+    }
+    function normSexo(s){
+      if(!s) return null;
+      s = s.toUpperCase();
+      if(/^M/.test(s)) return 'M';
+      if(/^F/.test(s)) return 'F';
+      return s;
+    }
+    function guessNationality(T){
+      if(/\bSALVADOR|SALVADORE/.test(T)) return 'SALVADOREÑA';
+      return null;
+    }
+    function pickNameLine(s){
+      // descarta etiquetas típicas
+      if(/\b(NOMBRE|NOMBRES|APELLIDO|APELLIDOS)\b/.test(s)) return s.replace(/\b(NOMBRE|NOMBRES|APELLIDO|APELLIDOS)\b\s*[:\-]?\s*/,'').trim();
+      // si todo mayúsculas y sin signos raros, tomar tal cual
+      return s.replace(/[^A-ZÁÉÍÓÚÜÑ ]/g,' ').replace(/\s+/g,' ').trim();
+    }
+
+    // ============================
+    //  Parseo genérico (fallback)
+    // ============================
+    function parseGeneric(text){
+      const rows = [];
+      const add = (k,v)=> rows.push([k, String(v||'').trim()]);
+
+      // 1) Key:Value
+      const kvRe = /^\s*([A-Za-zÁÉÍÓÚÑÜ0-9 ._\-\/]{2,30})\s*[:=]\s*(.+?)\s*$/gm;
+      let m;
+      while((m = kvRe.exec(text))){ add(normalizeKey(m[1]), m[2]); }
+
+      // 2) Fechas
+      const dateRe = /\b(?:(\d{4})[\/\-](\d{2})[\/\-](\d{2})|(\d{2})[\/\-](\d{2})[\/\-](\d{4})|(\d{8}))\b/g;
+      const dates = new Set();
+      let d;
+      while((d = dateRe.exec(text))){
+        if(d[1]) dates.add(`${d[1]}-${d[2]}-${d[3]}`);
+        else if(d[4]) dates.add(`${d[6]}-${d[5]}-${d[4]}`);
+        else if(d[7]){
+          const s=d[7]; dates.add(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`);
+        }
+      }
+      if(dates.size) add('FECHAS', Array.from(dates).join(', '));
+
+      // 3) Números largos
+      const numRe = /\b\d{8,}\b/g;
+      const nums = Array.from(new Set((text.match(numRe)||[])));
+      if(nums.length) add('NUMEROS_LARGOS', nums.join(', '));
+
+      // 4) Tokens alfanuméricos largos
+      const alnumRe = /\b[A-Z0-9]{6,}\b/g;
+      const toks = Array.from(new Set((text.toUpperCase().match(alnumRe)||[])));
+      if(toks.length) add('TOKENS', toks.join(' '));
+
+      // 5) Línea candidata a nombre
+      const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      if(lines.length){
+        const guessName = lines.find(s=>s.replace(/[^A-Za-zÁÉÍÓÚÑÜ ]/g,'').trim().split(/\s+/).length>=2 && s.length>=10);
+        if(guessName) add('POSIBLE_NOMBRE', guessName);
+      }
+      return rows;
+    }
+
+    function normalizeKey(k){ return k.replace(/\s+/g,' ').trim().toUpperCase(); }
+
+    function renderTable(rows){
+      const tb = els.tblBody;
+      tb.innerHTML = '';
+      if(!rows.length){
+        tb.innerHTML = '<tr><td colspan="2" style="opacity:.8">No se encontraron campos. Revisa el texto crudo.</td></tr>';
+        return;
+      }
+      for(const [k,v] of rows){
+        const tr = document.createElement('tr');
+        const tdK = document.createElement('td'); tdK.textContent = k;
+        const tdV = document.createElement('td'); tdV.textContent = v;
+        tr.appendChild(tdK); tr.appendChild(tdV);
+        tb.appendChild(tr);
+      }
+    }
+
+    // --- Orquestador de parseo con perfil
+    function parseData(){
+      const text = (els.rawText.value || '').trim();
+      if(!text){ alert('No hay texto para parsear. Ejecuta primero “Extraer de Vista Previa”.'); return; }
+
+      const profile = els.parseProfile.value;
+      let rows = [];
+
+      if(profile === 'dui-sv' || profile === 'auto'){
+        const { rows: duiRows, score } = parseDUI_SV(text);
+        if(profile === 'dui-sv' || score >= 2){
+          rows = duiRows;
+        } else {
+          rows = parseGeneric(text);
+        }
+      } else if(profile === 'generic'){
+        rows = parseGeneric(text);
+      }
+
+      renderTable(rows);
+    }
+
+    async function ensureImageLoaded(img){
+      if(img.complete && img.naturalWidth) return;
+      await new Promise((res,rej)=>{
+        img.onload = ()=>res();
+        img.onerror = e=>rej(e);
+      });
+    }
 
     // --- Eventos UI
     els.btnStart.addEventListener('click', startCam);
@@ -580,11 +864,13 @@
     els.btnUnfreeze.addEventListener('click', unfreeze);
     els.btnTorch.addEventListener('click', setTorch);
     els.zoom.addEventListener('input', (e)=> setZoom(e.target.value));
+    els.btnCapture.addEventListener('click', captureToPreview);
+    els.btnExtractPreview.addEventListener('click', extractFromPreview);
+    els.btnParse.addEventListener('click', parseData);
 
     // Sliders ROI
     els.roiWidth.addEventListener('input', ()=>{
       const r = getRoiPct();
-      // mantener centro al cambiar tamaño
       const newW = Number(els.roiWidth.value);
       const cx = r.left + r.width/2;
       let L = cx - newW/2;
@@ -602,31 +888,42 @@
       setRoiPct({left:r.left, top:T, width:r.width, height:newH});
     });
 
-    // Botones mover arriba/abajo
+    // Botones mover/centrar
     const stepPct = 2;
-    els.btnUp.addEventListener('click', ()=>{
+    els.btnUp?.addEventListener('click', ()=>{
       const r = getRoiPct();
       setRoiPct({left:r.left, top: Math.max(0, r.top - stepPct), width:r.width, height:r.height});
     });
-    els.btnDown.addEventListener('click', ()=>{
+    els.btnDown?.addEventListener('click', ()=>{
       const r = getRoiPct();
       setRoiPct({left:r.left, top: Math.min(100 - r.height, r.top + stepPct), width:r.width, height:r.height});
     });
+    els.btnLeft?.addEventListener('click', ()=>{
+      const r = getRoiPct();
+      setRoiPct({left: Math.max(0, r.left - stepPct), top:r.top, width:r.width, height:r.height});
+    });
+    els.btnRight?.addEventListener('click', ()=>{
+      const r = getRoiPct();
+      setRoiPct({left: Math.min(100 - r.width, r.left + stepPct), top:r.top, width:r.width, height:r.height});
+    });
+    els.btnCenter?.addEventListener('click', ()=>{
+      const r = getRoiPct();
+      const L = (100 - r.width)/2;
+      const T = (100 - r.height)/2;
+      setRoiPct({left:L, top:T, width:r.width, height:r.height});
+    });
 
-    // Tap para sugerir autofocus (best-effort)
+    // Tap para sugerir autofocus
     els.video.addEventListener('click', async ()=>{
       try{
         const caps = track.getCapabilities?.();
         if(caps?.focusMode && caps.focusMode.includes('single-shot')){
           await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
-          els.diagNotes.textContent = 'Autofocus por disparo solicitado.';
-        } else {
-          els.diagNotes.textContent = 'Sin autofocus; intenta moverte ligeramente.';
         }
       }catch{}
     });
 
-    // Inicializar librería ZXing JS
+    // Inicializar ZXing
     async function ensureZXing(){
       if(ZX && reader) return;
       ZX = window.ZXing;
@@ -637,7 +934,6 @@
       reader = new BrowserPDF417Reader(hints);
       els.sLib.textContent = 'Decoder: JS listo';
       els.sLib.className = 'pill ok';
-      els.diagNotes.textContent = 'Usando @zxing/library (JS).';
     }
 
     // Diagnóstico secundario
@@ -645,10 +941,10 @@
       const r = els.roi.getBoundingClientRect();
       const s = els.stage.getBoundingClientRect();
       const pctW = (r.width/s.width*100)|0; const pctH = (r.height/s.height*100)|0;
-      els.diagRoi.textContent = `${pctW}% × ${pctH}% del cuadro`;
+      // opcional: imprimir en UI si quieres
     }
 
-    // Resize overlay + sync sliders inicial
+    // Inicial
     sizeOverlay();
     syncRoiSliders();
   </script>
