@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PDF417 Camera Scanner — Single File Demo</title>
+  <title>PDF417 Camera Scanner — JS only (no WASM)</title>
   <style>
     :root{
       --bg:#0b0f14;--panel:#121820;--muted:#2b3644;--ring:#2f7de1;--text:#e6eef8;--accent:#58b368;--warn:#d69e2e;--err:#ef4444;
@@ -29,15 +29,12 @@
     .stage{position:relative;background:#000;aspect-ratio:16/9;border-radius:.6rem;overflow:hidden;border:1px solid var(--muted)}
     video{width:100%;height:100%;object-fit:cover;display:block}
     canvas#overlay{position:absolute;inset:0;pointer-events:none}
-
-    /* ROI overlay */
     .roi{position:absolute;border:2px solid var(--ring);box-shadow:0 0 0 2px #0006,0 0 24px #000 inset;cursor:move}
     .roi .handle{position:absolute;width:14px;height:14px;background:var(--ring);border:2px solid #000;border-radius:50%}
     .roi .handle.nw{left:-7px;top:-7px}
     .roi .handle.ne{right:-7px;top:-7px}
     .roi .handle.sw{left:-7px;bottom:-7px}
     .roi .handle.se{right:-7px;bottom:-7px}
-
     .grid{display:grid;gap:.5rem}
     label.small{font-size:12px;opacity:.85}
     input[type="range"]{width:100%}
@@ -52,38 +49,32 @@
 <body>
   <header>
     <div class="bar" id="statusBar">
-      <span class="pill ok" id="sCam">Camera: idle</span>
-      <span class="pill" id="sLib">Decoder: loading…</span>
-      <span class="pill" id="sTorch">Torch: n/a</span>
-      <span class="pill" id="sZoom">Zoom: n/a</span>
+      <span class="pill ok" id="sCam">Cámara: inactiva</span>
+      <span class="pill" id="sLib">Decoder: JS (@zxing/library)</span>
+      <span class="pill" id="sTorch">Linterna: n/d</span>
+      <span class="pill" id="sZoom">Zoom: n/d</span>
       <span class="pill" id="sFps">Proc: 0 fps</span>
-      <span class="pill warn" id="sTips">Tip: align the code inside the frame</span>
+      <span class="pill warn" id="sTips">Tip: alinea el código dentro del marco</span>
     </div>
   </header>
 
   <div class="row">
     <div class="card">
-      <h3>Live Camera</h3>
+      <h3>Cámara en vivo</h3>
       <div class="content">
         <div class="grid" style="margin-bottom:.5rem">
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="btn primary" id="btnStart">Start</button>
-            <button class="btn" id="btnStop" disabled>Stop</button>
-            <button class="btn" id="btnSwitch" disabled>Switch Camera</button>
-            <button class="btn" id="btnFreeze" disabled>Freeze & Decode</button>
-            <button class="btn" id="btnUnfreeze" disabled>Unfreeze</button>
-            <button class="btn" id="btnTorch" disabled>Toggle Torch</button>
+            <button class="btn primary" id="btnStart">Iniciar</button>
+            <button class="btn" id="btnStop" disabled>Detener</button>
+            <button class="btn" id="btnSwitch" disabled>Cambiar cámara</button>
+            <button class="btn" id="btnFreeze" disabled>Congelar & Decodificar</button>
+            <button class="btn" id="btnUnfreeze" disabled>Descongelar</button>
+            <button class="btn" id="btnTorch" disabled>Linterna</button>
           </div>
           <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
             <label class="small">Zoom <input type="range" min="1" max="5" step="0.1" value="1" id="zoom"></label>
-            <label class="small">Decoder
-              <select id="decoderSel">
-                <option value="wasm" selected>ZXing-WASM (fast)</option>
-                <option value="js">@zxing/library (fallback)</option>
-              </select>
-            </label>
-            <label class="small"><input type="checkbox" id="autoDecode" checked /> Auto decode (12 fps)</label>
-            <label class="small"><input type="checkbox" id="tryHarder" /> Try harder (heavier)</label>
+            <label class="small"><input type="checkbox" id="autoDecode" checked /> Auto decode (~8 fps)</label>
+            <label class="small"><input type="checkbox" id="tryHarder" /> Try harder al congelar</label>
           </div>
         </div>
         <div class="stage" id="stage">
@@ -96,18 +87,18 @@
             <div class="handle se" data-h="se"></div>
           </div>
         </div>
-        <div class="hint" style="margin-top:.6rem">Drag the rectangle corners to fit the barcode (leave a small quiet zone around it). Tap video to try auto-focus (if supported).</div>
+        <div class="hint" style="margin-top:.6rem">Ajusta el rectángulo al PDF417 (deja zona silenciosa). Toca el video para intentar autofocus si hay soporte.</div>
       </div>
     </div>
 
     <div class="card">
-      <h3>Results</h3>
+      <h3>Resultados</h3>
       <div class="content">
         <div class="kv">
-          <div>Last status</div><div id="lastStatus" class="mono">–</div>
-          <div>Symbology</div><div><span class="tag">PDF_417</span></div>
-          <div>Text</div><div id="outText" class="result mono" style="white-space:pre-wrap;max-height:180px;overflow:auto">(no data)</div>
-          <div>Position</div><div id="outPos" class="mono">–</div>
+          <div>Último estado</div><div id="lastStatus" class="mono">–</div>
+          <div>Simbología</div><div><span class="tag">PDF_417</span></div>
+          <div>Texto</div><div id="outText" class="result mono" style="white-space:pre-wrap;max-height:180px;overflow:auto">(sin datos)</div>
+          <div>Posición</div><div id="outPos" class="mono">–</div>
           <div>De-dupe</div><div id="outDedup" class="mono">0 / 2</div>
         </div>
       </div>
@@ -116,34 +107,34 @@
 
   <div class="row" style="padding-top:0">
     <div class="card">
-      <h3>Diagnostics</h3>
+      <h3>Diagnóstico</h3>
       <div class="content">
         <div class="kv">
-          <div>Resolution</div><div id="diagRes">–</div>
-          <div>ROI size</div><div id="diagRoi">–</div>
+          <div>Resolución</div><div id="diagRes">–</div>
+          <div>Tamaño ROI</div><div id="diagRoi">–</div>
           <div>Hints</div><div id="diagHints" class="mono">PDF_417 only</div>
-          <div>Notes</div><div id="diagNotes">Use Freeze for a heavy decode if live decoding fails.</div>
+          <div>Notas</div><div id="diagNotes">Usa “Congelar” para un pase pesado si el live falla.</div>
         </div>
       </div>
     </div>
     <div class="card">
-      <h3>How this improves accuracy</h3>
+      <h3>Cómo mejora la precisión</h3>
       <div class="content">
         <ul>
-          <li>Manual ROI crop to feed only the barcode region (less noise, faster decode).</li>
-          <li>Worker offload + de-dupe (requires 2 identical reads before emitting a final success).</li>
-          <li>Optional <em>Try Harder</em> pass on frozen frames (costly, but robust).</li>
-          <li>Torch & zoom controls (when supported).</li>
+          <li>Recorte manual (ROI) para alimentar solo el código.</li>
+          <li>De-dupe (exige dos lecturas idénticas seguidas).</li>
+          <li>Pase <em>Try Harder</em> al congelar (costoso pero robusto).</li>
+          <li>Controles de linterna y zoom (si hay soporte).</li>
         </ul>
       </div>
     </div>
   </div>
 
-  <!-- ZXing fallback library for JS decoder mode -->
+  <!-- ZXing JS (sin WASM) -->
   <script defer src="https://unpkg.com/@zxing/library@0.20.0"></script>
 
-  <script type="module">
-    // --- Globals
+  <script>
+    // --- Referencias UI
     const els = {
       video: document.getElementById('video'),
       overlay: document.getElementById('overlay'),
@@ -169,66 +160,30 @@
       btnUnfreeze: document.getElementById('btnUnfreeze'),
       btnTorch: document.getElementById('btnTorch'),
       zoom: document.getElementById('zoom'),
-      decoderSel: document.getElementById('decoderSel'),
       autoDecode: document.getElementById('autoDecode'),
       tryHarder: document.getElementById('tryHarder'),
     };
 
+    // --- Estado
     let stream, track, imageCapture;
     let devices = [];
     let activeDeviceId = null;
     let frozen = false;
     let processing = false;
-    let wantFPS = 12;
-    let lastProc = 0, fps = 0;
+    let wantFPS = 8;              // ~8 fps en vivo para no bloquear UI
+    let lastProc = 0, fps = 0, lastTick = 0;
 
-    // de-dupe state
+    // De-dupe
     let lastText = '', dedupCount = 0, dedupTarget = 2;
 
-    // Worker
-    let worker = null;
-    let workerReady = false;
-    let wantDecoder = 'wasm';
+    // ZXing Reader (JS)
+    let ZX = null, reader = null, hints = null;
 
-    // --- Create decoder worker (supports wasm and js)
-    function createWorker(kind='wasm'){
-      if(worker){ worker.terminate(); worker = null; }
-      workerReady = false;
+    // Canvas interno para decodificar ROI (HTMLCanvas, no OffscreenCanvas)
+    const workCanvas = document.createElement('canvas');
+    const workCtx = workCanvas.getContext('2d', { willReadFrequently:true });
 
-      const src = kind === 'wasm' ? workerSrcWASM() : workerSrcJS();
-      const blob = new Blob([src], { type: 'application/javascript' });
-      const url = URL.createObjectURL(blob);
-      worker = new Worker(url, { type: 'module' });
-      worker.onmessage = (e)=>{
-        const msg = e.data;
-        if(msg.type==='ready'){
-          workerReady = true;
-          els.sLib.textContent = `Decoder: ${kind.toUpperCase()} ready`;
-          els.sLib.className = 'pill ok';
-          els.diagNotes.textContent = `Using ${kind.toUpperCase()} decoder`;
-        }else if(msg.type==='result'){
-          handleDecode(msg.result);
-        }else if(msg.type==='none'){
-          // no-op
-        }else if(msg.type==='error'){
-          console.error('Decoder error:', msg.error);
-          els.lastStatus.textContent = `Error: ${msg.error}`;
-          els.sLib.className = 'pill err';
-          
-          // Enhanced fallback logic
-          if(kind === 'wasm') {
-            els.diagNotes.textContent = 'WASM failed, falling back to JS decoder...';
-            setTimeout(() => createWorker('js'), 1000);
-          } else {
-            els.diagNotes.textContent = 'Both decoders failed. Check console for errors.';
-          }
-        }
-      };
-      els.sLib.textContent = `Decoder: loading ${kind.toUpperCase()}…`;
-      els.sLib.className = 'pill';
-    }
-
-    // --- Camera helpers
+    // --- Cámara
     async function listCams(){
       const devs = await navigator.mediaDevices.enumerateDevices();
       return devs.filter(d=>d.kind==='videoinput');
@@ -236,6 +191,9 @@
 
     async function startCam(){
       try{
+        // Init ZXing si no está
+        await ensureZXing();
+
         devices = await listCams();
         const constraints = {
           video: {
@@ -251,7 +209,7 @@
         els.btnStop.disabled = false;
         els.btnSwitch.disabled = devices.length>1 ? false : true;
         els.btnFreeze.disabled = false;
-        els.sCam.textContent = `Camera: ${track.label || 'active'}`;
+        els.sCam.textContent = `Cámara: ${track.label || 'activa'}`;
         els.sCam.className = 'pill ok';
 
         if('ImageCapture' in window){
@@ -261,7 +219,7 @@
         sizeOverlay();
         loop();
       }catch(err){
-        els.sCam.textContent = `Camera error`;
+        els.sCam.textContent = `Error cámara`;
         els.sCam.className = 'pill err';
         els.lastStatus.textContent = err?.message || String(err);
       }
@@ -271,7 +229,7 @@
       frozen=false; processing=false; lastText=''; dedupCount=0; updateDedup();
       if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
       els.btnStop.disabled = true; els.btnSwitch.disabled=true; els.btnFreeze.disabled=true; els.btnUnfreeze.disabled=true; els.btnTorch.disabled=true;
-      els.sCam.textContent = 'Camera: stopped'; els.sCam.className='pill';
+      els.sCam.textContent = 'Cámara: detenida'; els.sCam.className='pill';
     }
 
     async function switchCam(){
@@ -284,16 +242,16 @@
 
     function bindCapabilities(){
       const caps = track.getCapabilities?.() || {};
-      // Torch
-      if(caps.torch){ els.btnTorch.disabled=false; els.sTorch.textContent='Torch: off'; els.sTorch.className='pill'; }
-      else{ els.btnTorch.disabled=true; els.sTorch.textContent='Torch: n/a'; els.sTorch.className='pill'; }
+      // Linterna
+      if(caps.torch){ els.btnTorch.disabled=false; els.sTorch.textContent='Linterna: off'; els.sTorch.className='pill'; }
+      else{ els.btnTorch.disabled=true; els.sTorch.textContent='Linterna: n/d'; els.sTorch.className='pill'; }
       // Zoom
       if(caps.zoom){
         els.zoom.min = caps.zoom.min ?? 1; els.zoom.max = caps.zoom.max ?? 5; els.zoom.step = caps.zoom.step ?? 0.1;
         els.zoom.value = track.getSettings?.().zoom ?? 1;
         els.sZoom.textContent = `Zoom: ${Number(els.zoom.value).toFixed(1)}x`;
       }else{
-        els.sZoom.textContent = 'Zoom: n/a';
+        els.sZoom.textContent = 'Zoom: n/d';
       }
     }
 
@@ -302,7 +260,7 @@
         const s = track.getSettings?.()||{};
         const on = !s.torch;
         await track.applyConstraints({ advanced: [{ torch: on }] });
-        els.sTorch.textContent = `Torch: ${on?'on':'off'}`;
+        els.sTorch.textContent = `Linterna: ${on?'on':'off'}`;
         els.sTorch.className = on? 'pill ok':'pill';
       }catch{ /* no-op */ }
     }
@@ -317,10 +275,9 @@
       const c = els.overlay; c.width = rect.width; c.height = rect.height;
       updateDiagnostics();
     }
-
     window.addEventListener('resize', sizeOverlay);
 
-    // --- ROI interactions
+    // --- ROI UX
     (function(){
       const roi = els.roi; const stage = els.stage; let drag=null; let start={};
       function pxToPct(dx,dy){
@@ -353,15 +310,19 @@
       function pct(s){ return parseFloat(String(s).replace('%',''))||0 }
     })();
 
-    // --- Processing loop (live)
-    async function loop(){
+    // --- Bucle de procesamiento
+    function loop(ts){
       if(!els.video.srcObject) return;
-      if(!frozen && els.autoDecode.checked){ await maybeProcessFrame(); }
-      requestVideoFrame( loop );
+      // FPS simple
+      if(lastTick){ const dt = ts - lastTick; fps = 1000/dt; els.sFps.textContent = 'Proc: ' + Math.round(Math.min(fps, wantFPS)) + ' fps'; }
+      lastTick = ts || performance.now();
+
+      if(!frozen && els.autoDecode.checked){ maybeProcessFrame(); }
+      requestVideoFrame(loop);
     }
 
     function requestVideoFrame(cb){
-      // IMPORTANT: keep the correct `this` binding for requestVideoFrameCallback
+      // Mantener this correcto
       if (typeof els.video.requestVideoFrameCallback === 'function') {
         els.video.requestVideoFrameCallback(cb);
       } else {
@@ -370,38 +331,38 @@
     }
 
     async function maybeProcessFrame(){
-      if(processing || !workerReady) return;
+      if(processing) return;
       const now = performance.now();
       if(now - lastProc < 1000/wantFPS) return; lastProc = now;
       processing = true;
       try{
-        const { data, width, height } = frameFromVideoROI();
-        if(!data) return;
-        worker.postMessage({ type:'frame', data, width, height, tryHarder: els.tryHarder.checked });
+        const out = await decodeROI(false);
+        if(out) handleDecode(out, /*heavy=*/false);
       } finally {
         processing = false;
       }
     }
 
-    // Freeze for heavy decode
     async function freezeAndDecode(){
       frozen = true; els.btnUnfreeze.disabled=false; els.btnFreeze.disabled=true;
-      await heavyDecode();
-    }
-    async function heavyDecode(){
-      if(!workerReady) return;
-      const { data, width, height } = frameFromVideoROI();
-      worker.postMessage({ type:'heavy', data, width, height, tryHarder: true });
+      // Pase normal y si falla, tryHarder
+      let out = await decodeROI(false);
+      if(!out && els.tryHarder.checked){
+        out = await decodeROI(true);
+      }
+      if(out) handleDecode(out, /*heavy=*/true);
     }
 
     function unfreeze(){ frozen=false; els.btnUnfreeze.disabled=true; els.btnFreeze.disabled=false; }
 
-    // --- Capture ROI to ImageData
-    function frameFromVideoROI(){
-      const v = els.video; if(!v.videoWidth) return {};
+    // --- Decodificar desde ROI con ZXing JS
+    async function decodeROI(tryHarder=false){
+      if(!reader) return null;
+      const v = els.video; if(!v.videoWidth) return null;
+
+      // Mapear ROI (en % del stage) a píxeles del video considerando object-fit: cover
       const stageRect = els.stage.getBoundingClientRect();
       const vw = v.videoWidth, vh = v.videoHeight;
-      // Map ROI (in % of stage) -> video pixel coords considering object-fit: cover
       const roiPct = rectPct(els.roi);
       const cover = coverMapping(vw, vh, stageRect.width, stageRect.height);
       const roiPx = {
@@ -410,24 +371,36 @@
         w: Math.round((roiPct.width/100)*stageRect.width),
         h: Math.round((roiPct.height/100)*stageRect.height)
       };
-      // scale from stage px to video px
       const scale = cover.scale;
       const sx = Math.max(0, Math.round(roiPx.x/scale));
       const sy = Math.max(0, Math.round(roiPx.y/scale));
       const sw = Math.max(1, Math.round(roiPx.w/scale));
       const sh = Math.max(1, Math.round(roiPx.h/scale));
 
-      const off = new OffscreenCanvas(sw, sh);
-      const ctx = off.getContext('2d', { willReadFrequently:true });
-      ctx.drawImage(v, sx, sy, sw, sh, 0,0, sw, sh);
-      const img = ctx.getImageData(0,0,sw,sh);
-      // Diagnostics
-      els.diagRes.textContent = `${vw}×${vh}`;
-      els.diagRoi.textContent = `${sw}×${sh}`;
-      // Heuristic tips
-      if(sw < 380) els.sTips.textContent = 'Tip: move closer (ROI < 400 px wide)';
-      else els.sTips.textContent = 'Tip: hold steady & reduce glare';
-      return { data: img.data, width: sw, height: sh };
+      // Pintar en canvas HTML (no Offscreen) y decodificar
+      workCanvas.width = sw; workCanvas.height = sh;
+      workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      // Ajustar hints (TRY_HARDER solo cuando se solicita)
+      const { DecodeHintType } = ZX;
+      if(tryHarder){ hints.set(DecodeHintType.TRY_HARDER, true); }
+      else { hints.delete(DecodeHintType.TRY_HARDER); }
+
+      try{
+        const res = await reader.decodeFromCanvas(workCanvas);
+        if(res && typeof res.getText === 'function'){
+          const points = (typeof res.getResultPoints === 'function') ? res.getResultPoints() : null;
+          // Diagnóstico UI
+          els.diagRes.textContent = `${vw}×${vh}`;
+          els.diagRoi.textContent = `${sw}×${sh}`;
+          if(sw < 380) els.sTips.textContent = 'Tip: acércate (ROI < 400 px de ancho)';
+          else els.sTips.textContent = 'Tip: mantén estable y reduce reflejos';
+          return { text: res.getText(), points, backend:'js', tryHarder };
+        }
+      }catch(e){
+        // Nada: suele lanzar cuando no hay lectura válida
+      }
+      return null;
     }
 
     function rectPct(el){
@@ -438,27 +411,25 @@
     }
 
     function coverMapping(vw, vh, cw, ch){
-      // object-fit: cover — scale video to cover stage
-      const rs = Math.max(cw/vw, ch/vh); // scale applied to video -> canvas
+      const rs = Math.max(cw/vw, ch/vh);
       const dispW = vw*rs, dispH = vh*rs;
-      const dx = (dispW - cw)/2; // crop offset on X in display px
-      const dy = (dispH - ch)/2; // crop offset on Y in display px
+      const dx = (dispW - cw)/2;
+      const dy = (dispH - ch)/2;
       return { scale: rs, dx, dy };
     }
 
-    // --- Handle decode results
-    function handleDecode(res){
+    // --- Manejar resultados
+    function handleDecode(res, heavy){
       if(!res) return;
-      // De-dupe: require same text twice in a row
+
       if(res.text && res.text === lastText){ dedupCount++; } else { lastText = res.text; dedupCount = 1; }
       updateDedup();
 
       els.outText.textContent = res.text || '';
-      els.outPos.textContent = res.points ? JSON.stringify(res.points) : '(no points)';
-      els.lastStatus.textContent = `Decoded (${res.backend}) ${res.tryHarder? 'TRY_HARDER' : 'fast'}`;
+      els.outPos.textContent = res.points ? JSON.stringify(res.points) : '(sin puntos)';
+      els.lastStatus.textContent = `Decoded (JS) ${res.tryHarder? 'TRY_HARDER' : (heavy ? 'heavy' : 'live')}`;
 
       if(dedupCount >= dedupTarget){
-        // Lock a success UI pulse
         pulse(els.outText);
       }
     }
@@ -466,7 +437,7 @@
     function updateDedup(){ els.outDedup.textContent = `${dedupCount} / ${dedupTarget}`; }
     function pulse(el){ el.animate([{boxShadow:'0 0 0 0 rgba(88,179,104,.6)'},{boxShadow:'0 0 0 14px rgba(88,179,104,0)'}],{duration:800}); }
 
-    // --- Event bindings
+    // --- Eventos UI
     els.btnStart.addEventListener('click', startCam);
     els.btnStop.addEventListener('click', stopCam);
     els.btnSwitch.addEventListener('click', switchCam);
@@ -474,130 +445,44 @@
     els.btnUnfreeze.addEventListener('click', unfreeze);
     els.btnTorch.addEventListener('click', setTorch);
     els.zoom.addEventListener('input', (e)=> setZoom(e.target.value));
-    els.decoderSel.addEventListener('change', (e)=>{ wantDecoder = e.target.value; createWorker(wantDecoder); });
 
-    // tap to hint autofocus (best-effort)
+    // Tap para sugerir autofocus (best-effort)
     els.video.addEventListener('click', async ()=>{
       try{
         const caps = track.getCapabilities?.();
         if(caps?.focusMode && caps.focusMode.includes('single-shot')){
           await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
-          els.diagNotes.textContent = 'Requested single-shot autofocus.';
+          els.diagNotes.textContent = 'Autofocus por disparo solicitado.';
         } else {
-          els.diagNotes.textContent = 'Autofocus not supported; try moving slightly.';
+          els.diagNotes.textContent = 'Sin autofocus; intenta moverte ligeramente.';
         }
       }catch{}
     });
 
-    // Initial worker
-    createWorker(wantDecoder);
-
-    // Resize overlay to stage
-    sizeOverlay();
-
-    // --- Worker sources
-    function workerSrcWASM(){
-      return `
-        let Module, ZX;
-        let ready=false;
-        // Load ZXing WASM via import
-        (async()=>{
-          try{
-            // Try multiple CDN options
-            try {
-              ZX = await import('https://unpkg.com/@zxing/wasm@1.2.7/dist/umd/index.js');
-            } catch (e1) {
-              try {
-                ZX = await import('https://cdn.skypack.dev/@zxing/wasm@1.2.7');
-              } catch (e2) {
-                ZX = await import('https://esm.sh/@zxing/wasm@1.2.7');
-              }
-            }
-            await ZX.load();
-            ready = true;
-            postMessage({type:'ready'});
-          }catch(e){ 
-            console.error('WASM load error:', e);
-            postMessage({type:'error', error: 'WASM load failed: '+(e?.message||e)}); 
-          }
-        })();
-
-        function decodePass(buf, w, h, opts){
-          try{
-            const reader = new ZX.BarcodeReader();
-            const res = reader.decode({ 
-              data: buf, 
-              width: w, 
-              height: h, 
-              tryHarder: !!opts.tryHarder, 
-              formats: [ZX.BarcodeFormat.PDF_417], 
-              maxNumberOfSymbols: 1 
-            });
-            if(res && res.length){
-              const r = res[0];
-              return { text: r.text, points: r.position, backend:'wasm', tryHarder: !!opts.tryHarder };
-            }
-          }catch(e){ /* fallthrough */ }
-          return null;
-        }
-
-        self.onmessage = (e)=>{
-          const msg = e.data; if(!ready) return;
-          const { data, width, height } = msg;
-          if(msg.type==='frame'){
-            const out = decodePass(data, width, height, { tryHarder: msg.tryHarder });
-            if(out) postMessage({type:'result', result: out}); else postMessage({type:'none'});
-          } else if(msg.type==='heavy'){
-            // heavy: try normal then TR
-            let out = decodePass(data, width, height, { tryHarder:false });
-            if(!out) out = decodePass(data, width, height, { tryHarder:true });
-            if(out) postMessage({type:'result', result: out}); else postMessage({type:'none'});
-          }
-        };
-      `;
+    // Inicializar librería ZXing JS
+    async function ensureZXing(){
+      if(ZX && reader) return;
+      ZX = window.ZXing;
+      if(!ZX) throw new Error('ZXing JS no cargó');
+      const { BarcodeFormat, DecodeHintType, BrowserPDF417Reader } = ZX;
+      hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
+      reader = new BrowserPDF417Reader(hints);
+      els.sLib.textContent = 'Decoder: JS listo';
+      els.sLib.className = 'pill ok';
+      els.diagNotes.textContent = 'Usando @zxing/library (JS).';
     }
 
-    function workerSrcJS(){
-      return `
-        importScripts('https://unpkg.com/@zxing/library@0.20.0');
-        let ready=false, reader, hints;
-        (function init(){
-          try{
-            const { BarcodeFormat, DecodeHintType, BrowserPDF417Reader } = ZXing;
-            hints = new Map();
-            hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
-            reader = new BrowserPDF417Reader(hints);
-            ready=true; postMessage({type:'ready'});
-          }catch(e){ postMessage({type:'error', error:'JS lib init failed: '+(e?.message||e)}); }
-        })();
-
-        self.onmessage = async (e)=>{
-          if(!ready) return; const msg = e.data;
-          const { data, width, height } = msg; if(!data) return;
-          try{
-            // Draw to OffscreenCanvas for decodeFromCanvas
-            const off = new OffscreenCanvas(width, height);
-            const ctx = off.getContext('2d', { willReadFrequently:true });
-            const img = new ImageData(new Uint8ClampedArray(data), width, height);
-            ctx.putImageData(img, 0, 0);
-            if(msg.tryHarder){
-              const { DecodeHintType } = ZXing; hints.set(DecodeHintType.TRY_HARDER, true);
-            }
-            const res = await reader.decodeFromCanvas(off);
-            const out = res?.getText?.() ? { text: res.getText(), points: res?.getResultPoints?.()||null, backend:'js', tryHarder: !!msg.tryHarder } : null;
-            if(out) postMessage({type:'result', result: out}); else postMessage({type:'none'});
-          }catch(err){ postMessage({type:'none'}); }
-        };
-      `;
-    }
-
-    // --- Utility
+    // Diagnóstico secundario
     function updateDiagnostics(){
       const r = els.roi.getBoundingClientRect();
       const s = els.stage.getBoundingClientRect();
       const pctW = (r.width/s.width*100)|0; const pctH = (r.height/s.height*100)|0;
-      els.diagRoi.textContent = `${pctW}% × ${pctH}% of view`;
+      els.diagRoi.textContent = `${pctW}% × ${pctH}% del cuadro`;
     }
+
+    // Resize overlay
+    sizeOverlay();
   </script>
 </body>
 </html>
