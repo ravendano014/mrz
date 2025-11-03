@@ -29,7 +29,7 @@
     .stage{position:relative;background:#000;aspect-ratio:16/9;border-radius:.6rem;overflow:hidden;border:1px solid var(--muted)}
     video{width:100%;height:100%;object-fit:cover;display:block}
     canvas#overlay{position:absolute;inset:0;pointer-events:none}
-    .roi{position:absolute;border:2px solid var(--ring);box-shadow:0 0 0 2px #0006,0 0 24px #000 inset;cursor:move}
+    .roi{position:absolute;border:2px solid var(--ring);box-shadow:0 0 0 2px #0006,0 0 24px #000 inset;cursor:move; touch-action:none}
     .roi .handle{position:absolute;width:14px;height:14px;background:var(--ring);border:2px solid #000;border-radius:50%}
     .roi .handle.nw{left:-7px;top:-7px}
     .roi .handle.ne{right:-7px;top:-7px}
@@ -44,6 +44,9 @@
     .result{border:1px dashed #3a485b;border-radius:.6rem;padding:.6rem;background:#0d131c}
     .hint{font-size:12px;opacity:.9}
     .tag{display:inline-block;padding:.2rem .45rem;border:1px solid #314155;border-radius:.5rem;background:#0f1722;margin:.1rem .2rem 0 0}
+    .roi-controls{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+    .roi-controls .block{background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem}
+    .row-controls{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
   </style>
 </head>
 <body>
@@ -77,6 +80,7 @@
             <label class="small"><input type="checkbox" id="tryHarder" /> Try harder al congelar</label>
           </div>
         </div>
+
         <div class="stage" id="stage">
           <video id="video" playsinline muted></video>
           <canvas id="overlay"></canvas>
@@ -87,6 +91,34 @@
             <div class="handle se" data-h="se"></div>
           </div>
         </div>
+
+        <!-- Controles de ROI: sliders y mover arriba/abajo -->
+        <div class="roi-controls" style="margin-top: .8rem">
+          <div class="block">
+            <div class="row-controls">
+              <strong>Dimensiones del ROI</strong>
+            </div>
+            <div class="grid" style="margin-top:.5rem">
+              <label class="small">Ancho (%)
+                <input type="range" min="5" max="100" step="1" id="roiWidth">
+              </label>
+              <label class="small">Alto (%)
+                <input type="range" min="5" max="100" step="1" id="roiHeight">
+              </label>
+            </div>
+          </div>
+          <div class="block">
+            <div class="row-controls">
+              <strong>Posición del ROI</strong>
+            </div>
+            <div class="row-controls" style="margin-top:.5rem">
+              <button class="btn" id="btnUp">Subir</button>
+              <button class="btn" id="btnDown">Bajar</button>
+              <!-- (Opcional) podrías añadir Izq/Der más tarde -->
+            </div>
+          </div>
+        </div>
+
         <div class="hint" style="margin-top:.6rem">Ajusta el rectángulo al PDF417 (deja zona silenciosa). Toca el video para intentar autofocus si hay soporte.</div>
       </div>
     </div>
@@ -162,6 +194,11 @@
       zoom: document.getElementById('zoom'),
       autoDecode: document.getElementById('autoDecode'),
       tryHarder: document.getElementById('tryHarder'),
+      // NUEVOS
+      roiWidth: document.getElementById('roiWidth'),
+      roiHeight: document.getElementById('roiHeight'),
+      btnUp: document.getElementById('btnUp'),
+      btnDown: document.getElementById('btnDown'),
     };
 
     // --- Estado
@@ -182,6 +219,33 @@
     // Canvas interno para decodificar ROI (HTMLCanvas, no OffscreenCanvas)
     const workCanvas = document.createElement('canvas');
     const workCtx = workCanvas.getContext('2d', { willReadFrequently:true });
+
+    // --- Helpers ROI (%)
+    const pct = s => parseFloat(String(s).replace('%',''))||0;
+    function getRoiPct(){
+      return {
+        left: pct(els.roi.style.left),
+        top: pct(els.roi.style.top),
+        width: pct(els.roi.style.width),
+        height: pct(els.roi.style.height),
+      };
+    }
+    function setRoiPct({left,top,width,height}){
+      const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+      const L = clamp(left, 0, 100 - width);
+      const T = clamp(top,  0, 100 - height);
+      els.roi.style.left   = L + '%';
+      els.roi.style.top    = T + '%';
+      els.roi.style.width  = clamp(width, 5, 100) + '%';
+      els.roi.style.height = clamp(height,5, 100) + '%';
+      updateDiagnostics();
+      syncRoiSliders();
+    }
+    function syncRoiSliders(){
+      const r = getRoiPct();
+      els.roiWidth.value = Math.round(r.width);
+      els.roiHeight.value = Math.round(r.height);
+    }
 
     // --- Cámara
     async function listCams(){
@@ -274,10 +338,11 @@
       const rect = els.stage.getBoundingClientRect();
       const c = els.overlay; c.width = rect.width; c.height = rect.height;
       updateDiagnostics();
+      syncRoiSliders();
     }
     window.addEventListener('resize', sizeOverlay);
 
-    // --- ROI UX
+    // --- ROI UX (ratón)
     (function(){
       const roi = els.roi; const stage = els.stage; let drag=null; let start={};
       function pxToPct(dx,dy){
@@ -303,11 +368,82 @@
           case 'sw': L=clamp(start.left+p.x,0,start.left+start.w-5); W=start.w-(L-start.left); H=clamp(start.h+p.y,5,100-start.top); break;
           case 'se': W=clamp(start.w+p.x,5,100-start.left); H=clamp(start.h+p.y,5,100-start.top); break;
         }
-        roi.style.left=L+'%'; roi.style.top=T+'%'; roi.style.width=W+'%'; roi.style.height=H+'%';
-        updateDiagnostics();
+        setRoiPct({left:L, top:T, width:W, height:H});
       });
       window.addEventListener('mouseup',()=> drag=null);
-      function pct(s){ return parseFloat(String(s).replace('%',''))||0 }
+    })();
+
+    // --- ROI UX (táctil: 1 dedo mueve, 2 dedos escalan desde el centro)
+    (function(){
+      const stage = els.stage, roi = els.roi;
+      let tState = null;
+
+      function getTouches(e){ return Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY,id:t.identifier})); }
+      function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+      function center(a,b){ return {x:(a.x+b.x)/2, y:(a.y+b.y)/2}; }
+      function stageRect(){ return stage.getBoundingClientRect(); }
+      function pxToPctPoint(x,y){
+        const r = stageRect();
+        return { x: (x - r.left) / r.width * 100, y: (y - r.top) / r.height * 100 };
+      }
+
+      roi.addEventListener('touchstart', (e)=>{
+        e.preventDefault();
+        const touches = getTouches(e);
+        const r0 = getRoiPct();
+        if(touches.length === 1){
+          // mover
+          tState = {mode:'move', startTouch:touches[0], start:r0};
+        }else if(touches.length >= 2){
+          // escalar
+          const [a,b] = touches;
+          const d0 = dist(a,b);
+          const c0 = center(a,b);
+          const cPct = pxToPctPoint(c0.x, c0.y);
+          tState = {mode:'pinch', d0, cPct, start:r0};
+        }
+      }, {passive:false});
+
+      roi.addEventListener('touchmove', (e)=>{
+        if(!tState) return;
+        e.preventDefault();
+        const touches = getTouches(e);
+        const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+
+        if(tState.mode==='move' && touches.length===1){
+          const s = stageRect();
+          const dx = (touches[0].x - tState.startTouch.x)/s.width*100;
+          const dy = (touches[0].y - tState.startTouch.y)/s.height*100;
+          const W = tState.start.width, H = tState.start.height;
+          const L = clamp(tState.start.left + dx, 0, 100 - W);
+          const T = clamp(tState.start.top + dy, 0, 100 - H);
+          setRoiPct({left:L, top:T, width:W, height:H});
+        }else if(tState.mode==='pinch' && touches.length>=2){
+          const [a,b] = touches;
+          const d1 = dist(a,b);
+          const scale = clamp(d1 / (tState.d0||1), 0.5, 3); // límites de escala
+          const start = tState.start;
+
+          // Escalado uniforme desde el centro guardando el centro del ROI
+          const cx = start.left + start.width/2;
+          const cy = start.top  + start.height/2;
+          let newW = clamp(start.width * scale, 5, 100);
+          let newH = clamp(start.height * scale, 5, 100);
+          // Reposicionar para mantener centro
+          let newL = cx - newW/2;
+          let newT = cy - newH/2;
+          // Ajustar si se sale
+          if(newL < 0) newL = 0;
+          if(newT < 0) newT = 0;
+          if(newL + newW > 100) newL = 100 - newW;
+          if(newT + newH > 100) newT = 100 - newH;
+
+          setRoiPct({left:newL, top:newT, width:newW, height:newH});
+        }
+      }, {passive:false});
+
+      window.addEventListener('touchend', ()=>{ tState=null; }, {passive:true});
+      window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
     })();
 
     // --- Bucle de procesamiento
@@ -407,7 +543,6 @@
       return {
         left: pct(el.style.left), top: pct(el.style.top), width: pct(el.style.width), height: pct(el.style.height)
       };
-      function pct(s){ return parseFloat(String(s).replace('%',''))||0 }
     }
 
     function coverMapping(vw, vh, cw, ch){
@@ -446,6 +581,38 @@
     els.btnTorch.addEventListener('click', setTorch);
     els.zoom.addEventListener('input', (e)=> setZoom(e.target.value));
 
+    // Sliders ROI
+    els.roiWidth.addEventListener('input', ()=>{
+      const r = getRoiPct();
+      // mantener centro al cambiar tamaño
+      const newW = Number(els.roiWidth.value);
+      const cx = r.left + r.width/2;
+      let L = cx - newW/2;
+      if(L < 0) L = 0;
+      if(L + newW > 100) L = 100 - newW;
+      setRoiPct({left:L, top:r.top, width:newW, height:r.height});
+    });
+    els.roiHeight.addEventListener('input', ()=>{
+      const r = getRoiPct();
+      const newH = Number(els.roiHeight.value);
+      const cy = r.top + r.height/2;
+      let T = cy - newH/2;
+      if(T < 0) T = 0;
+      if(T + newH > 100) T = 100 - newH;
+      setRoiPct({left:r.left, top:T, width:r.width, height:newH});
+    });
+
+    // Botones mover arriba/abajo
+    const stepPct = 2;
+    els.btnUp.addEventListener('click', ()=>{
+      const r = getRoiPct();
+      setRoiPct({left:r.left, top: Math.max(0, r.top - stepPct), width:r.width, height:r.height});
+    });
+    els.btnDown.addEventListener('click', ()=>{
+      const r = getRoiPct();
+      setRoiPct({left:r.left, top: Math.min(100 - r.height, r.top + stepPct), width:r.width, height:r.height});
+    });
+
     // Tap para sugerir autofocus (best-effort)
     els.video.addEventListener('click', async ()=>{
       try{
@@ -481,8 +648,9 @@
       els.diagRoi.textContent = `${pctW}% × ${pctH}% del cuadro`;
     }
 
-    // Resize overlay
+    // Resize overlay + sync sliders inicial
     sizeOverlay();
+    syncRoiSliders();
   </script>
 </body>
 </html>
