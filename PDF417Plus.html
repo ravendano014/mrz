@@ -1,952 +1,860 @@
-<!doctype html>
-<html lang="es">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PDF417 Camera Scanner — JS only (no WASM)</title>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Code Scanner + ROI + Preview Parser</title>
   <style>
     :root{
       --bg:#0b0f14;--panel:#121820;--muted:#2b3644;--ring:#2f7de1;--text:#e6eef8;--accent:#58b368;--warn:#d69e2e;--err:#ef4444;
     }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-    header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0b0f14,#0b0f14cc 70%,transparent);
-      border-bottom:1px solid #0b0f14;backdrop-filter:saturate(1.2) blur(4px)}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    header{position:sticky;top:0;z-index:10;background:#0b0f14cc;border-bottom:1px solid #091019;backdrop-filter:saturate(1.1) blur(4px)}
     .bar{display:flex;gap:.5rem;align-items:center;padding:.6rem .9rem;flex-wrap:wrap}
     .pill{padding:.3rem .6rem;border:1px solid var(--muted);border-radius:999px;background:var(--panel)}
     .pill.ok{border-color:#254c36;background:#132018}
-    .pill.warn{border-color:#4a3b14;background:#1a1508}
-    .pill.err{border-color:#5b2323;background:#190d0d}
-    .btn{appearance:none;border:1px solid var(--muted);background:#0f141c;color:var(--text);padding:.5rem .75rem;border-radius:.6rem;cursor:pointer}
-    .btn:hover{border-color:#3a485b}
-    .btn.primary{border-color:#2b4b7c;background:#122036}
-    .btn.ghost{background:transparent}
+    .grid{display:grid;gap:1rem}
     .row{display:grid;grid-template-columns:1.2fr .8fr;gap:1rem;padding:1rem}
     @media (max-width:980px){.row{grid-template-columns:1fr}}
     .card{background:var(--panel);border:1px solid var(--muted);border-radius:.8rem;overflow:hidden}
     .card h3{margin:0;padding:.8rem 1rem;border-bottom:1px solid var(--muted);background:#0f141c}
-    .card .content{padding:1rem}
-    .stage{position:relative;background:#000;aspect-ratio:16/9;border-radius:.6rem;overflow:hidden;border:1px solid var(--muted)}
-    video{width:100%;height:100%;object-fit:cover;display:block}
-    canvas#overlay{position:absolute;inset:0;pointer-events:none}
-    .roi{position:absolute;border:2px solid var(--ring);box-shadow:0 0 0 2px #0006,0 0 24px #000 inset;cursor:move; touch-action:none}
+    .content{padding:1rem}
+    .btn{appearance:none;border:1px solid var(--muted);background:#0f141c;color:var(--text);padding:.5rem .75rem;border-radius:.6rem;cursor:pointer}
+    .btn:hover{border-color:#3a485b}
+    .btn.primary{border-color:#2b4b7c;background:#122036}
+    .row-controls{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+    label.small{font-size:12px;opacity:.9}
+    input[type="range"]{width:200px}
+    .stage{position:relative;background:#000;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden}
+    video{width:100%;height:auto;display:block;object-fit:cover}
+    /* ROI */
+    .roi{position:absolute;border:2px solid var(--ring);box-shadow:0 0 0 2px #0006,0 0 24px #000 inset;cursor:move;touch-action:none}
     .roi .handle{position:absolute;width:14px;height:14px;background:var(--ring);border:2px solid #000;border-radius:50%}
     .roi .handle.nw{left:-7px;top:-7px}
     .roi .handle.ne{right:-7px;top:-7px}
     .roi .handle.sw{left:-7px;bottom:-7px}
     .roi .handle.se{right:-7px;bottom:-7px}
-    .grid{display:grid;gap:.5rem}
-    label.small{font-size:12px;opacity:.85}
-    input[type="range"]{width:100%}
-    .kv{display:grid;grid-template-columns:auto 1fr;gap:.4rem .8rem;align-items:center}
-    .kv div{min-width:0;overflow:hidden;text-overflow:ellipsis}
-    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-    .result{border:1px dashed #3a485b;border-radius:.6rem;padding:.6rem;background:#0d131c}
-    .hint{font-size:12px;opacity:.9}
-    .tag{display:inline-block;padding:.2rem .45rem;border:1px solid #314155;border-radius:.5rem;background:#0f1722;margin:.1rem .2rem 0 0}
-    .roi-controls{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
-    .roi-controls .block{background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem}
-    .row-controls{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-    /* Vista previa */
-    .previewWrap{display:grid;gap:.6rem}
-    .previewBox{display:grid;grid-template-columns:160px 1fr;gap:1rem;align-items:start}
-    @media (max-width:700px){.previewBox{grid-template-columns:1fr}}
-    .preview{width:100%;max-width:100%;border:1px solid var(--muted);border-radius:.6rem;background:#0a0f15}
+    /* Preview */
+    .previewBox{display:grid;grid-template-columns:minmax(180px,340px) 1fr;gap:1rem}
+    @media (max-width:900px){.previewBox{grid-template-columns:1fr}}
+    .pstage{position:relative;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden;background:#0a0f15}
+    .preview{display:block;width:100%;height:auto}
     textarea.mono{width:100%;min-height:120px;background:#0a0f15;border:1px solid var(--muted);color:var(--text);border-radius:.6rem;padding:.5rem;resize:vertical}
     table{width:100%;border-collapse:collapse;background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden}
     th,td{padding:.5rem .6rem;border-bottom:1px solid #273245;vertical-align:top}
     th{background:#0c121a;text-align:left}
-    .parseRow{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap}
-    select{background:#0f141c;border:1px solid var(--muted);color:var(--text);padding:.35rem .5rem;border-radius:.4rem}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .block{background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem}
   </style>
 </head>
 <body>
-  <header>
-    <div class="bar" id="statusBar">
-      <span class="pill ok" id="sCam">Cámara: inactiva</span>
-      <span class="pill" id="sLib">Decoder: JS (@zxing/library)</span>
-      <span class="pill" id="sTorch">Linterna: n/d</span>
-      <span class="pill" id="sZoom">Zoom: n/d</span>
-      <span class="pill" id="sFps">Proc: 0 fps</span>
-      <span class="pill warn" id="sTips">Tip: alinea el código dentro del marco</span>
-    </div>
-  </header>
+<header>
+  <div class="bar">
+    <span class="pill ok">ZXing ready (multi-format)</span>
+    <span class="pill" id="pCam">Cam: idle</span>
+    <span class="pill" id="pZoom">Zoom: n/a</span>
+  </div>
+</header>
 
-  <div class="row">
-    <div class="card">
-      <h3>Cámara en vivo</h3>
-      <div class="content">
-        <div class="grid" style="margin-bottom:.5rem">
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="btn primary" id="btnStart">Iniciar</button>
-            <button class="btn" id="btnStop" disabled>Detener</button>
-            <button class="btn" id="btnSwitch" disabled>Cambiar cámara</button>
-            <button class="btn" id="btnFreeze" disabled>Congelar & Decodificar</button>
-            <button class="btn" id="btnUnfreeze" disabled>Descongelar</button>
-            <button class="btn" id="btnTorch" disabled>Linterna</button>
-            <button class="btn" id="btnCapture" disabled>Capturar a Vista Previa</button>
-          </div>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
-            <label class="small">Zoom <input type="range" min="1" max="5" step="0.1" value="1" id="zoom"></label>
-            <label class="small"><input type="checkbox" id="autoDecode" checked /> Auto decode (~8 fps)</label>
-            <label class="small"><input type="checkbox" id="tryHarder" /> Try harder al congelar</label>
+<div class="row">
+  <!-- CÁMARA + ROI -->
+  <div class="card">
+    <h3>Cámara en vivo (mantiene funciones originales)</h3>
+    <div class="content grid">
+      <!-- Controles originales -->
+      <div class="row-controls">
+        <button id="startButton" class="btn primary">Start</button>
+        <button id="stopButton" class="btn">Stop</button>
+        <button id="changeButton" class="btn">ChangeCamera</button>
+        <button id="freezeButton" class="btn" title="Congelar & Decodificar (manual)">Freeze & Decode</button>
+      </div>
+
+      <!-- Área de video con ROI -->
+      <div id="videoStage" class="stage">
+        <video id="video" width="300" playsinline style="border:0"></video>
+        <div class="roi" id="roi" style="left:20%;top:20%;width:60%;height:50%">
+          <div class="handle nw" data-h="nw"></div>
+          <div class="handle ne" data-h="ne"></div>
+          <div class="handle sw" data-h="sw"></div>
+          <div class="handle se" data-h="se"></div>
+        </div>
+      </div>
+
+      <!-- Controles ROI (ancho/alto + posición + captura) -->
+      <div class="grid">
+        <div class="block">
+          <div class="row-controls"><strong>Dimensiones ROI (Cámara)</strong></div>
+          <div class="row-controls" style="margin-top:.4rem">
+            <label class="small">Ancho (%) <input type="range" min="5" max="100" step="1" id="roiWidth"></label>
+            <label class="small">Alto (%) <input type="range" min="5" max="100" step="1" id="roiHeight"></label>
+            <button id="btnCapture" class="btn">Capturar a Vista Previa</button>
           </div>
         </div>
+        <div class="block">
+          <div class="row-controls"><strong>Posición ROI (Cámara)</strong></div>
+          <div class="row-controls" style="margin-top:.4rem">
+            <button class="btn" id="btnLeft">◀︎</button>
+            <button class="btn" id="btnRight">▶︎</button>
+            <button class="btn" id="btnUp">▲</button>
+            <button class="btn" id="btnDown">▼</button>
+            <button class="btn" id="btnCenter">Centrar</button>
+          </div>
+          <div class="row-controls" style="margin-top:.3rem">
+            <label class="small"><input type="checkbox" id="autoDecode" checked/> Auto decode live</label>
+            <label class="small"><input type="checkbox" id="tryHarder"/> Try harder al congelar</label>
+          </div>
+        </div>
+      </div>
 
-        <div class="stage" id="stage">
-          <video id="video" playsinline muted></video>
-          <canvas id="overlay"></canvas>
-          <div class="roi" id="roi" style="left:20%;top:25%;width:60%;height:50%">
+      <!-- Resultados live (original) -->
+      <div class="grid">
+        <div><strong>Camera Decode :</strong></div>
+        <div id="result" class="mono" style="white-space:pre-wrap;background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem;min-height:48px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVIEW + PARSEO -->
+  <div class="card">
+    <h3>Vista previa (Base64), extracción y parseo</h3>
+    <div class="content grid">
+      <!-- Controles originales de imagen + extras -->
+      <div class="row-controls">
+        <button id="clearButton" class="btn">Clear Image</button>
+        <input type="file" id="myFile" name="filename" accept="image/png, image/jpeg" class="btn" />
+        <button id="decodeButton" class="btn">Decode Image (original)</button>
+        <button id="btnExtractPreview" class="btn">Extraer de Vista Previa (Texto crudo)</button>
+        <button id="btnParse" class="btn">Parsear Datos</button>
+        <label class="small"><input type="checkbox" id="usePreviewROI" checked/> Usar ROI de Vista Previa</label>
+        <label class="small"><input type="checkbox" id="autoExtractParse" checked/> Auto extraer/parsear al capturar</label>
+      </div>
+
+      <!-- Preview con su propio ROI -->
+      <div class="previewBox">
+        <div id="pStage" class="pstage">
+          <img id="previewImg" class="preview" alt="Vista previa"/>
+          <div class="roi" id="pRoi" style="display:none;left:10%;top:10%;width:80%;height:80%">
             <div class="handle nw" data-h="nw"></div>
             <div class="handle ne" data-h="ne"></div>
             <div class="handle sw" data-h="sw"></div>
             <div class="handle se" data-h="se"></div>
           </div>
         </div>
+        <div class="grid">
+          <label class="small">Data URL (Base64):</label>
+          <textarea id="previewB64" class="mono" readonly placeholder="Aquí aparecerá la imagen capturada (ROI) o cargada"></textarea>
 
-        <!-- Controles de ROI -->
-        <div class="roi-controls" style="margin-top: .8rem">
           <div class="block">
-            <div class="row-controls"><strong>Dimensiones del ROI</strong></div>
-            <div class="grid" style="margin-top:.5rem">
-              <label class="small">Ancho (%)
-                <input type="range" min="5" max="100" step="1" id="roiWidth">
-              </label>
-              <label class="small">Alto (%)
-                <input type="range" min="5" max="100" step="1" id="roiHeight">
-              </label>
-            </div>
-          </div>
-          <div class="block">
-            <div class="row-controls"><strong>Posición del ROI</strong></div>
-            <div class="row-controls" style="margin-top:.5rem">
-              <button class="btn" id="btnLeft">Izquierda</button>
-              <button class="btn" id="btnRight">Derecha</button>
-              <button class="btn" id="btnUp">Subir</button>
-              <button class="btn" id="btnDown">Bajar</button>
-              <button class="btn" id="btnCenter">Centrar</button>
+            <div class="row-controls"><strong>ROI en Vista Previa</strong></div>
+            <div class="row-controls" style="margin-top:.4rem">
+              <label class="small">Ancho (%) <input type="range" min="5" max="100" step="1" id="pRoiWidth"></label>
+              <label class="small">Alto (%) <input type="range" min="5" max="100" step="1" id="pRoiHeight"></label>
+              <button class="btn" id="pBtnLeft">◀︎</button>
+              <button class="btn" id="pBtnRight">▶︎</button>
+              <button class="btn" id="pBtnUp">▲</button>
+              <button class="btn" id="pBtnDown">▼</button>
+              <button class="btn" id="pBtnCenter">Centrar</button>
             </div>
           </div>
         </div>
-
-        <div class="hint" style="margin-top:.6rem">Ajusta el rectángulo al PDF417 (deja zona silenciosa). Toca el video para intentar autofocus si hay soporte.</div>
       </div>
-    </div>
 
-    <div class="card">
-      <h3>Resultados (en vivo)</h3>
-      <div class="content">
-        <div class="kv">
-          <div>Último estado</div><div id="lastStatus" class="mono">–</div>
-          <div>Simbología</div><div><span class="tag">PDF_417</span></div>
-          <div>Texto</div><div id="outText" class="result mono" style="white-space:pre-wrap;max-height:180px;overflow:auto">(sin datos)</div>
-          <div>Posición</div><div id="outPos" class="mono">–</div>
-          <div>De-dupe</div><div id="outDedup" class="mono">0 / 2</div>
-        </div>
+      <!-- Salidas -->
+      <div class="grid">
+        <div><strong>Image Decode :</strong></div>
+        <div id="resultImg" class="mono" style="white-space:pre-wrap;background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem;min-height:48px"></div>
+        <div><strong>Texto crudo extraído:</strong></div>
+        <textarea id="rawText" class="mono" readonly placeholder="Usa 'Extraer de Vista Previa' para decodificar PDF417 desde la imagen o ROI de vista previa."></textarea>
       </div>
-    </div>
-  </div>
 
-  <!-- Vista previa y extracción/parseo offline -->
-  <div class="row" style="padding-top:0">
-    <div class="card">
-      <h3>Vista previa (Base64) & Carga de imagen</h3>
-      <div class="content previewWrap">
-        <div class="previewBox">
-          <img id="previewImg" class="preview" alt="Vista previa" />
-          <div>
-            <div class="row-controls" style="margin-bottom:.6rem">
-              <input type="file" id="imgUpload" accept="image/*" class="btn" />
-              <button class="btn" id="btnExtractPreview" disabled>Extraer de Vista Previa (Texto crudo)</button>
-              <div class="parseRow">
-                <button class="btn" id="btnParse" disabled>Parsear Datos</button>
-                <label class="small">Perfil de parseo
-                  <select id="parseProfile">
-                    <option value="auto" selected>Auto (DUI SV → Genérico)</option>
-                    <option value="dui-sv">DUI El Salvador</option>
-                    <option value="generic">Genérico</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-            <label class="small">Data URL (Base64):</label>
-            <textarea id="previewB64" class="mono" readonly placeholder="Aquí aparecerá la imagen capturada o cargada como data URL (Base64)"></textarea>
-          </div>
-        </div>
-        <div>
-          <label class="small">Texto crudo extraído:</label>
-          <textarea id="rawText" class="mono" readonly placeholder="Usa 'Extraer de Vista Previa' para decodificar el PDF417 desde la imagen."></textarea>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Tabla de resultados (parseo)</h3>
-      <div class="content">
+      <div class="grid">
+        <h4 style="margin:0">Tabla de resultados (parseo)</h4>
         <table id="tblResults">
           <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-          <tbody id="tblBody">
-            <tr><td colspan="2" style="opacity:.8">Sin datos. Carga o captura una vista previa, extrae el texto, y luego “Parsear Datos”.</td></tr>
-          </tbody>
+          <tbody id="tblBody"><tr><td colspan="2" style="opacity:.8">Sin datos. Extrae el texto y presiona “Parsear Datos”.</td></tr></tbody>
         </table>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- ZXing JS (sin WASM) -->
-  <script defer src="https://unpkg.com/@zxing/library@0.20.0"></script>
+<!-- Librerías originales -->
+<script src="https://rutvikpanchal.github.io/PDF417CodeScanner/vendor/parse-usdl/parser.js"></script>
+<script src="https://rutvikpanchal.github.io/PDF417CodeScanner/vendor/zxing/index.js"></script>
 
-  <script>
-    // --- Referencias UI
-    const els = {
-      video: document.getElementById('video'),
-      overlay: document.getElementById('overlay'),
-      stage: document.getElementById('stage'),
-      roi: document.getElementById('roi'),
-      sCam: document.getElementById('sCam'),
-      sLib: document.getElementById('sLib'),
-      sTorch: document.getElementById('sTorch'),
-      sZoom: document.getElementById('sZoom'),
-      sFps: document.getElementById('sFps'),
-      sTips: document.getElementById('sTips'),
-      outText: document.getElementById('outText'),
-      outPos: document.getElementById('outPos'),
-      outDedup: document.getElementById('outDedup'),
-      lastStatus: document.getElementById('lastStatus'),
-      diagRes: document.getElementById('diagRes'),
-      diagRoi: document.getElementById('diagRoi'),
-      diagNotes: document.getElementById('diagNotes'),
-      btnStart: document.getElementById('btnStart'),
-      btnStop: document.getElementById('btnStop'),
-      btnSwitch: document.getElementById('btnSwitch'),
-      btnFreeze: document.getElementById('btnFreeze'),
-      btnUnfreeze: document.getElementById('btnUnfreeze'),
-      btnTorch: document.getElementById('btnTorch'),
-      zoom: document.getElementById('zoom'),
-      autoDecode: document.getElementById('autoDecode'),
-      tryHarder: document.getElementById('tryHarder'),
-      // ROI controls
-      roiWidth: document.getElementById('roiWidth'),
-      roiHeight: document.getElementById('roiHeight'),
-      btnUp: document.getElementById('btnUp'),
-      btnDown: document.getElementById('btnDown'),
-      btnLeft: document.getElementById('btnLeft'),
-      btnRight: document.getElementById('btnRight'),
-      btnCenter: document.getElementById('btnCenter'),
-      // Preview section
-      btnCapture: document.getElementById('btnCapture'),
-      imgUpload: document.getElementById('imgUpload'),
-      previewImg: document.getElementById('previewImg'),
-      previewB64: document.getElementById('previewB64'),
-      btnExtractPreview: document.getElementById('btnExtractPreview'),
-      btnParse: document.getElementById('btnParse'),
-      parseProfile: document.getElementById('parseProfile'),
-      rawText: document.getElementById('rawText'),
-      tblBody: document.getElementById('tblBody'),
-    };
+<script>
+/* =============================
+   Referencias UI
+============================= */
+const els = {
+  // cámara + ROI
+  video: document.getElementById('video'),
+  videoStage: document.getElementById('videoStage'),
+  pCam: document.getElementById('pCam'),
+  pZoom: document.getElementById('pZoom'),
+  roi: document.getElementById('roi'),
+  roiWidth: document.getElementById('roiWidth'),
+  roiHeight: document.getElementById('roiHeight'),
+  btnLeft: document.getElementById('btnLeft'),
+  btnRight: document.getElementById('btnRight'),
+  btnUp: document.getElementById('btnUp'),
+  btnDown: document.getElementById('btnDown'),
+  btnCenter: document.getElementById('btnCenter'),
+  btnCapture: document.getElementById('btnCapture'),
+  autoDecode: document.getElementById('autoDecode'),
+  tryHarder: document.getElementById('tryHarder'),
+  // preview + ROI preview
+  pStage: document.getElementById('pStage'),
+  previewImg: document.getElementById('previewImg'),
+  pRoi: document.getElementById('pRoi'),
+  pRoiWidth: document.getElementById('pRoiWidth'),
+  pRoiHeight: document.getElementById('pRoiHeight'),
+  pBtnLeft: document.getElementById('pBtnLeft'),
+  pBtnRight: document.getElementById('pBtnRight'),
+  pBtnUp: document.getElementById('pBtnUp'),
+  pBtnDown: document.getElementById('pBtnDown'),
+  pBtnCenter: document.getElementById('pBtnCenter'),
+  usePreviewROI: document.getElementById('usePreviewROI'),
+  autoExtractParse: document.getElementById('autoExtractParse'),
+  previewB64: document.getElementById('previewB64'),
+  // botones originales
+  startBtn: document.getElementById('startButton'),
+  stopBtn: document.getElementById('stopButton'),
+  changeBtn: document.getElementById('changeButton'),
+  clearButton: document.getElementById('clearButton'),
+  decodeButton: document.getElementById('decodeButton'),
+  // resultados originales
+  result: document.getElementById('result'),
+  resultImg: document.getElementById('resultImg'),
+  // extracción y parseo nuevo
+  btnExtractPreview: document.getElementById('btnExtractPreview'),
+  btnParse: document.getElementById('btnParse'),
+  rawText: document.getElementById('rawText'),
+  tblBody: document.getElementById('tblBody'),
+  // input file original
+  myFile: document.getElementById('myFile')
+};
 
-    // --- Estado
-    let stream, track, imageCapture;
-    let devices = [];
-    let activeDeviceId = null;
-    let frozen = false;
-    let processing = false;
-    let wantFPS = 8;              // ~8 fps
-    let lastProc = 0, fps = 0, lastTick = 0;
+/* =============================
+   Estado
+============================= */
+let streamObj = null;
+let CameraMode = 'user';
+let counter = 0;
 
-    // De-dupe live
-    let lastText = '', dedupCount = 0, dedupTarget = 2;
+let codeReader = null; // ZXing.BrowserMultiFormatReader
+let processing = false;
+let frozen = false;
+let lastProc = 0;
+let wantFPS = 8;
 
-    // ZXing Reader (JS)
-    let ZX = null, reader = null, hints = null;
+const workCanvas = document.createElement('canvas');
+const workCtx = workCanvas.getContext('2d', { willReadFrequently:true });
 
-    // Canvas interno para decodificar ROI y para capturas
-    const workCanvas = document.createElement('canvas');
-    const workCtx = workCanvas.getContext('2d', { willReadFrequently:true });
+/* =============================
+   Utilidades ROI (%)
+============================= */
+const pct = s => parseFloat(String(s).replace('%',''))||0;
 
-    // --- Helpers ROI (%)
-    const pct = s => parseFloat(String(s).replace('%',''))||0;
-    function getRoiPct(){
-      return {
-        left: pct(els.roi.style.left),
-        top: pct(els.roi.style.top),
-        width: pct(els.roi.style.width),
-        height: pct(els.roi.style.height),
-      };
-    }
-    function setRoiPct({left,top,width,height}){
-      const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-      const W = width  ?? pct(els.roi.style.width);
-      const H = height ?? pct(els.roi.style.height);
-      const L = clamp(left ?? pct(els.roi.style.left), 0, 100 - W);
-      const T = clamp(top  ?? pct(els.roi.style.top),  0, 100 - H);
-      els.roi.style.left   = L + '%';
-      els.roi.style.top    = T + '%';
-      els.roi.style.width  = clamp(W, 5, 100) + '%';
-      els.roi.style.height = clamp(H, 5, 100) + '%';
-      updateDiagnostics();
-      syncRoiSliders();
-    }
-    function syncRoiSliders(){
-      const r = getRoiPct();
-      els.roiWidth.value = Math.round(r.width);
-      els.roiHeight.value = Math.round(r.height);
-    }
+function getRoiPct(el){
+  return { left:pct(el.style.left), top:pct(el.style.top), width:pct(el.style.width), height:pct(el.style.height) };
+}
+function setRoiPct(el, {left, top, width, height}){
+  const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+  const W = width  ?? pct(el.style.width);
+  const H = height ?? pct(el.style.height);
+  const L = clamp(left ?? pct(el.style.left), 0, 100 - W);
+  const T = clamp(top  ?? pct(el.style.top),  0, 100 - H);
+  el.style.left   = L + '%';
+  el.style.top    = T + '%';
+  el.style.width  = clamp(W, 5, 100) + '%';
+  el.style.height = clamp(H, 5, 100) + '%';
+}
+function syncCameraRoiSliders(){
+  const r = getRoiPct(els.roi);
+  els.roiWidth.value = Math.round(r.width);
+  els.roiHeight.value = Math.round(r.height);
+}
+function syncPreviewRoiSliders(){
+  if(els.pRoi.style.display==='none') return;
+  const r = getRoiPct(els.pRoi);
+  els.pRoiWidth.value = Math.round(r.width);
+  els.pRoiHeight.value = Math.round(r.height);
+}
 
-    // --- Cámara
-    async function listCams(){
-      const devs = await navigator.mediaDevices.enumerateDevices();
-      return devs.filter(d=>d.kind==='videoinput');
-    }
+/* =============================
+   Cámara (manteniendo lógica original)
+============================= */
+function ensureReader(){
+  if(!codeReader) codeReader = new ZXing.BrowserMultiFormatReader();
+  return codeReader;
+}
 
-    async function startCam(){
-      try{
-        await ensureZXing();
-
-        devices = await listCams();
-        const constraints = {
-          video: {
-            deviceId: activeDeviceId ? { exact: activeDeviceId } : undefined,
-            facingMode: activeDeviceId ? undefined : { ideal: 'environment' },
-            width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 }
-          }, audio: false
-        };
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        track = stream.getVideoTracks()[0];
+async function startCam(){
+  ensureReader();
+  if(navigator.mediaDevices.getUserMedia){
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: CameraMode } })
+      .then((stream)=>{
+        streamObj = stream;
         els.video.srcObject = stream;
-        await els.video.play();
-        els.btnStop.disabled = false;
-        els.btnSwitch.disabled = devices.length>1 ? false : true;
-        els.btnFreeze.disabled = false;
-        els.btnCapture.disabled = false;
-        els.sCam.textContent = `Cámara: ${track.label || 'activa'}`;
-        els.sCam.className = 'pill ok';
-
-        if('ImageCapture' in window){
-          try{ imageCapture = new ImageCapture(track); }catch{ imageCapture=null }
-        }
-        bindCapabilities();
-        sizeOverlay();
+        els.video.play();
+        els.pCam.textContent = 'Cam: running';
+        // Decodificación en vivo (igual que el adjunto)
+        codeReader.decodeFromStream(stream, els.video, (result, err) => {
+          if(!els.autoDecode.checked) return;
+          if(result){
+            // Mantener comportamiento original (parseCode128 si format==10)
+            if(result.format == 10){
+              try{
+                els.result.innerText = JSON.stringify(parseCode128(result.text), null, 2);
+              }catch(e){
+                els.result.innerText = result.text;
+              }
+            }else{
+              els.result.innerText = (result.text || String(result));
+            }
+          }
+          if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.error(err);
+            els.result.textContent = err;
+          }
+        });
         loop();
-      }catch(err){
-        els.sCam.textContent = `Error cámara`;
-        els.sCam.className = 'pill err';
-        els.lastStatus.textContent = err?.message || String(err);
-      }
+      })
+      .catch((err)=>{ console.log("Something went wrong!", err); els.pCam.textContent='Cam: error'; });
+  }
+}
+
+function stopCam(){
+  if(!streamObj) return;
+  streamObj.getTracks().forEach((track)=>{
+    if(track.readyState==='live' && track.kind==='video'){ track.stop(); }
+  });
+  streamObj = null;
+  els.pCam.textContent = 'Cam: stopped';
+}
+
+function changeCam(){
+  if(streamObj) stopCam();
+  counter = (counter + 1) % 2;
+  switch(counter){
+    case 0: CameraMode='user'; break;
+    case 1: CameraMode='environment'; break;
+  }
+  startCam();
+}
+
+/* =============================
+   Bucle de procesamiento (para capturas/estado)
+============================= */
+function loop(ts){
+  if(!els.video.srcObject) return;
+  // podemos añadir métricas/zoom si el dispositivo lo soporta más adelante
+  if(!frozen) { /* noop: decoding lo maneja ZXing callback */ }
+  requestVideoFrame(loop);
+}
+function requestVideoFrame(cb){
+  if (typeof els.video.requestVideoFrameCallback === 'function') els.video.requestVideoFrameCallback(cb);
+  else setTimeout(() => cb(performance.now(), {}), 1000/30);
+}
+
+/* =============================
+   ROI UX: ratón (cámara)
+============================= */
+(function(){
+  const roi = els.roi; const stage = els.videoStage; let drag=null; let start={};
+  roi.addEventListener('mousedown', (e)=>{
+    e.preventDefault();
+    const h = e.target.closest('.handle')?.dataset.h || 'move';
+    const s = stage.getBoundingClientRect();
+    drag = { mode:h, base:{ x:e.clientX, y:e.clientY }, sw:s.width, sh:s.height };
+    start = { left: pct(roi.style.left), top: pct(roi.style.top), w: pct(roi.style.width), h: pct(roi.style.height) };
+  });
+  window.addEventListener('mousemove',(e)=>{
+    if(!drag) return; e.preventDefault();
+    const dx = (e.clientX - drag.base.x)/drag.sw*100;
+    const dy = (e.clientY - drag.base.y)/drag.sh*100;
+    let L=start.left, T=start.top, W=start.w, H=start.h;
+    const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+    switch(drag.mode){
+      case 'move': L=clamp(start.left+dx,0,100-W); T=clamp(start.top+dy,0,100-H); break;
+      case 'nw': L=clamp(start.left+dx,0,start.left+start.w-5); T=clamp(start.top+dy,0,start.top+start.h-5); W=start.w-(L-start.left); H=start.h-(T-start.top); break;
+      case 'ne': T=clamp(start.top+dy,0,start.top+start.h-5); W=clamp(start.w+dx,5,100-start.left); H=start.h-(T-start.top); break;
+      case 'sw': L=clamp(start.left+dx,0,start.left+start.w-5); W=start.w-(L-start.left); H=clamp(start.h+dy,5,100-start.top); break;
+      case 'se': W=clamp(start.w+dx,5,100-start.left); H=clamp(start.h+dy,5,100-start.top); break;
     }
+    setRoiPct(roi,{left:L, top:T, width:W, height:H});
+    syncCameraRoiSliders();
+  });
+  window.addEventListener('mouseup',()=> drag=null);
+})();
 
-    function stopCam(){
-      frozen=false; processing=false; lastText=''; dedupCount=0; updateDedup();
-      if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
-      els.btnStop.disabled = true; els.btnSwitch.disabled=true; els.btnFreeze.disabled=true; els.btnUnfreeze.disabled=true; els.btnTorch.disabled=true; els.btnCapture.disabled=true;
-      els.sCam.textContent = 'Cámara: detenida'; els.sCam.className='pill';
+/* =============================
+   ROI UX: táctil (cámara)
+   - 1 dedo mueve
+   - 2 dedos escalan (pinch)
+============================= */
+(function(){
+  const stage = els.videoStage, roi = els.roi;
+  let tState = null;
+  const getTouches = e => Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY,id:t.identifier}));
+  const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  function sRect(){ return stage.getBoundingClientRect(); }
+
+  roi.addEventListener('touchstart', (e)=>{
+    e.preventDefault();
+    const touches = getTouches(e); const r0 = getRoiPct(roi);
+    if(touches.length === 1){ tState = {mode:'move', startTouch:touches[0], start:r0}; }
+    else if(touches.length >= 2){ const [a,b] = touches; tState = {mode:'pinch', d0:dist(a,b), start:r0}; }
+  }, {passive:false});
+
+  roi.addEventListener('touchmove', (e)=>{
+    if(!tState) return; e.preventDefault();
+    const touches = getTouches(e); const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+    if(touches.length===1 && tState.mode==='move'){
+      const s = sRect();
+      const dx = (touches[0].x - tState.startTouch.x)/s.width*100;
+      const dy = (touches[0].y - tState.startTouch.y)/s.height*100;
+      const W = tState.start.width, H = tState.start.height;
+      const L = clamp(tState.start.left + dx, 0, 100 - W);
+      const T = clamp(tState.start.top + dy, 0, 100 - H);
+      setRoiPct(roi,{left:L, top:T, width:W, height:H});
+    }else if(touches.length>=2 && tState.mode==='pinch'){
+      const [a,b] = touches; const s = sRect(); const d1 = dist(a,b);
+      const scale = clamp(d1 / (tState.d0||1), 0.5, 3);
+      const start = tState.start;
+      const cx = start.left + start.width/2, cy = start.top + start.height/2;
+      let newW = clamp(start.width * scale, 5, 100);
+      let newH = clamp(start.height * scale, 5, 100);
+      let newL = cx - newW/2, newT = cy - newH/2;
+      if(newL < 0) newL = 0; if(newT < 0) newT = 0;
+      if(newL + newW > 100) newL = 100 - newW;
+      if(newT + newH > 100) newT = 100 - newH;
+      setRoiPct(roi,{left:newL, top:newT, width:newW, height:newH});
     }
+    syncCameraRoiSliders();
+  }, {passive:false});
 
-    async function switchCam(){
-      if(!devices.length) devices = await listCams();
-      if(!devices.length) return;
-      const idx = Math.max(0, devices.findIndex(d=>d.deviceId===activeDeviceId));
-      const next = devices[(idx+1)%devices.length];
-      activeDeviceId = next.deviceId; stopCam(); startCam();
+  window.addEventListener('touchend', ()=>{ tState=null; }, {passive:true});
+  window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
+})();
+
+/* =============================
+   Sliders y botones ROI (cámara)
+============================= */
+els.roiWidth.addEventListener('input', ()=>{
+  const r = getRoiPct(els.roi);
+  const newW = Number(els.roiWidth.value);
+  const cx = r.left + r.width/2;
+  let L = cx - newW/2; if(L<0) L=0; if(L+newW>100) L=100-newW;
+  setRoiPct(els.roi,{left:L, top:r.top, width:newW, height:r.height});
+});
+els.roiHeight.addEventListener('input', ()=>{
+  const r = getRoiPct(els.roi);
+  const newH = Number(els.roiHeight.value);
+  const cy = r.top + r.height/2;
+  let T = cy - newH/2; if(T<0) T=0; if(T+newH>100) T=100-newH;
+  setRoiPct(els.roi,{left:r.left, top:T, width:r.width, height:newH});
+});
+const stepPct = 2;
+els.btnUp.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{top: Math.max(0, r.top - stepPct)}); syncCameraRoiSliders(); });
+els.btnDown.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{top: Math.min(100 - r.height, r.top + stepPct)}); syncCameraRoiSliders(); });
+els.btnLeft.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{left: Math.max(0, r.left - stepPct)}); syncCameraRoiSliders(); });
+els.btnRight.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{left: Math.min(100 - r.width, r.left + stepPct)}); syncCameraRoiSliders(); });
+els.btnCenter.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{left:(100-r.width)/2, top:(100-r.height)/2}); syncCameraRoiSliders(); });
+
+/* =============================
+   Capturar a Vista Previa (ROI de cámara)
+============================= */
+els.btnCapture.addEventListener('click', async ()=>{
+  if(!els.video.videoWidth) return;
+  const v = els.video;
+  const stageRect = els.videoStage.getBoundingClientRect();
+  const vw = v.videoWidth, vh = v.videoHeight;
+
+  // Mapear ROI% de la pantalla a px del frame del video (object-fit:cover implícito por stage)
+  const rs = Math.max(stageRect.width/vw, stageRect.height/vh);
+  const dispW = vw*rs, dispH = vh*rs;
+  const dx = (dispW - stageRect.width)/2;
+  const dy = (dispH - stageRect.height)/2;
+
+  const r = getRoiPct(els.roi);
+  const roiPx = {
+    x: Math.round((r.left/100)*stageRect.width - dx),
+    y: Math.round((r.top/100)*stageRect.height - dy),
+    w: Math.round((r.width/100)*stageRect.width),
+    h: Math.round((r.height/100)*stageRect.height)
+  };
+  const sx = Math.max(0, Math.round(roiPx.x/rs));
+  const sy = Math.max(0, Math.round(roiPx.y/rs));
+  const sw = Math.max(1, Math.round(roiPx.w/rs));
+  const sh = Math.max(1, Math.round(roiPx.h/rs));
+
+  workCanvas.width = sw; workCanvas.height = sh;
+  workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
+
+  const dataUrl = workCanvas.toDataURL('image/png');
+  els.previewImg.src = dataUrl;
+  els.previewB64.value = dataUrl;
+
+  // Mostrar ROI de vista previa y centrarlo
+  els.pRoi.style.display = 'block';
+  setRoiPct(els.pRoi,{left:10, top:10, width:80, height:80});
+  syncPreviewRoiSliders();
+
+  // Flujo auto: extraer y parsear
+  if(els.autoExtractParse.checked){
+    await extractFromPreview(); parseData();
+  }
+});
+
+/* =============================
+   ROI de Vista Previa — UX ratón y táctil
+============================= */
+(function(){
+  // Ratón
+  const roi = els.pRoi; const stage = els.pStage; let drag=null; let start={};
+  roi.addEventListener('mousedown', (e)=>{
+    e.preventDefault();
+    const h = e.target.closest('.handle')?.dataset.h || 'move';
+    const s = stage.getBoundingClientRect();
+    drag = { mode:h, base:{ x:e.clientX, y:e.clientY }, sw:s.width, sh:s.height };
+    start = { left: pct(roi.style.left), top: pct(roi.style.top), w: pct(roi.style.width), h: pct(roi.style.height) };
+  });
+  window.addEventListener('mousemove',(e)=>{
+    if(!drag) return; e.preventDefault();
+    const dx = (e.clientX - drag.base.x)/drag.sw*100;
+    const dy = (e.clientY - drag.base.y)/drag.sh*100;
+    let L=start.left, T=start.top, W=start.w, H=start.h;
+    const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+    switch(drag.mode){
+      case 'move': L=clamp(start.left+dx,0,100-W); T=clamp(start.top+dy,0,100-H); break;
+      case 'nw': L=clamp(start.left+dx,0,start.left+start.w-5); T=clamp(start.top+dy,0,start.top+start.h-5); W=start.w-(L-start.left); H=start.h-(T-start.top); break;
+      case 'ne': T=clamp(start.top+dy,0,start.top+start.h-5); W=clamp(start.w+dx,5,100-start.left); H=start.h-(T-start.top); break;
+      case 'sw': L=clamp(start.left+dx,0,start.left+start.w-5); W=start.w-(L-start.left); H=clamp(start.h+dy,5,100-start.top); break;
+      case 'se': W=clamp(start.w+dx,5,100-start.left); H=clamp(start.h+dy,5,100-start.top); break;
     }
+    setRoiPct(roi,{left:L, top:T, width:W, height:H});
+    syncPreviewRoiSliders();
+  });
+  window.addEventListener('mouseup',()=> drag=null);
 
-    function bindCapabilities(){
-      const caps = track.getCapabilities?.() || {};
-      if(caps.torch){ els.btnTorch.disabled=false; els.sTorch.textContent='Linterna: off'; els.sTorch.className='pill'; }
-      else{ els.btnTorch.disabled=true; els.sTorch.textContent='Linterna: n/d'; els.sTorch.className='pill'; }
-      if(caps.zoom){
-        els.zoom.min = caps.zoom.min ?? 1; els.zoom.max = caps.zoom.max ?? 5; els.zoom.step = caps.zoom.step ?? 0.1;
-        els.zoom.value = track.getSettings?.().zoom ?? 1;
-        els.sZoom.textContent = `Zoom: ${Number(els.zoom.value).toFixed(1)}x`;
-      }else{
-        els.sZoom.textContent = 'Zoom: n/d';
-      }
+  // Táctil
+  let tState = null;
+  const getTouches = e => Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY,id:t.identifier}));
+  const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  function sRect(){ return stage.getBoundingClientRect(); }
+
+  roi.addEventListener('touchstart', (e)=>{
+    e.preventDefault();
+    const touches = getTouches(e); const r0 = getRoiPct(roi);
+    if(touches.length === 1){ tState = {mode:'move', startTouch:touches[0], start:r0}; }
+    else if(touches.length >= 2){ const [a,b] = touches; tState = {mode:'pinch', d0:dist(a,b), start:r0}; }
+  }, {passive:false});
+
+  roi.addEventListener('touchmove', (e)=>{
+    if(!tState) return; e.preventDefault();
+    const touches = getTouches(e); const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+    if(touches.length===1 && tState.mode==='move'){
+      const s = sRect();
+      const dx = (touches[0].x - tState.startTouch.x)/s.width*100;
+      const dy = (touches[0].y - tState.startTouch.y)/s.height*100;
+      const W = tState.start.width, H = tState.start.height;
+      const L = clamp(tState.start.left + dx, 0, 100 - W);
+      const T = clamp(tState.start.top + dy, 0, 100 - H);
+      setRoiPct(roi,{left:L, top:T, width:W, height:H});
+    }else if(touches.length>=2 && tState.mode==='pinch'){
+      const [a,b] = touches; const s = sRect(); const d1 = dist(a,b);
+      const scale = clamp(d1 / (tState.d0||1), 0.5, 3);
+      const start = tState.start;
+      const cx = start.left + start.width/2, cy = start.top + start.height/2;
+      let newW = clamp(start.width * scale, 5, 100);
+      let newH = clamp(start.height * scale, 5, 100);
+      let newL = cx - newW/2, newT = cy - newH/2;
+      if(newL < 0) newL = 0; if(newT < 0) newT = 0;
+      if(newL + newW > 100) newL = 100 - newW;
+      if(newT + newH > 100) newT = 100 - newH;
+      setRoiPct(roi,{left:newL, top:newT, width:newW, height:newH});
     }
+    syncPreviewRoiSliders();
+  }, {passive:false});
 
-    async function setTorch(){
-      try{
-        const s = track.getSettings?.()||{};
-        const on = !s.torch;
-        await track.applyConstraints({ advanced: [{ torch: on }] });
-        els.sTorch.textContent = `Linterna: ${on?'on':'off'}`;
-        els.sTorch.className = on? 'pill ok':'pill';
-      }catch{}
-    }
+  window.addEventListener('touchend', ()=>{ tState=null; }, {passive:true});
+  window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
+})();
 
-    async function setZoom(val){
-      try{ await track.applyConstraints({ advanced:[{ zoom: Number(val) }] }); }catch{}
-      els.sZoom.textContent = `Zoom: ${Number(val).toFixed(1)}x`;
-    }
+/* =============================
+   Sliders/botones ROI Preview
+============================= */
+els.pRoiWidth.addEventListener('input', ()=>{
+  if(els.pRoi.style.display==='none') return;
+  const r = getRoiPct(els.pRoi);
+  const newW = Number(els.pRoiWidth.value);
+  const cx = r.left + r.width/2;
+  let L = cx - newW/2; if(L<0) L=0; if(L+newW>100) L=100-newW;
+  setRoiPct(els.pRoi,{left:L, top:r.top, width:newW, height:r.height});
+});
+els.pRoiHeight.addEventListener('input', ()=>{
+  if(els.pRoi.style.display==='none') return;
+  const r = getRoiPct(els.pRoi);
+  const newH = Number(els.pRoiHeight.value);
+  const cy = r.top + r.height/2;
+  let T = cy - newH/2; if(T<0) T=0; if(T+newH>100) T=100-newH;
+  setRoiPct(els.pRoi,{left:r.left, top:T, width:r.width, height:newH});
+});
+els.pBtnUp.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{top: Math.max(0, r.top - 2)}); syncPreviewRoiSliders(); });
+els.pBtnDown.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{top: Math.min(100 - r.height, r.top + 2)}); syncPreviewRoiSliders(); });
+els.pBtnLeft.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{left: Math.max(0, r.left - 2)}); syncPreviewRoiSliders(); });
+els.pBtnRight.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{left: Math.min(100 - r.width, r.left + 2)}); syncPreviewRoiSliders(); });
+els.pBtnCenter.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{left:(100-r.width)/2, top:(100-r.height)/2}); syncPreviewRoiSliders(); });
 
-    function sizeOverlay(){
-      const rect = els.stage.getBoundingClientRect();
-      const c = els.overlay; c.width = rect.width; c.height = rect.height;
-      updateDiagnostics();
-      syncRoiSliders();
-    }
-    window.addEventListener('resize', sizeOverlay);
+/* =============================
+   Cargar imagen (original) → preview
+============================= */
+window.addEventListener('load', function () {
+  ensureReader();
 
-    // --- ROI UX (ratón)
-    ;(function(){
-      const roi = els.roi; const stage = els.stage; let drag=null; let start={};
-      function pxToPct(dx,dy){
-        const r = stage.getBoundingClientRect();
-        return { x: dx / r.width * 100, y: dy / r.height * 100 };
-      }
-      roi.addEventListener('mousedown', (e)=>{
-        e.preventDefault();
-        const h = e.target.closest('.handle')?.dataset.h || 'move';
-        const r = roi.getBoundingClientRect(); const s = stage.getBoundingClientRect();
-        drag = { mode:h, base:{ x:e.clientX, y:e.clientY }, rect:{ left:r.left-s.left, top:r.top-s.top, w:r.width, h:r.height } };
-        start = { left: pct(roi.style.left), top: pct(roi.style.top), w: pct(roi.style.width), h: pct(roi.style.height) };
-      });
-      window.addEventListener('mousemove',(e)=>{
-        if(!drag) return; e.preventDefault();
-        const dx = e.clientX - drag.base.x; const dy = e.clientY - drag.base.y; const p = pxToPct(dx,dy);
-        let L=start.left, T=start.top, W=start.w, H=start.h;
-        const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-        switch(drag.mode){
-          case 'move': L=clamp(start.left+p.x,0,100-W); T=clamp(start.top+p.y,0,100-H); break;
-          case 'nw': L=clamp(start.left+p.x,0,start.left+start.w-5); T=clamp(start.top+p.y,0,start.top+start.h-5); W=start.w-(L-start.left); H=start.h-(T-start.top); break;
-          case 'ne': T=clamp(start.top+p.y,0,start.top+start.h-5); W=clamp(start.w+p.x,5,100-start.left); H=start.h-(T-start.top); break;
-          case 'sw': L=clamp(start.left+p.x,0,start.left+start.w-5); W=start.w-(L-start.left); H=clamp(start.h+p.y,5,100-start.top); break;
-          case 'se': W=clamp(start.w+p.x,5,100-start.left); H=clamp(start.h+p.y,5,100-start.top); break;
-        }
-        setRoiPct({left:L, top:T, width:W, height:H});
-      });
-      window.addEventListener('mouseup',()=> drag=null);
-    })();
-
-    // --- ROI UX táctil (1 dedo mueve, 2 dedos escalan)
-    ;(function(){
-      const stage = els.stage, roi = els.roi;
-      let tState = null;
-      function getTouches(e){ return Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY,id:t.identifier})); }
-      function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
-      function stageRect(){ return stage.getBoundingClientRect(); }
-
-      roi.addEventListener('touchstart', (e)=>{
-        e.preventDefault();
-        const touches = getTouches(e);
-        const r0 = getRoiPct();
-        if(touches.length === 1){
-          tState = {mode:'move', startTouch:touches[0], start:r0};
-        }else if(touches.length >= 2){
-          const [a,b] = touches;
-          const d0 = dist(a,b);
-          tState = {mode:'pinch', d0, start:r0};
-        }
-      }, {passive:false});
-
-      roi.addEventListener('touchmove', (e)=>{
-        if(!tState) return;
-        e.preventDefault();
-        const touches = getTouches(e);
-        const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-        if(touches.length===1 && tState.mode==='move'){
-          const s = stageRect();
-          const dx = (touches[0].x - tState.startTouch.x)/s.width*100;
-          const dy = (touches[0].y - tState.startTouch.y)/s.height*100;
-          const W = tState.start.width, H = tState.start.height;
-          const L = clamp(tState.start.left + dx, 0, 100 - W);
-          const T = clamp(tState.start.top + dy, 0, 100 - H);
-          setRoiPct({left:L, top:T, width:W, height:H});
-        }else if(touches.length>=2 && tState.mode==='pinch'){
-          const [a,b] = touches;
-          const d1 = dist(a,b);
-          const scale = clamp(d1 / (tState.d0||1), 0.5, 3);
-          const start = tState.start;
-          const cx = start.left + start.width/2;
-          const cy = start.top  + start.height/2;
-          let newW = clamp(start.width * scale, 5, 100);
-          let newH = clamp(start.height * scale, 5, 100);
-          let newL = cx - newW/2;
-          let newT = cy - newH/2;
-          if(newL < 0) newL = 0;
-          if(newT < 0) newT = 0;
-          if(newL + newW > 100) newL = 100 - newW;
-          if(newT + newH > 100) newT = 100 - newH;
-          setRoiPct({left:newL, top:newT, width:newW, height:newH});
-        }
-      }, {passive:false});
-
-      window.addEventListener('touchend', ()=>{ tState=null; }, {passive:true});
-      window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
-    })();
-
-    // --- Bucle de procesamiento en vivo
-    function loop(ts){
-      if(!els.video.srcObject) return;
-      if(lastTick){ const dt = ts - lastTick; fps = 1000/dt; els.sFps.textContent = 'Proc: ' + Math.round(Math.min(fps, wantFPS)) + ' fps'; }
-      lastTick = ts || performance.now();
-
-      if(!frozen && els.autoDecode.checked){ maybeProcessFrame(); }
-      requestVideoFrame(loop);
-    }
-
-    function requestVideoFrame(cb){
-      if (typeof els.video.requestVideoFrameCallback === 'function') {
-        els.video.requestVideoFrameCallback(cb);
-      } else {
-        setTimeout(() => cb(performance.now(), {}), 1000/30);
-      }
-    }
-
-    async function maybeProcessFrame(){
-      if(processing) return;
-      const now = performance.now();
-      if(now - lastProc < 1000/wantFPS) return; lastProc = now;
-      processing = true;
-      try{
-        const out = await decodeROI(false);
-        if(out) handleDecode(out, /*heavy=*/false);
-      } finally {
-        processing = false;
-      }
-    }
-
-    async function freezeAndDecode(){
-      frozen = true; els.btnUnfreeze.disabled=false; els.btnFreeze.disabled=true;
-      let out = await decodeROI(false);
-      if(!out && els.tryHarder.checked){
-        out = await decodeROI(true);
-      }
-      if(out) handleDecode(out, /*heavy=*/true);
-    }
-
-    function unfreeze(){ frozen=false; els.btnUnfreeze.disabled=true; els.btnFreeze.disabled=false; }
-
-    // --- Decodificar desde ROI (video) con ZXing JS
-    async function decodeROI(tryHarder=false){
-      if(!reader) return null;
-      const v = els.video; if(!v.videoWidth) return null;
-
-      const stageRect = els.stage.getBoundingClientRect();
-      const vw = v.videoWidth, vh = v.videoHeight;
-      const roiPct = rectPct(els.roi);
-      const cover = coverMapping(vw, vh, stageRect.width, stageRect.height);
-      const roiPx = {
-        x: Math.round((roiPct.left/100)*stageRect.width - cover.dx),
-        y: Math.round((roiPct.top/100)*stageRect.height - cover.dy),
-        w: Math.round((roiPct.width/100)*stageRect.width),
-        h: Math.round((roiPct.height/100)*stageRect.height)
+  els.myFile.addEventListener('change', () => {
+    const files = els.myFile.files;
+    if (files.length != 0) {
+      clearPreview();
+      const image = document.createElement('img');
+      image.src = URL.createObjectURL(files[0]);
+      image.width = 300;
+      // Mostrar en el panel preview
+      image.onload = ()=>{
+        els.previewImg.src = image.src;
+        els.previewB64.value = image.src;
+        els.pRoi.style.display='block';
+        setRoiPct(els.pRoi,{left:10,top:10,width:80,height:80});
+        syncPreviewRoiSliders();
       };
-      const scale = cover.scale;
-      const sx = Math.max(0, Math.round(roiPx.x/scale));
-      const sy = Math.max(0, Math.round(roiPx.y/scale));
-      const sw = Math.max(1, Math.round(roiPx.w/scale));
-      const sh = Math.max(1, Math.round(roiPx.h/scale));
+      document.getElementById('preview').appendChild(image); // conservar funcionalidad original
+    }
+  });
 
-      workCanvas.width = sw; workCanvas.height = sh;
-      workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
+  // Botones originales
+  els.startBtn.addEventListener('click', startCam);
+  els.stopBtn.addEventListener('click', stopCam);
+  els.changeBtn.addEventListener('click', changeCam);
 
-      const { DecodeHintType } = ZX;
-      if(tryHarder){ hints.set(DecodeHintType.TRY_HARDER, true); }
-      else { hints.delete(DecodeHintType.TRY_HARDER); }
+  // Clear original
+  els.clearButton.addEventListener('click', () => {
+    clearPreview();
+    els.previewImg.removeAttribute('src');
+    els.previewB64.value = '';
+    els.pRoi.style.display='none';
+  });
 
-      try{
-        const res = await reader.decodeFromCanvas(workCanvas);
-        if(res && typeof res.getText === 'function'){
-          const points = (typeof res.getResultPoints === 'function') ? res.getResultPoints() : null;
-          els.outText.textContent = res.getText();
-          els.outPos.textContent = points ? JSON.stringify(points) : '(sin puntos)';
-          els.diagRoi.textContent = `${sw}×${sh}`;
-          if(sw < 380) els.sTips.textContent = 'Tip: acércate (ROI < 400 px de ancho)';
-          else els.sTips.textContent = 'Tip: mantén estable y reduce reflejos';
-          return { text: res.getText(), points, backend:'js', tryHarder };
-        }
-      }catch(e){ /* sin lectura válida */ }
-      return null;
+  // Decode Image (original)
+  els.decodeButton.addEventListener('click', () => {
+    const prev = document.getElementById('preview');
+    if (prev.firstChild && prev.firstChild.nodeType == Node.ELEMENT_NODE) {
+      const img = prev.firstChild.cloneNode(true);
+      codeReader.decodeFromImage(img)
+        .then(result => {
+          els.resultImg.textContent = result.text;
+        })
+        .catch(err => {
+          els.resultImg.textContent = err;
+        });
+    }
+  });
+
+  // Extraer de Vista Previa (nuevo)
+  els.btnExtractPreview.addEventListener('click', extractFromPreview);
+
+  // Parsear Datos (nuevo)
+  els.btnParse.addEventListener('click', parseData);
+});
+
+function clearPreview(){
+  const prev = document.getElementById('preview');
+  while (prev.firstChild) prev.removeChild(prev.firstChild);
+}
+
+/* =============================
+   Extraer de Vista Previa (Texto crudo)
+   - Usa ROI de Vista Previa si está marcado
+============================= */
+async function extractFromPreview(){
+  ensureReader();
+  const img = els.previewImg;
+  if(!img.src){ alert('No hay vista previa disponible'); return; }
+
+  try{
+    await ensureImageLoaded(img);
+
+    let dataUrlToDecode = img.src;
+    if(els.usePreviewROI.checked && els.pRoi.style.display !== 'none'){
+      // Recortar al ROI de vista previa en naturalWidth/Height
+      const r = getRoiPct(els.pRoi);
+      const nx = Math.round((r.left/100)  * (img.naturalWidth  || img.width));
+      const ny = Math.round((r.top/100)   * (img.naturalHeight || img.height));
+      const nw = Math.round((r.width/100) * (img.naturalWidth  || img.width));
+      const nh = Math.round((r.height/100)* (img.naturalHeight || img.height));
+
+      const c = document.createElement('canvas');
+      const cx = c.getContext('2d', { willReadFrequently:true });
+      c.width = Math.max(1,nw); c.height = Math.max(1,nh);
+
+      // Dibujar imagen completa en buffer para evitar CORS en drawImage directo (cuando es dataURL no hay problema, pero conservamos patrón)
+      const buffer = document.createElement('canvas');
+      const bctx = buffer.getContext('2d', { willReadFrequently:true });
+      buffer.width = img.naturalWidth || img.width;
+      buffer.height = img.naturalHeight || img.height;
+      bctx.drawImage(img, 0, 0, buffer.width, buffer.height);
+
+      cx.drawImage(buffer, nx, ny, nw, nh, 0, 0, nw, nh);
+      dataUrlToDecode = c.toDataURL('image/png');
+      // Actualizar preview también (opcional)
+      els.previewImg.src = dataUrlToDecode;
+      els.previewB64.value = dataUrlToDecode;
     }
 
-    function rectPct(el){
-      return {
-        left: pct(el.style.left), top: pct(el.style.top), width: pct(el.style.width), height: pct(el.style.height)
-      };
-    }
+    // Decodificar con el mismo lector que el adjunto
+    const tmp = new Image();
+    tmp.onload = ()=>{
+      codeReader.decodeFromImage(tmp)
+        .then(result => { els.rawText.value = result?.text || '(sin lectura)'; })
+        .catch(err => { els.rawText.value = '(sin lectura)'; });
+    };
+    tmp.src = dataUrlToDecode;
 
-    function coverMapping(vw, vh, cw, ch){
-      const rs = Math.max(cw/vw, ch/vh);
-      const dispW = vw*rs, dispH = vh*rs;
-      const dx = (dispW - cw)/2;
-      const dy = (dispH - ch)/2;
-      return { scale: rs, dx, dy };
-    }
+  }catch(e){
+    els.rawText.value = '(sin lectura)';
+  }
+}
 
-    // --- Manejar resultados live
-    function handleDecode(res, heavy){
-      if(!res) return;
-      if(res.text && res.text === lastText){ dedupCount++; } else { lastText = res.text; dedupCount = 1; }
-      updateDedup();
-      els.lastStatus.textContent = `Decoded (JS) ${res.tryHarder? 'TRY_HARDER' : (heavy ? 'heavy' : 'live')}`;
-      if(dedupCount >= dedupTarget){ pulse(els.outText); }
-    }
+async function ensureImageLoaded(imageEl){
+  if(imageEl.complete && imageEl.naturalWidth) return;
+  await new Promise((res,rej)=>{ imageEl.onload = ()=>res(); imageEl.onerror = e=>rej(e); });
+}
 
-    function updateDedup(){ els.outDedup.textContent = `${dedupCount} / ${dedupTarget}`; }
-    function pulse(el){ el.animate([{boxShadow:'0 0 0 0 rgba(88,179,104,.6)'},{boxShadow:'0 0 0 14px rgba(88,179,104,0)'}],{duration:800}); }
+/* =============================
+   Parseo de datos (DUI SV → genérico)
+============================= */
+function parseData(){
+  const text = (els.rawText.value || '').trim();
+  if(!text){ alert('No hay texto para parsear. Ejecuta primero “Extraer de Vista Previa”.'); return; }
 
-    // --- Capturar a Vista Previa (Base64) desde ROI
-    function captureToPreview(){
-      if(!els.video.videoWidth) return;
-      const v = els.video;
-      const stageRect = els.stage.getBoundingClientRect();
-      const vw = v.videoWidth, vh = v.videoHeight;
-      const roiPct = rectPct(els.roi);
-      const cover = coverMapping(vw, vh, stageRect.width, stageRect.height);
-      const roiPx = {
-        x: Math.round((roiPct.left/100)*stageRect.width - cover.dx),
-        y: Math.round((roiPct.top/100)*stageRect.height - cover.dy),
-        w: Math.round((roiPct.width/100)*stageRect.width),
-        h: Math.round((roiPct.height/100)*stageRect.height)
-      };
-      const scale = cover.scale;
-      const sx = Math.max(0, Math.round(roiPx.x/scale));
-      const sy = Math.max(0, Math.round(roiPx.y/scale));
-      const sw = Math.max(1, Math.round(roiPx.w/scale));
-      const sh = Math.max(1, Math.round(roiPx.h/scale));
+  // Intento dedicado (DUI SV)
+  const { rows: duiRows, score } = parseDUI_SV(text);
+  const rows = (score >= 2) ? duiRows : parseGeneric(text);
+  renderTable(rows);
+}
 
-      workCanvas.width = sw; workCanvas.height = sh;
-      workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
+function normalizeSpaces(s){ return s.replace(/[ \t]+/g,' ').replace(/\u00A0/g,' ').trim(); }
+function matchOne(s, re){ const m = s.match(re); return m? m[0] : null; }
+function matchNearLabel(s, labelRe, valueRe, span){
+  const re = new RegExp(labelRe.source + `[\\s\\S]{0,${span}}` + valueRe.source);
+  const m = s.match(re); if(m){ const m2 = m[0].match(valueRe); return m2? m2[0] : null; } return null;
+}
+function normalizeDate(raw){
+  if(!raw) return null; const r = raw.replace(/[^\d]/g,'');
+  if(r.length===8){
+    if(/^19|20/.test(r)) return `${r.slice(0,4)}-${r.slice(4,6)}-${r.slice(6,8)}`;
+    return `${r.slice(4,8)}-${r.slice(2,4)}-${r.slice(0,2)}`;
+  }
+  const a = raw.replace(/[\.\s]/g,'').replace(/_/g,'-').replace(/\//g,'-');
+  const m = a.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
+  const m2 = a.match(/(\d{2})-(\d{2})-(\d{4})/); if(m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
+  return raw;
+}
+function normSexo(s){ if(!s) return null; s=s.toUpperCase(); if(/^M/.test(s)) return 'M'; if(/^F/.test(s)) return 'F'; return s; }
+function guessNationality(T){ if(/\bSALVADOR|SALVADORE/.test(T)) return 'SALVADOREÑA'; return null; }
+function pickNameLine(s){
+  if(/\b(NOMBRE|NOMBRES|APELLIDO|APELLIDOS)\b/.test(s)) return s.replace(/\b(NOMBRE|NOMBRES|APELLIDOS?)\b\s*[:\-]?\s*/,'').trim();
+  return s.replace(/[^A-ZÁÉÍÓÚÜÑ ]/g,' ').replace(/\s+/g,' ').trim();
+}
 
-      const dataUrl = workCanvas.toDataURL('image/png');
-      els.previewImg.src = dataUrl;
-      els.previewB64.value = dataUrl;
-      enablePreviewActions();
-    }
+function parseDUI_SV(text){
+  const rows = []; const add=(k,v)=>{ if(v){ rows.push([k, v.trim()]); } };
+  const T = normalizeSpaces(text.toUpperCase());
+  let dui = matchOne(T, /\b\d{8}-\d\b/) || matchOne(T, /\b\d{9}\b/);
+  if(dui && !dui.includes('-')) dui = dui.slice(0,8) + '-' + dui.slice(8);
+  add('DUI', dui);
+  let nit = matchOne(T, /\b\d{4}-\d{6}-\d{3}-\d\b/) || matchOne(T, /\b\d{14}\b/);
+  if(nit && /^\d{14}$/.test(nit)) nit = nit.replace(/^(\d{4})(\d{6})(\d{3})(\d)$/, '$1-$2-$3-$4');
+  add('NIT', nit);
+  const dateAny = /(\d{4}[\/\-]\d{2}[\/\-]\d{2})|(\d{2}[\/\-]\d{2}[\/\-]\d{4})|(\d{8})/;
+  const getDate = (labelRe)=>{ const near = matchNearLabel(T, labelRe, dateAny, 40); return near? normalizeDate(near):null; };
+  add('FECHA_NAC', getDate(/\b(NAC|NACIMIENTO|F\.? NAC\.?)\b/));
+  add('FECHA_EMI', getDate(/\b(EMI|EMISION|F\.? EMI\.?)\b/));
+  add('FECHA_EXP', getDate(/\b(EXP|EXPIR|VENC|F\.? EXP\.?)\b/));
+  const sexo = matchNearLabel(T, /\b(SEXO|SEX)\b/, /\b(M|F|MASCULINO|FEMENINO)\b/, 20);
+  add('SEXO', normSexo(sexo));
+  add('NACIONALIDAD', matchNearLabel(T, /\b(NAC\.?|NACIONALIDAD)\b/, /\b[SALVADORE(ÑA|NO)S?]|EL\s+SALVADOR|SV\b/, 40) || guessNationality(T));
+  add('DEPARTAMENTO', matchNearLabel(T, /\b(DEPARTAMENTO|DEPTO)\b/, /[A-ZÁÉÍÓÚÜÑ ]{3,}/, 40));
+  add('MUNICIPIO',   matchNearLabel(T, /\b(MUNICIPIO|MPO)\b/, /[A-ZÁÉÍÓÚÜÑ ]{3,}/, 40));
+  const nameLines = T.split(/\r?\n/).map(s=>s.trim()).filter(s=>s && !/\d/.test(s) && s.length>=3);
+  let apellidos=null, nombres=null, nombreCompleto=null;
+  if(nameLines.length>=2){ apellidos = pickNameLine(nameLines[0]); nombres = pickNameLine(nameLines[1]); }
+  else if(nameLines.length===1){ nombreCompleto = pickNameLine(nameLines[0]); }
+  if(!nombreCompleto && (nombres||apellidos)){ nombreCompleto = [nombres, apellidos].filter(Boolean).join(' '); }
+  add('APELLIDOS', apellidos); add('NOMBRES', nombres); add('NOMBRE_COMPLETO', nombreCompleto);
+  const score = (dui?1:0) + (nombreCompleto?1:0) + (rows.filter(([k,v])=>k.startsWith('FECHA_') && v).length?1:0);
+  return { rows, score };
+}
 
-    // --- Cargar imagen (archivo) a Vista Previa
-    els.imgUpload.addEventListener('change', async (e)=>{
-      const file = e.target.files?.[0];
-      if(!file) return;
-      const readerFile = new FileReader();
-      readerFile.onload = ()=>{
-        els.previewImg.src = readerFile.result;
-        els.previewB64.value = String(readerFile.result || '');
-        enablePreviewActions();
-      };
-      readerFile.readAsDataURL(file);
-    });
+function parseGeneric(text){
+  const rows = []; const add=(k,v)=> rows.push([k, String(v||'').trim()]);
+  const kvRe = /^\s*([A-Za-zÁÉÍÓÚÑÜ0-9 ._\-\/]{2,30})\s*[:=]\s*(.+?)\s*$/gm; let m;
+  while((m = kvRe.exec(text))){ add(normalizeKey(m[1]), m[2]); }
+  const dateRe = /\b(?:(\d{4})[\/\-](\d{2})[\/\-](\d{2})|(\d{2})[\/\-](\d{2})[\/\-](\d{4})|(\d{8}))\b/g; const dates = new Set(); let d;
+  while((d = dateRe.exec(text))){
+    if(d[1]) dates.add(`${d[1]}-${d[2]}-${d[3]}`); else if(d[4]) dates.add(`${d[6]}-${d[5]}-${d[4]}`); else if(d[7]){ const s=d[7]; dates.add(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`); }
+  }
+  if(dates.size) add('FECHAS', Array.from(dates).join(', '));
+  const numRe = /\b\d{8,}\b/g; const nums = Array.from(new Set((text.match(numRe)||[]))); if(nums.length) add('NUMEROS_LARGOS', nums.join(', '));
+  const alnumRe = /\b[A-Z0-9]{6,}\b/g; const toks = Array.from(new Set((text.toUpperCase().match(alnumRe)||[]))); if(toks.length) add('TOKENS', toks.join(' '));
+  const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  if(lines.length){ const guessName = lines.find(s=>s.replace(/[^A-Za-zÁÉÍÓÚÜ ]/g,'').trim().split(/\s+/).length>=2 && s.length>=10); if(guessName) add('POSIBLE_NOMBRE', guessName); }
+  return rows;
+}
+function normalizeKey(k){ return k.replace(/\s+/g,' ').trim().toUpperCase(); }
 
-    function enablePreviewActions(){
-      els.btnExtractPreview.disabled = !els.previewImg.src;
-      els.btnParse.disabled = !els.previewImg.src;
-    }
+function renderTable(rows){
+  const tb = els.tblBody; tb.innerHTML = '';
+  if(!rows.length){
+    tb.innerHTML = '<tr><td colspan="2" style="opacity:.8">No se encontraron campos. Revisa el texto crudo.</td></tr>';
+    return;
+  }
+  for(const [k,v] of rows){
+    const tr = document.createElement('tr');
+    const tdK = document.createElement('td'); tdK.textContent = k;
+    const tdV = document.createElement('td'); tdV.textContent = v;
+    tr.appendChild(tdK); tr.appendChild(tdV); tb.appendChild(tr);
+  }
+}
 
-    // --- Extraer de Vista Previa (Texto crudo)
-    async function extractFromPreview(){
-      await ensureZXing();
-      const img = els.previewImg;
-      if(!img.src){ alert('No hay vista previa'); return; }
-      try{
-        await ensureImageLoaded(img);
-        let res = null;
-        try{
-          res = await reader.decodeFromImageElement(img);
-        }catch(e1){
-          const c = document.createElement('canvas');
-          const cx = c.getContext('2d', { willReadFrequently:true });
-          c.width = img.naturalWidth || img.width;
-          c.height = img.naturalHeight || img.height;
-          cx.drawImage(img, 0, 0, c.width, c.height);
-          res = await reader.decodeFromCanvas(c);
-        }
-        const text = res?.getText ? res.getText() : '';
-        els.rawText.value = text || '(sin lectura)';
-        if(text) pulse(els.rawText);
-      }catch(err){
-        els.rawText.value = '(sin lectura)';
-      }
-    }
+/* =============================
+   Botones originales + extra
+============================= */
+function decodeFreezeOnce(){
+  // Congelar un frame y pedir al lector intento único (para “Try harder” el flujo ya es live)
+  // Nota: mantenemos decodeFromStream como fuente principal,
+  // aquí solo “disparamos” un ciclo adicional para feedback rápido.
+  // (ZXing JS no expone directamente hints aquí; conservamos simplicidad).
+  // El resultado seguirá apareciendo en #result vía el callback live.
+  frozen = true;
+  setTimeout(()=>{ frozen=false; }, 400); // pseudo freeze breve
+}
 
-    // ============================
-    //  Parseo dedicado: DUI — SV
-    // ============================
-    function parseDUI_SV(text){
-      const rows = [];
-      const add = (k,v)=>{ if(v){ rows.push([k, v.trim()]); } };
+/* =============================
+   Enlaces UI
+============================= */
+document.getElementById('freezeButton').addEventListener('click', decodeFreezeOnce);
 
-      const T = normalizeSpaces(text.toUpperCase());
-
-      // DUI: ########-# o 9 dígitos
-      let dui = matchOne(T, /\b\d{8}-\d\b/) || matchOne(T, /\b\d{9}\b/);
-      if(dui && !dui.includes('-')) dui = dui.slice(0,8) + '-' + dui.slice(8);
-      add('DUI', dui);
-
-      // NIT: ####-######-###-# o 14 díg (con o sin guiones)
-      let nit = matchOne(T, /\b\d{4}-\d{6}-\d{3}-\d\b/) || matchOne(T, /\b\d{14}\b/);
-      if(nit && /^\d{14}$/.test(nit)) nit = nit.replace(/^(\d{4})(\d{6})(\d{3})(\d)$/, '$1-$2-$3-$4');
-      add('NIT', nit);
-
-      // Fechas (NAC/EMI/EXP) — múltiples formatos
-      const dateAny = /(\d{4}[\/\-]\d{2}[\/\-]\d{2})|(\d{2}[\/\-]\d{2}[\/\-]\d{4})|(\d{8})/;
-      const getDate = (labelRe)=>{
-        const near = matchNearLabel(T, labelRe, dateAny, 40);
-        if(!near) return null;
-        return normalizeDate(near);
-      };
-      add('FECHA_NAC', getDate(/\b(NAC|NACIMIENTO|F\.? NAC\.?)\b/));
-      add('FECHA_EMI', getDate(/\b(EMI|EMISION|F\.? EMI\.?)\b/));
-      add('FECHA_EXP', getDate(/\b(EXP|EXPIR|VENC|F\.? EXP\.?)\b/));
-
-      // Sexo
-      const sexo = matchNearLabel(T, /\b(SEXO|SEX)\b/, /\b(M|F|MASCULINO|FEMENINO)\b/, 20);
-      add('SEXO', normSexo(sexo));
-
-      // Nacionalidad
-      add('NACIONALIDAD', matchNearLabel(T, /\b(NAC\.?|NACIONALIDAD)\b/, /\b[SALVADORE(ÑA|NO)S?]|EL\s+SALVADOR|SV\b/, 40) || guessNationality(T));
-
-      // Departamento / Municipio (heurístico por etiquetas)
-      add('DEPARTAMENTO', matchNearLabel(T, /\b(DEPARTAMENTO|DEPTO)\b/, /[A-ZÁÉÍÓÚÜÑ ]{3,}/, 40));
-      add('MUNICIPIO',   matchNearLabel(T, /\b(MUNICIPIO|MPO)\b/, /[A-ZÁÉÍÓÚÜÑ ]{3,}/, 40));
-
-      // Nombres y apellidos (líneas mayúsculas sin dígitos)
-      const nameLines = T.split(/\r?\n/).map(s=>s.trim()).filter(s=>s && !/\d/.test(s) && s.length>=3);
-      // Heurística: primera línea larga → apellidos; segunda → nombres
-      let apellidos=null, nombres=null, nombreCompleto=null;
-      if(nameLines.length>=2){
-        apellidos = pickNameLine(nameLines[0]);
-        nombres   = pickNameLine(nameLines[1]);
-      }else if(nameLines.length===1){
-        nombreCompleto = pickNameLine(nameLines[0]);
-      }
-      if(!nombreCompleto && (nombres||apellidos)){
-        nombreCompleto = [nombres, apellidos].filter(Boolean).join(' ');
-      }
-      add('APELLIDOS', apellidos);
-      add('NOMBRES', nombres);
-      add('NOMBRE_COMPLETO', nombreCompleto);
-
-      // Confianza mínima: tener DUI o (NOMBRE_COMPLETO y FECHA_NAC)
-      const score = (dui?1:0) + (nombreCompleto?1:0) + (rows.filter(([k,v])=>k.startsWith('FECHA_') && v).length?1:0);
-      return { rows, score };
-    }
-
-    function normalizeSpaces(s){ return s.replace(/[ \t]+/g,' ').replace(/\u00A0/g,' ').trim(); }
-    function matchOne(s, re){ const m = s.match(re); return m? m[0] : null; }
-    function matchNearLabel(s, labelRe, valueRe, span){
-      // Busca "LABEL .... VALUE" en una ventana corta
-      const re = new RegExp(labelRe.source + `[\\s\\S]{0,${span}}` + valueRe.source);
-      const m = s.match(re);
-      if(m){ const m2 = m[0].match(valueRe); return m2? m2[0] : null; }
-      return null;
-    }
-    function normalizeDate(raw){
-      if(!raw) return null;
-      const r = raw.replace(/[^\d]/g,'');
-      if(r.length===8){
-        // yyyymmdd o ddmmyyyy — adivinar: si empieza con 19/20, interpretamos yyyymmdd
-        if(/^19|20/.test(r)) return `${r.slice(0,4)}-${r.slice(4,6)}-${r.slice(6,8)}`;
-        return `${r.slice(4,8)}-${r.slice(2,4)}-${r.slice(0,2)}`;
-      }
-      // intenta parsers comunes
-      const a = raw.replace(/[\.\s]/g,'').replace(/_/g,'-').replace(/\//g,'-');
-      const m = a.match(/(\d{4})-(\d{2})-(\d{2})/);
-      if(m) return m[0];
-      const m2 = a.match(/(\d{2})-(\d{2})-(\d{4})/);
-      if(m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
-      return raw;
-    }
-    function normSexo(s){
-      if(!s) return null;
-      s = s.toUpperCase();
-      if(/^M/.test(s)) return 'M';
-      if(/^F/.test(s)) return 'F';
-      return s;
-    }
-    function guessNationality(T){
-      if(/\bSALVADOR|SALVADORE/.test(T)) return 'SALVADOREÑA';
-      return null;
-    }
-    function pickNameLine(s){
-      // descarta etiquetas típicas
-      if(/\b(NOMBRE|NOMBRES|APELLIDO|APELLIDOS)\b/.test(s)) return s.replace(/\b(NOMBRE|NOMBRES|APELLIDO|APELLIDOS)\b\s*[:\-]?\s*/,'').trim();
-      // si todo mayúsculas y sin signos raros, tomar tal cual
-      return s.replace(/[^A-ZÁÉÍÓÚÜÑ ]/g,' ').replace(/\s+/g,' ').trim();
-    }
-
-    // ============================
-    //  Parseo genérico (fallback)
-    // ============================
-    function parseGeneric(text){
-      const rows = [];
-      const add = (k,v)=> rows.push([k, String(v||'').trim()]);
-
-      // 1) Key:Value
-      const kvRe = /^\s*([A-Za-zÁÉÍÓÚÑÜ0-9 ._\-\/]{2,30})\s*[:=]\s*(.+?)\s*$/gm;
-      let m;
-      while((m = kvRe.exec(text))){ add(normalizeKey(m[1]), m[2]); }
-
-      // 2) Fechas
-      const dateRe = /\b(?:(\d{4})[\/\-](\d{2})[\/\-](\d{2})|(\d{2})[\/\-](\d{2})[\/\-](\d{4})|(\d{8}))\b/g;
-      const dates = new Set();
-      let d;
-      while((d = dateRe.exec(text))){
-        if(d[1]) dates.add(`${d[1]}-${d[2]}-${d[3]}`);
-        else if(d[4]) dates.add(`${d[6]}-${d[5]}-${d[4]}`);
-        else if(d[7]){
-          const s=d[7]; dates.add(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`);
-        }
-      }
-      if(dates.size) add('FECHAS', Array.from(dates).join(', '));
-
-      // 3) Números largos
-      const numRe = /\b\d{8,}\b/g;
-      const nums = Array.from(new Set((text.match(numRe)||[])));
-      if(nums.length) add('NUMEROS_LARGOS', nums.join(', '));
-
-      // 4) Tokens alfanuméricos largos
-      const alnumRe = /\b[A-Z0-9]{6,}\b/g;
-      const toks = Array.from(new Set((text.toUpperCase().match(alnumRe)||[])));
-      if(toks.length) add('TOKENS', toks.join(' '));
-
-      // 5) Línea candidata a nombre
-      const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-      if(lines.length){
-        const guessName = lines.find(s=>s.replace(/[^A-Za-zÁÉÍÓÚÑÜ ]/g,'').trim().split(/\s+/).length>=2 && s.length>=10);
-        if(guessName) add('POSIBLE_NOMBRE', guessName);
-      }
-      return rows;
-    }
-
-    function normalizeKey(k){ return k.replace(/\s+/g,' ').trim().toUpperCase(); }
-
-    function renderTable(rows){
-      const tb = els.tblBody;
-      tb.innerHTML = '';
-      if(!rows.length){
-        tb.innerHTML = '<tr><td colspan="2" style="opacity:.8">No se encontraron campos. Revisa el texto crudo.</td></tr>';
-        return;
-      }
-      for(const [k,v] of rows){
-        const tr = document.createElement('tr');
-        const tdK = document.createElement('td'); tdK.textContent = k;
-        const tdV = document.createElement('td'); tdV.textContent = v;
-        tr.appendChild(tdK); tr.appendChild(tdV);
-        tb.appendChild(tr);
-      }
-    }
-
-    // --- Orquestador de parseo con perfil
-    function parseData(){
-      const text = (els.rawText.value || '').trim();
-      if(!text){ alert('No hay texto para parsear. Ejecuta primero “Extraer de Vista Previa”.'); return; }
-
-      const profile = els.parseProfile.value;
-      let rows = [];
-
-      if(profile === 'dui-sv' || profile === 'auto'){
-        const { rows: duiRows, score } = parseDUI_SV(text);
-        if(profile === 'dui-sv' || score >= 2){
-          rows = duiRows;
-        } else {
-          rows = parseGeneric(text);
-        }
-      } else if(profile === 'generic'){
-        rows = parseGeneric(text);
-      }
-
-      renderTable(rows);
-    }
-
-    async function ensureImageLoaded(img){
-      if(img.complete && img.naturalWidth) return;
-      await new Promise((res,rej)=>{
-        img.onload = ()=>res();
-        img.onerror = e=>rej(e);
-      });
-    }
-
-    // --- Eventos UI
-    els.btnStart.addEventListener('click', startCam);
-    els.btnStop.addEventListener('click', stopCam);
-    els.btnSwitch.addEventListener('click', switchCam);
-    els.btnFreeze.addEventListener('click', freezeAndDecode);
-    els.btnUnfreeze.addEventListener('click', unfreeze);
-    els.btnTorch.addEventListener('click', setTorch);
-    els.zoom.addEventListener('input', (e)=> setZoom(e.target.value));
-    els.btnCapture.addEventListener('click', captureToPreview);
-    els.btnExtractPreview.addEventListener('click', extractFromPreview);
-    els.btnParse.addEventListener('click', parseData);
-
-    // Sliders ROI
-    els.roiWidth.addEventListener('input', ()=>{
-      const r = getRoiPct();
-      const newW = Number(els.roiWidth.value);
-      const cx = r.left + r.width/2;
-      let L = cx - newW/2;
-      if(L < 0) L = 0;
-      if(L + newW > 100) L = 100 - newW;
-      setRoiPct({left:L, top:r.top, width:newW, height:r.height});
-    });
-    els.roiHeight.addEventListener('input', ()=>{
-      const r = getRoiPct();
-      const newH = Number(els.roiHeight.value);
-      const cy = r.top + r.height/2;
-      let T = cy - newH/2;
-      if(T < 0) T = 0;
-      if(T + newH > 100) T = 100 - newH;
-      setRoiPct({left:r.left, top:T, width:r.width, height:newH});
-    });
-
-    // Botones mover/centrar
-    const stepPct = 2;
-    els.btnUp?.addEventListener('click', ()=>{
-      const r = getRoiPct();
-      setRoiPct({left:r.left, top: Math.max(0, r.top - stepPct), width:r.width, height:r.height});
-    });
-    els.btnDown?.addEventListener('click', ()=>{
-      const r = getRoiPct();
-      setRoiPct({left:r.left, top: Math.min(100 - r.height, r.top + stepPct), width:r.width, height:r.height});
-    });
-    els.btnLeft?.addEventListener('click', ()=>{
-      const r = getRoiPct();
-      setRoiPct({left: Math.max(0, r.left - stepPct), top:r.top, width:r.width, height:r.height});
-    });
-    els.btnRight?.addEventListener('click', ()=>{
-      const r = getRoiPct();
-      setRoiPct({left: Math.min(100 - r.width, r.left + stepPct), top:r.top, width:r.width, height:r.height});
-    });
-    els.btnCenter?.addEventListener('click', ()=>{
-      const r = getRoiPct();
-      const L = (100 - r.width)/2;
-      const T = (100 - r.height)/2;
-      setRoiPct({left:L, top:T, width:r.width, height:r.height});
-    });
-
-    // Tap para sugerir autofocus
-    els.video.addEventListener('click', async ()=>{
-      try{
-        const caps = track.getCapabilities?.();
-        if(caps?.focusMode && caps.focusMode.includes('single-shot')){
-          await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
-        }
-      }catch{}
-    });
-
-    // Inicializar ZXing
-    async function ensureZXing(){
-      if(ZX && reader) return;
-      ZX = window.ZXing;
-      if(!ZX) throw new Error('ZXing JS no cargó');
-      const { BarcodeFormat, DecodeHintType, BrowserPDF417Reader } = ZX;
-      hints = new Map();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
-      reader = new BrowserPDF417Reader(hints);
-      els.sLib.textContent = 'Decoder: JS listo';
-      els.sLib.className = 'pill ok';
-    }
-
-    // Diagnóstico secundario
-    function updateDiagnostics(){
-      const r = els.roi.getBoundingClientRect();
-      const s = els.stage.getBoundingClientRect();
-      const pctW = (r.width/s.width*100)|0; const pctH = (r.height/s.height*100)|0;
-      // opcional: imprimir en UI si quieres
-    }
-
-    // Inicial
-    sizeOverlay();
-    syncRoiSliders();
-  </script>
+/* =============================
+   Preview container original (preservado)
+============================= */
+const previewDiv = document.createElement('div');
+previewDiv.id = 'preview';
+previewDiv.style.marginTop = '10px';
+document.querySelector('.content').appendChild(previewDiv); // no afecta los paneles arriba
+</script>
 </body>
 </html>
