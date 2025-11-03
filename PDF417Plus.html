@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDF417 Camera Scanner — Single File Demo</title>
+  <style>
+    :root{
+      --bg:#0b0f14;--panel:#121820;--muted:#2b3644;--ring:#2f7de1;--text:#e6eef8;--accent:#58b368;--warn:#d69e2e;--err:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0b0f14,#0b0f14cc 70%,transparent);
+      border-bottom:1px solid #0b0f14;backdrop-filter:saturate(1.2) blur(4px)}
+    .bar{display:flex;gap:.5rem;align-items:center;padding:.6rem .9rem;flex-wrap:wrap}
+    .pill{padding:.3rem .6rem;border:1px solid var(--muted);border-radius:999px;background:var(--panel)}
+    .pill.ok{border-color:#254c36;background:#132018}
+    .pill.warn{border-color:#4a3b14;background:#1a1508}
+    .pill.err{border-color:#5b2323;background:#190d0d}
+    .btn{appearance:none;border:1px solid var(--muted);background:#0f141c;color:var(--text);padding:.5rem .75rem;border-radius:.6rem;cursor:pointer}
+    .btn:hover{border-color:#3a485b}
+    .btn.primary{border-color:#2b4b7c;background:#122036}
+    .btn.ghost{background:transparent}
+    .row{display:grid;grid-template-columns:1.2fr .8fr;gap:1rem;padding:1rem}
+    @media (max-width:980px){.row{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid var(--muted);border-radius:.8rem;overflow:hidden}
+    .card h3{margin:0;padding:.8rem 1rem;border-bottom:1px solid var(--muted);background:#0f141c}
+    .card .content{padding:1rem}
+    .stage{position:relative;background:#000;aspect-ratio:16/9;border-radius:.6rem;overflow:hidden;border:1px solid var(--muted)}
+    video{width:100%;height:100%;object-fit:cover;display:block}
+    canvas#overlay{position:absolute;inset:0;pointer-events:none}
+
+    /* ROI overlay */
+    .roi{position:absolute;border:2px solid var(--ring);box-shadow:0 0 0 2px #0006,0 0 24px #000 inset;cursor:move}
+    .roi .handle{position:absolute;width:14px;height:14px;background:var(--ring);border:2px solid #000;border-radius:50%}
+    .roi .handle.nw{left:-7px;top:-7px}
+    .roi .handle.ne{right:-7px;top:-7px}
+    .roi .handle.sw{left:-7px;bottom:-7px}
+    .roi .handle.se{right:-7px;bottom:-7px}
+
+    .grid{display:grid;gap:.5rem}
+    label.small{font-size:12px;opacity:.85}
+    input[type="range"]{width:100%}
+    .kv{display:grid;grid-template-columns:auto 1fr;gap:.4rem .8rem;align-items:center}
+    .kv div{min-width:0;overflow:hidden;text-overflow:ellipsis}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .result{border:1px dashed #3a485b;border-radius:.6rem;padding:.6rem;background:#0d131c}
+    .hint{font-size:12px;opacity:.9}
+    .tag{display:inline-block;padding:.2rem .45rem;border:1px solid #314155;border-radius:.5rem;background:#0f1722;margin:.1rem .2rem 0 0}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar" id="statusBar">
+      <span class="pill ok" id="sCam">Camera: idle</span>
+      <span class="pill" id="sLib">Decoder: loading…</span>
+      <span class="pill" id="sTorch">Torch: n/a</span>
+      <span class="pill" id="sZoom">Zoom: n/a</span>
+      <span class="pill" id="sFps">Proc: 0 fps</span>
+      <span class="pill warn" id="sTips">Tip: align the code inside the frame</span>
+    </div>
+  </header>
+
+  <div class="row">
+    <div class="card">
+      <h3>Live Camera</h3>
+      <div class="content">
+        <div class="grid" style="margin-bottom:.5rem">
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button class="btn primary" id="btnStart">Start</button>
+            <button class="btn" id="btnStop" disabled>Stop</button>
+            <button class="btn" id="btnSwitch" disabled>Switch Camera</button>
+            <button class="btn" id="btnFreeze" disabled>Freeze & Decode</button>
+            <button class="btn" id="btnUnfreeze" disabled>Unfreeze</button>
+            <button class="btn" id="btnTorch" disabled>Toggle Torch</button>
+          </div>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+            <label class="small">Zoom <input type="range" min="1" max="5" step="0.1" value="1" id="zoom"></label>
+            <label class="small">Decoder
+              <select id="decoderSel">
+                <option value="wasm" selected>ZXing-WASM (fast)</option>
+                <option value="js">@zxing/library (fallback)</option>
+              </select>
+            </label>
+            <label class="small"><input type="checkbox" id="autoDecode" checked /> Auto decode (12 fps)</label>
+            <label class="small"><input type="checkbox" id="tryHarder" /> Try harder (heavier)</label>
+          </div>
+        </div>
+        <div class="stage" id="stage">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="roi" id="roi" style="left:20%;top:25%;width:60%;height:50%">
+            <div class="handle nw" data-h="nw"></div>
+            <div class="handle ne" data-h="ne"></div>
+            <div class="handle sw" data-h="sw"></div>
+            <div class="handle se" data-h="se"></div>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:.6rem">Drag the rectangle corners to fit the barcode (leave a small quiet zone around it). Tap video to try auto-focus (if supported).</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Results</h3>
+      <div class="content">
+        <div class="kv">
+          <div>Last status</div><div id="lastStatus" class="mono">–</div>
+          <div>Symbology</div><div><span class="tag">PDF_417</span></div>
+          <div>Text</div><div id="outText" class="result mono" style="white-space:pre-wrap;max-height:180px;overflow:auto">(no data)</div>
+          <div>Position</div><div id="outPos" class="mono">–</div>
+          <div>De-dupe</div><div id="outDedup" class="mono">0 / 2</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row" style="padding-top:0">
+    <div class="card">
+      <h3>Diagnostics</h3>
+      <div class="content">
+        <div class="kv">
+          <div>Resolution</div><div id="diagRes">–</div>
+          <div>ROI size</div><div id="diagRoi">–</div>
+          <div>Hints</div><div id="diagHints" class="mono">PDF_417 only</div>
+          <div>Notes</div><div id="diagNotes">Use Freeze for a heavy decode if live decoding fails.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>How this improves accuracy</h3>
+      <div class="content">
+        <ul>
+          <li>Manual ROI crop to feed only the barcode region (less noise, faster decode).</li>
+          <li>Worker offload + de-dupe (requires 2 identical reads before emitting a final success).</li>
+          <li>Optional <em>Try Harder</em> pass on frozen frames (costly, but robust).</li>
+          <li>Torch & zoom controls (when supported).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ZXing fallback library for JS decoder mode -->
+  <script defer src="https://unpkg.com/@zxing/library@0.20.0"></script>
+
+  <script type="module">
+    // --- Globals
+    const els = {
+      video: document.getElementById('video'),
+      overlay: document.getElementById('overlay'),
+      stage: document.getElementById('stage'),
+      roi: document.getElementById('roi'),
+      sCam: document.getElementById('sCam'),
+      sLib: document.getElementById('sLib'),
+      sTorch: document.getElementById('sTorch'),
+      sZoom: document.getElementById('sZoom'),
+      sFps: document.getElementById('sFps'),
+      sTips: document.getElementById('sTips'),
+      outText: document.getElementById('outText'),
+      outPos: document.getElementById('outPos'),
+      outDedup: document.getElementById('outDedup'),
+      lastStatus: document.getElementById('lastStatus'),
+      diagRes: document.getElementById('diagRes'),
+      diagRoi: document.getElementById('diagRoi'),
+      diagNotes: document.getElementById('diagNotes'),
+      btnStart: document.getElementById('btnStart'),
+      btnStop: document.getElementById('btnStop'),
+      btnSwitch: document.getElementById('btnSwitch'),
+      btnFreeze: document.getElementById('btnFreeze'),
+      btnUnfreeze: document.getElementById('btnUnfreeze'),
+      btnTorch: document.getElementById('btnTorch'),
+      zoom: document.getElementById('zoom'),
+      decoderSel: document.getElementById('decoderSel'),
+      autoDecode: document.getElementById('autoDecode'),
+      tryHarder: document.getElementById('tryHarder'),
+    };
+
+    let stream, track, imageCapture;
+    let devices = [];
+    let activeDeviceId = null;
+    let frozen = false;
+    let processing = false;
+    let wantFPS = 12;
+    let lastProc = 0, fps = 0;
+
+    // de-dupe state
+    let lastText = '', dedupCount = 0, dedupTarget = 2;
+
+    // Worker
+    let worker = null;
+    let workerReady = false;
+    let wantDecoder = 'wasm';
+
+    // --- Create decoder worker (supports wasm and js)
+    function createWorker(kind='wasm'){
+      if(worker){ worker.terminate(); worker = null; }
+      workerReady = false;
+
+      const src = kind === 'wasm' ? workerSrcWASM() : workerSrcJS();
+      const blob = new Blob([src], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      worker = new Worker(url, { type: 'module' });
+      worker.onmessage = (e)=>{
+        const msg = e.data;
+        if(msg.type==='ready'){
+          workerReady = true;
+          els.sLib.textContent = `Decoder: ${kind.toUpperCase()} ready`;
+          els.sLib.className = 'pill ok';
+        }else if(msg.type==='result'){
+          handleDecode(msg.result);
+        }else if(msg.type==='none'){
+          // no-op
+        }else if(msg.type==='error'){
+          els.lastStatus.textContent = `Error: ${msg.error}`;
+          els.sLib.className = 'pill err';
+          // Auto-fallback to JS decoder if WASM fails to load due to CORS/redirects
+          if(kind === 'wasm') {
+            els.diagNotes.textContent = 'WASM failed (likely CORS/redirect). Falling back to @zxing/library JS decoder.';
+            createWorker('js');
+          }
+        }
+      };
+      els.sLib.textContent = `Decoder: loading ${kind.toUpperCase()}…`;
+      els.sLib.className = 'pill';
+    }
+
+    // --- Camera helpers
+    async function listCams(){
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      return devs.filter(d=>d.kind==='videoinput');
+    }
+
+    async function startCam(){
+      try{
+        devices = await listCams();
+        const constraints = {
+          video: {
+            deviceId: activeDeviceId ? { exact: activeDeviceId } : undefined,
+            facingMode: activeDeviceId ? undefined : { ideal: 'environment' },
+            width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 }
+          }, audio: false
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        track = stream.getVideoTracks()[0];
+        els.video.srcObject = stream;
+        await els.video.play();
+        els.btnStop.disabled = false;
+        els.btnSwitch.disabled = devices.length>1 ? false : true;
+        els.btnFreeze.disabled = false;
+        els.sCam.textContent = `Camera: ${track.label || 'active'}`;
+        els.sCam.className = 'pill ok';
+
+        if('ImageCapture' in window){
+          try{ imageCapture = new ImageCapture(track); }catch{ imageCapture=null }
+        }
+        bindCapabilities();
+        sizeOverlay();
+        loop();
+      }catch(err){
+        els.sCam.textContent = `Camera error`;
+        els.sCam.className = 'pill err';
+        els.lastStatus.textContent = err?.message || String(err);
+      }
+    }
+
+    function stopCam(){
+      frozen=false; processing=false; lastText=''; dedupCount=0; updateDedup();
+      if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+      els.btnStop.disabled = true; els.btnSwitch.disabled=true; els.btnFreeze.disabled=true; els.btnUnfreeze.disabled=true; els.btnTorch.disabled=true;
+      els.sCam.textContent = 'Camera: stopped'; els.sCam.className='pill';
+    }
+
+    async function switchCam(){
+      if(!devices.length) devices = await listCams();
+      if(!devices.length) return;
+      const idx = Math.max(0, devices.findIndex(d=>d.deviceId===activeDeviceId));
+      const next = devices[(idx+1)%devices.length];
+      activeDeviceId = next.deviceId; stopCam(); startCam();
+    }
+
+    function bindCapabilities(){
+      const caps = track.getCapabilities?.() || {};
+      // Torch
+      if(caps.torch){ els.btnTorch.disabled=false; els.sTorch.textContent='Torch: off'; els.sTorch.className='pill'; }
+      else{ els.btnTorch.disabled=true; els.sTorch.textContent='Torch: n/a'; els.sTorch.className='pill'; }
+      // Zoom
+      if(caps.zoom){
+        els.zoom.min = caps.zoom.min ?? 1; els.zoom.max = caps.zoom.max ?? 5; els.zoom.step = caps.zoom.step ?? 0.1;
+        els.zoom.value = track.getSettings?.().zoom ?? 1;
+        els.sZoom.textContent = `Zoom: ${Number(els.zoom.value).toFixed(1)}x`;
+      }else{
+        els.sZoom.textContent = 'Zoom: n/a';
+      }
+    }
+
+    async function setTorch(){
+      try{
+        const s = track.getSettings?.()||{};
+        const on = !s.torch;
+        await track.applyConstraints({ advanced: [{ torch: on }] });
+        els.sTorch.textContent = `Torch: ${on?'on':'off'}`;
+        els.sTorch.className = on? 'pill ok':'pill';
+      }catch{ /* no-op */ }
+    }
+
+    async function setZoom(val){
+      try{ await track.applyConstraints({ advanced:[{ zoom: Number(val) }] }); }catch{}
+      els.sZoom.textContent = `Zoom: ${Number(val).toFixed(1)}x`;
+    }
+
+    function sizeOverlay(){
+      const rect = els.stage.getBoundingClientRect();
+      const c = els.overlay; c.width = rect.width; c.height = rect.height;
+      updateDiagnostics();
+    }
+
+    window.addEventListener('resize', sizeOverlay);
+
+    // --- ROI interactions
+    (function(){
+      const roi = els.roi; const stage = els.stage; let drag=null; let start={};
+      function pxToPct(dx,dy){
+        const r = stage.getBoundingClientRect();
+        return { x: dx / r.width * 100, y: dy / r.height * 100 };
+      }
+      roi.addEventListener('mousedown', (e)=>{
+        e.preventDefault();
+        const h = e.target.closest('.handle')?.dataset.h || 'move';
+        const r = roi.getBoundingClientRect(); const s = stage.getBoundingClientRect();
+        drag = { mode:h, base:{ x:e.clientX, y:e.clientY }, rect:{ left:r.left-s.left, top:r.top-s.top, w:r.width, h:r.height } };
+        start = { left: pct(roi.style.left), top: pct(roi.style.top), w: pct(roi.style.width), h: pct(roi.style.height) };
+      });
+      window.addEventListener('mousemove',(e)=>{
+        if(!drag) return; e.preventDefault();
+        const dx = e.clientX - drag.base.x; const dy = e.clientY - drag.base.y; const p = pxToPct(dx,dy);
+        let L=start.left, T=start.top, W=start.w, H=start.h;
+        const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+        switch(drag.mode){
+          case 'move': L=clamp(start.left+p.x,0,100-W); T=clamp(start.top+p.y,0,100-H); break;
+          case 'nw': L=clamp(start.left+p.x,0,start.left+start.w-5); T=clamp(start.top+p.y,0,start.top+start.h-5); W=start.w-(L-start.left); H=start.h-(T-start.top); break;
+          case 'ne': T=clamp(start.top+p.y,0,start.top+start.h-5); W=clamp(start.w+p.x,5,100-start.left); H=start.h-(T-start.top); break;
+          case 'sw': L=clamp(start.left+p.x,0,start.left+start.w-5); W=start.w-(L-start.left); H=clamp(start.h+p.y,5,100-start.top); break;
+          case 'se': W=clamp(start.w+p.x,5,100-start.left); H=clamp(start.h+p.y,5,100-start.top); break;
+        }
+        roi.style.left=L+'%'; roi.style.top=T+'%'; roi.style.width=W+'%'; roi.style.height=H+'%';
+        updateDiagnostics();
+      });
+      window.addEventListener('mouseup',()=> drag=null);
+      function pct(s){ return parseFloat(String(s).replace('%',''))||0 }
+    })();
+
+    // --- Processing loop (live)
+    async function loop(){
+      if(!els.video.srcObject) return;
+      if(!frozen && els.autoDecode.checked){ await maybeProcessFrame(); }
+      requestVideoFrame( loop );
+    }
+
+    function requestVideoFrame(cb){
+      // IMPORTANT: keep the correct `this` binding for requestVideoFrameCallback
+      if (typeof els.video.requestVideoFrameCallback === 'function') {
+        els.video.requestVideoFrameCallback(cb);
+      } else {
+        setTimeout(() => cb(performance.now(), {}), 1000/30);
+      }
+    }
+
+    async function maybeProcessFrame(){
+      if(processing || !workerReady) return;
+      const now = performance.now();
+      if(now - lastProc < 1000/wantFPS) return; lastProc = now;
+      processing = true;
+      try{
+        const { data, width, height } = frameFromVideoROI();
+        if(!data) return;
+        worker.postMessage({ type:'frame', data, width, height, tryHarder: els.tryHarder.checked });
+      } finally {
+        processing = false;
+      }
+    }
+
+    // Freeze for heavy decode
+    async function freezeAndDecode(){
+      frozen = true; els.btnUnfreeze.disabled=false; els.btnFreeze.disabled=true;
+      await heavyDecode();
+    }
+    async function heavyDecode(){
+      if(!workerReady) return;
+      const { data, width, height } = frameFromVideoROI();
+      worker.postMessage({ type:'heavy', data, width, height, tryHarder: true });
+    }
+
+    function unfreeze(){ frozen=false; els.btnUnfreeze.disabled=true; els.btnFreeze.disabled=false; }
+
+    // --- Capture ROI to ImageData
+    function frameFromVideoROI(){
+      const v = els.video; if(!v.videoWidth) return {};
+      const stageRect = els.stage.getBoundingClientRect();
+      const vw = v.videoWidth, vh = v.videoHeight;
+      // Map ROI (in % of stage) -> video pixel coords considering object-fit: cover
+      const roiPct = rectPct(els.roi);
+      const cover = coverMapping(vw, vh, stageRect.width, stageRect.height);
+      const roiPx = {
+        x: Math.round((roiPct.left/100)*stageRect.width - cover.dx),
+        y: Math.round((roiPct.top/100)*stageRect.height - cover.dy),
+        w: Math.round((roiPct.width/100)*stageRect.width),
+        h: Math.round((roiPct.height/100)*stageRect.height)
+      };
+      // scale from stage px to video px
+      const scale = cover.scale;
+      const sx = Math.max(0, Math.round(roiPx.x/scale));
+      const sy = Math.max(0, Math.round(roiPx.y/scale));
+      const sw = Math.max(1, Math.round(roiPx.w/scale));
+      const sh = Math.max(1, Math.round(roiPx.h/scale));
+
+      const off = new OffscreenCanvas(sw, sh);
+      const ctx = off.getContext('2d', { willReadFrequently:true });
+      ctx.drawImage(v, sx, sy, sw, sh, 0,0, sw, sh);
+      const img = ctx.getImageData(0,0,sw,sh);
+      // Diagnostics
+      els.diagRes.textContent = `${vw}×${vh}`;
+      els.diagRoi.textContent = `${sw}×${sh}`;
+      // Heuristic tips
+      if(sw < 380) els.sTips.textContent = 'Tip: move closer (ROI < 400 px wide)';
+      else els.sTips.textContent = 'Tip: hold steady & reduce glare';
+      return { data: img.data, width: sw, height: sh };
+    }
+
+    function rectPct(el){
+      return {
+        left: pct(el.style.left), top: pct(el.style.top), width: pct(el.style.width), height: pct(el.style.height)
+      };
+      function pct(s){ return parseFloat(String(s).replace('%',''))||0 }
+    }
+
+    function coverMapping(vw, vh, cw, ch){
+      // object-fit: cover — scale video to cover stage
+      const rs = Math.max(cw/vw, ch/vh); // scale applied to video -> canvas
+      const dispW = vw*rs, dispH = vh*rs;
+      const dx = (dispW - cw)/2; // crop offset on X in display px
+      const dy = (dispH - ch)/2; // crop offset on Y in display px
+      return { scale: rs, dx, dy };
+    }
+
+    // --- Handle decode results
+    function handleDecode(res){
+      if(!res) return;
+      // De-dupe: require same text twice in a row
+      if(res.text && res.text === lastText){ dedupCount++; } else { lastText = res.text; dedupCount = 1; }
+      updateDedup();
+
+      els.outText.textContent = res.text || '';
+      els.outPos.textContent = res.points ? JSON.stringify(res.points) : '(no points)';
+      els.lastStatus.textContent = `Decoded (${res.backend}) ${res.tryHarder? 'TRY_HARDER' : 'fast'}`;
+
+      if(dedupCount >= dedupTarget){
+        // Lock a success UI pulse
+        pulse(els.outText);
+      }
+    }
+
+    function updateDedup(){ els.outDedup.textContent = `${dedupCount} / ${dedupTarget}`; }
+    function pulse(el){ el.animate([{boxShadow:'0 0 0 0 rgba(88,179,104,.6)'},{boxShadow:'0 0 0 14px rgba(88,179,104,0)'}],{duration:800}); }
+
+    // --- Event bindings
+    els.btnStart.addEventListener('click', startCam);
+    els.btnStop.addEventListener('click', stopCam);
+    els.btnSwitch.addEventListener('click', switchCam);
+    els.btnFreeze.addEventListener('click', freezeAndDecode);
+    els.btnUnfreeze.addEventListener('click', unfreeze);
+    els.btnTorch.addEventListener('click', setTorch);
+    els.zoom.addEventListener('input', (e)=> setZoom(e.target.value));
+    els.decoderSel.addEventListener('change', (e)=>{ wantDecoder = e.target.value; createWorker(wantDecoder); });
+
+    // tap to hint autofocus (best-effort)
+    els.video.addEventListener('click', async ()=>{
+      try{
+        const caps = track.getCapabilities?.();
+        if(caps?.focusMode && caps.focusMode.includes('single-shot')){
+          await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+          els.diagNotes.textContent = 'Requested single-shot autofocus.';
+        } else {
+          els.diagNotes.textContent = 'Autofocus not supported; try moving slightly.';
+        }
+      }catch{}
+    });
+
+    // Initial worker
+    createWorker(wantDecoder);
+
+    // Resize overlay to stage
+    sizeOverlay();
+
+    // --- Worker sources
+    function workerSrcWASM(){
+      return `
+        let Module, ZX;
+        let ready=false;
+        // Load ZXing WASM via import
+        (async()=>{
+          try{
+            ZX = await import('https://cdn.jsdelivr.net/npm/@zxing/wasm@1.2.7/+esm');
+            await ZX.load();
+            ready = true;
+            postMessage({type:'ready'});
+          }catch(e){ postMessage({type:'error', error: 'WASM load failed: '+(e?.message||e)}); }
+        })();
+
+        function decodePass(buf, w, h, opts){
+          try{
+            const reader = new ZX.BarcodeReader();
+            const res = reader.decode({ data: buf, width: w, height: h, tryHarder: !!opts.tryHarder, formats: [ZX.BarcodeFormat.PDF_417], maxNumberOfSymbols: 1 });
+            if(res && res.length){
+              const r = res[0];
+              return { text: r.text, points: r.position, backend:'wasm', tryHarder: !!opts.tryHarder };
+            }
+          }catch(e){ /* fallthrough */ }
+          return null;
+        }
+
+        self.onmessage = (e)=>{
+          const msg = e.data; if(!ready) return;
+          const { data, width, height } = msg;
+          if(msg.type==='frame'){
+            const out = decodePass(data, width, height, { tryHarder: msg.tryHarder });
+            if(out) postMessage({type:'result', result: out}); else postMessage({type:'none'});
+          } else if(msg.type==='heavy'){
+            // heavy: try normal then TR
+            let out = decodePass(data, width, height, { tryHarder:false });
+            if(!out) out = decodePass(data, width, height, { tryHarder:true });
+            if(out) postMessage({type:'result', result: out}); else postMessage({type:'none'});
+          }
+        };
+      `;
+    }
+
+    function workerSrcJS(){
+      return `
+        importScripts('https://unpkg.com/@zxing/library@0.20.0');
+        let ready=false, reader, hints;
+        (function init(){
+          try{
+            const { BarcodeFormat, DecodeHintType, BrowserPDF417Reader } = ZXing;
+            hints = new Map();
+            hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
+            reader = new BrowserPDF417Reader(hints);
+            ready=true; postMessage({type:'ready'});
+          }catch(e){ postMessage({type:'error', error:'JS lib init failed: '+(e?.message||e)}); }
+        })();
+
+        self.onmessage = async (e)=>{
+          if(!ready) return; const msg = e.data;
+          const { data, width, height } = msg; if(!data) return;
+          try{
+            // Draw to OffscreenCanvas for decodeFromCanvas
+            const off = new OffscreenCanvas(width, height);
+            const ctx = off.getContext('2d', { willReadFrequently:true });
+            const img = new ImageData(new Uint8ClampedArray(data), width, height);
+            ctx.putImageData(img, 0, 0);
+            if(msg.tryHarder){
+              const { DecodeHintType } = ZXing; hints.set(DecodeHintType.TRY_HARDER, true);
+            }
+            const res = await reader.decodeFromCanvas(off);
+            const out = res?.getText?.() ? { text: res.getText(), points: res?.getResultPoints?.()||null, backend:'js', tryHarder: !!msg.tryHarder } : null;
+            if(out) postMessage({type:'result', result: out}); else postMessage({type:'none'});
+          }catch(err){ postMessage({type:'none'}); }
+        };
+      `;
+    }
+
+    // --- Utility
+    function updateDiagnostics(){
+      const r = els.roi.getBoundingClientRect();
+      const s = els.stage.getBoundingClientRect();
+      const pctW = (r.width/s.width*100)|0; const pctH = (r.height/s.height*100)|0;
+      els.diagRoi.textContent = `${pctW}% × ${pctH}% of view`;
+    }
+  </script>
+</body>
+</html>
+
+    
