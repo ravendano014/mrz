@@ -182,6 +182,11 @@
 
       <!-- Imagen -->
       <div class="bar" id="imageBar">
+<!-- === Procesar Vista Previa (MRZ/PDF417) === -->
+<div class="spacer"></div>
+<button id="btnExtractMrzRoi" title="Extrae el ROI MRZ de la imagen en vista previa">Extraer ROI MRZ</button>
+<button id="btnExtractPdfRoi" title="Extrae el ROI PDF417 de la imagen en vista previa">Extraer ROI PDF417</button>
+
         <h2>Imagen</h2>
         <input type="file" id="file" accept="image/*" />
         <button id="btnParseFull">Extraer y Parsear (Imagen Completa)</button>
@@ -1524,5 +1529,182 @@
       return {fields};
     }
   </script>
+<script>
+// === Patch: Auto-captura a vista previa y extracción de ROIs MRZ/PDF417 ===
+(function(){
+  // Evita duplicar el parche
+  if (window.__mrzPdf417PatchApplied__) return;
+  window.__mrzPdf417PatchApplied__ = true;
+
+  // 'state' puede existir en tu app; si no, creamos uno mínimo para evitar errores.
+  window.state = window.state || {};
+  state.rois = state.rois || [];
+  // Marcadores opcionales de auto-ROI (si tu detector los define)
+  state.mrzAutoRoiId = state.mrzAutoRoiId || null;
+  state.pdfAutoRoiId = state.pdfAutoRoiId || null;
+
+  function $(sel){ return document.querySelector(sel); }
+
+  function getCurrentRoiByType(type){
+    const t = (type||'').toLowerCase();
+    const rois = Array.isArray(state.rois) ? state.rois : [];
+    if (t === 'mrz'){
+      if (state.mrzAutoRoiId){
+        const r = rois.find(x => x.id === state.mrzAutoRoiId);
+        if (r) return r;
+      }
+      return rois.find(r => (r.type||'').toLowerCase() === 'mrz') || null;
+    }
+    if (t === 'pdf417'){
+      if (state.pdfAutoRoiId){
+        const r = rois.find(x => x.id === state.pdfAutoRoiId);
+        if (r) return r;
+      }
+      return rois.find(r => (r.type||'').toLowerCase() === 'pdf417') || null;
+    }
+    return null;
+  }
+
+  async function captureToPreviewFromCamera({preferRoi=false, roiType=null} = {}){
+    const video   = $('#video');
+    const preview = $('#imgPreview');
+    if (!video || !preview){
+      console.warn('No se encontró #video o #imgPreview en el DOM.');
+      return false;
+    }
+    const track = state?.stream?.getVideoTracks?.()[0] || null;
+    const hasImageCapture = !!(window.ImageCapture && track);
+
+    let roi = null;
+    if (preferRoi && roiType){
+      roi = getCurrentRoiByType(roiType);
+    }
+
+    const paintToCanvas = async (bitmapOrImg, roiRect) => {
+      const srcW = bitmapOrImg.width  || bitmapOrImg.naturalWidth || bitmapOrImg.videoWidth || 1280;
+      const srcH = bitmapOrImg.height || bitmapOrImg.naturalHeight || bitmapOrImg.videoHeight || 720;
+
+      let sx=0, sy=0, sw=srcW, sh=srcH;
+      if (roiRect){
+        sx = Math.max(0, Math.round((roiRect.x||0) * srcW));
+        sy = Math.max(0, Math.round((roiRect.y||0) * srcH));
+        sw = Math.max(1, Math.round((roiRect.w||1) * srcW));
+        sh = Math.max(1, Math.round((roiRect.h||1) * srcH));
+        if (sx + sw > srcW) sw = srcW - sx;
+        if (sy + sh > srcH) sh = srcH - sy;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width  = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext('2d', { willReadFrequently:true });
+      try {
+        ctx.drawImage(bitmapOrImg, sx, sy, sw, sh, 0, 0, sw, sh);
+      } catch(e){
+        console.warn('drawImage fallback sin ROI:', e);
+        ctx.drawImage(bitmapOrImg, 0, 0);
+      }
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      preview.src = dataUrl;
+
+      state.usingImage = true;
+      if (window.createImageBitmap){
+        try{
+          state.activeBitmap = await createImageBitmap(canvas);
+        }catch(e){
+          state.activeBitmap = null;
+        }
+      }
+      return true;
+    };
+
+    try{
+      if (hasImageCapture){
+        const ic = new ImageCapture(track);
+        let blob = null;
+        try{ blob = await ic.takePhoto(); }catch(e){ blob = null; }
+        if (blob){
+          const imgBitmap = await createImageBitmap(blob);
+          const roiRect = roi ? roi.normRect : null;
+          await paintToCanvas(imgBitmap, roiRect);
+          return true;
+        }
+      }
+      const roiRect = roi ? roi.normRect : null;
+      await paintToCanvas(video, roiRect);
+      return true;
+    }catch(err){
+      console.error('Error capturando a vista previa:', err);
+      return false;
+    }
+  }
+
+  async function ensurePreviewFromCameraOrImage(roiType){
+    if (state.usingImage && state.activeBitmap){
+      return true;
+    }
+    if (state.stream){
+      const ok = await captureToPreviewFromCamera({preferRoi:true, roiType});
+      return !!ok;
+    }
+    return false;
+  }
+
+  // Listener helpers (respetan tu pipeline extractAndReportROI si existe)
+  async function onExtractRoi(type){
+    const btnId = type === 'mrz' ? '#btnExtractMrzRoi' : '#btnExtractPdfRoi';
+    const btn = $(btnId);
+    if (btn) btn.disabled = true;
+
+    try{
+      const ready = await ensurePreviewFromCameraOrImage(type);
+      if (!ready){
+        alert('No hay vista previa disponible. Inicia la cámara o carga/captura una imagen.');
+        return;
+      }
+      const roi = getCurrentRoiByType(type);
+      if (!roi){
+        alert(`No hay ROI ${type.toUpperCase()} disponible. Usa "Detectar ${type.toUpperCase()} en Imagen" o crea un ROI tipo ${type.toUpperCase()}.`);
+        return;
+      }
+      roi.type = type;
+
+      if (typeof window.extractAndReportROI === 'function'){
+        await window.extractAndReportROI(roi, `Extraer ROI ${type.toUpperCase()}`);
+      } else if (typeof window.processROI === 'function'){
+        // fallback: algunas versiones usan processROI(roi)
+        await window.processROI(roi);
+      } else {
+        alert('No se encontró extractAndReportROI() ni processROI(). Integra este parche con tu pipeline de extracción.');
+      }
+    }catch(e){
+      console.error(e);
+      alert(`Error al extraer ${type.toUpperCase()}. Revisa la consola.`);
+    }finally{
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // Wire up botones si existen
+  const mrzBtn = $('#btnExtractMrzRoi');
+  const pdfBtn = $('#btnExtractPdfRoi');
+  if (mrzBtn) mrzBtn.addEventListener('click', ()=> onExtractRoi('mrz'));
+  if (pdfBtn) pdfBtn.addEventListener('click', ()=> onExtractRoi('pdf417'));
+
+  // Utilidad opcional para normalizar ROI (si manejas ROIs en px del overlay)
+  window.updateRoiNormRect = window.updateRoiNormRect || function(roi){
+    const overlay = document.getElementById('cameraOverlay') || document.getElementById('cameraArea') || $('#camera');
+    if (!overlay) return;
+    const W = overlay.clientWidth  || overlay.offsetWidth  || 1;
+    const H = overlay.clientHeight || overlay.offsetHeight || 1;
+    roi.normRect = {
+      x: Math.max(0, Math.min(1, (roi.x||0) / W)),
+      y: Math.max(0, Math.min(1, (roi.y||0) / H)),
+      w: Math.max(0, Math.min(1, (roi.w||W) / W)),
+      h: Math.max(0, Math.min(1, (roi.h||H) / H)),
+    };
+  };
+})();
+</script>
 </body>
 </html>
