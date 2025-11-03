@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Code Scanner + ROI + Preview Parser</title>
+  <title>Code Scanner + ROI + Preview Parser (Dark)</title>
   <style>
     :root{
       --bg:#0b0f14;--panel:#121820;--muted:#2b3644;--ring:#2f7de1;--text:#e6eef8;--accent:#58b368;--warn:#d69e2e;--err:#ef4444;
@@ -52,28 +52,42 @@
 <body>
 <header>
   <div class="bar">
-    <span class="pill ok">ZXing ready (multi-format)</span>
+    <span class="pill ok">ZXing listo</span>
     <span class="pill" id="pCam">Cam: idle</span>
     <span class="pill" id="pZoom">Zoom: n/a</span>
+    <span class="pill" id="pTorch">Torch: n/a</span>
+    <span class="pill" id="pFps">Proc: 12 fps</span>
   </div>
 </header>
 
 <div class="row">
   <!-- CÁMARA + ROI -->
   <div class="card">
-    <h3>Cámara en vivo (mantiene funciones originales)</h3>
+    <h3>Cámara en vivo (funciones originales + mejoras)</h3>
     <div class="content grid">
-      <!-- Controles originales -->
+
+      <!-- Controles cámara -->
       <div class="row-controls">
         <button id="startButton" class="btn primary">Start</button>
         <button id="stopButton" class="btn">Stop</button>
         <button id="changeButton" class="btn">ChangeCamera</button>
-        <button id="freezeButton" class="btn" title="Congelar & Decodificar (manual)">Freeze & Decode</button>
+        <button id="freezeButton" class="btn" title="Congelar & decodificar (simple)">Freeze & Decode</button>
+        <button id="smartFreezeButton" class="btn" title="Congelar & decodificar con ROI/normalización">Freeze & Smart Decode</button>
+        <button id="torchButton" class="btn" disabled>Torch</button>
+        <label class="small">FPS objetivo
+          <select id="fpsSel" class="btn">
+            <option value="10">10</option>
+            <option value="12" selected>12</option>
+            <option value="15">15</option>
+          </select>
+        </label>
+        <label class="small"><input type="checkbox" id="autoDecode" checked/> Auto decode live</label>
+        <label class="small"><input type="checkbox" id="tryHarder"/> Try harder al congelar</label>
       </div>
 
       <!-- Área de video con ROI -->
       <div id="videoStage" class="stage">
-        <video id="video" width="300" playsinline style="border:0"></video>
+        <video id="video" playsinline style="border:0"></video>
         <div class="roi" id="roi" style="left:20%;top:20%;width:60%;height:50%">
           <div class="handle nw" data-h="nw"></div>
           <div class="handle ne" data-h="ne"></div>
@@ -101,10 +115,7 @@
             <button class="btn" id="btnDown">▼</button>
             <button class="btn" id="btnCenter">Centrar</button>
           </div>
-          <div class="row-controls" style="margin-top:.3rem">
-            <label class="small"><input type="checkbox" id="autoDecode" checked/> Auto decode live</label>
-            <label class="small"><input type="checkbox" id="tryHarder"/> Try harder al congelar</label>
-          </div>
+          <div id="liveTips" class="row-controls" style="margin-top:.3rem;opacity:.85"></div>
         </div>
       </div>
 
@@ -120,7 +131,7 @@
   <div class="card">
     <h3>Vista previa (Base64), extracción y parseo</h3>
     <div class="content grid">
-      <!-- Controles originales de imagen + extras -->
+      <!-- Controles imagen + extras -->
       <div class="row-controls">
         <button id="clearButton" class="btn">Clear Image</button>
         <input type="file" id="myFile" name="filename" accept="image/png, image/jpeg" class="btn" />
@@ -185,15 +196,14 @@
 <script src="https://rutvikpanchal.github.io/PDF417CodeScanner/vendor/zxing/index.js"></script>
 
 <script>
-/* =============================
-   Referencias UI
-============================= */
+/* ========= Referencias UI ========= */
 const els = {
-  // cámara + ROI
   video: document.getElementById('video'),
   videoStage: document.getElementById('videoStage'),
   pCam: document.getElementById('pCam'),
   pZoom: document.getElementById('pZoom'),
+  pTorch: document.getElementById('pTorch'),
+  pFps: document.getElementById('pFps'),
   roi: document.getElementById('roi'),
   roiWidth: document.getElementById('roiWidth'),
   roiHeight: document.getElementById('roiHeight'),
@@ -205,6 +215,9 @@ const els = {
   btnCapture: document.getElementById('btnCapture'),
   autoDecode: document.getElementById('autoDecode'),
   tryHarder: document.getElementById('tryHarder'),
+  liveTips: document.getElementById('liveTips'),
+  torchButton: document.getElementById('torchButton'),
+  fpsSel: document.getElementById('fpsSel'),
   // preview + ROI preview
   pStage: document.getElementById('pStage'),
   previewImg: document.getElementById('previewImg'),
@@ -225,10 +238,11 @@ const els = {
   changeBtn: document.getElementById('changeButton'),
   clearButton: document.getElementById('clearButton'),
   decodeButton: document.getElementById('decodeButton'),
-  // resultados originales
+  smartFreezeButton: document.getElementById('smartFreezeButton'),
+  // resultados
   result: document.getElementById('result'),
   resultImg: document.getElementById('resultImg'),
-  // extracción y parseo nuevo
+  // extracción y parseo
   btnExtractPreview: document.getElementById('btnExtractPreview'),
   btnParse: document.getElementById('btnParse'),
   rawText: document.getElementById('rawText'),
@@ -237,27 +251,21 @@ const els = {
   myFile: document.getElementById('myFile')
 };
 
-/* =============================
-   Estado
-============================= */
+/* ========= Estado ========= */
 let streamObj = null;
-let CameraMode = 'user';
-let counter = 0;
-
+let CameraMode = 'environment'; // prefer rear
 let codeReader = null; // ZXing.BrowserMultiFormatReader
-let processing = false;
 let frozen = false;
-let lastProc = 0;
-let wantFPS = 8;
+let targetFPS = 12;
+let lastFrameNow = 0;
+let imgCapture = null; // ImageCapture
+let torchOn = false;
 
 const workCanvas = document.createElement('canvas');
 const workCtx = workCanvas.getContext('2d', { willReadFrequently:true });
 
-/* =============================
-   Utilidades ROI (%)
-============================= */
+/* ========= Utils ========= */
 const pct = s => parseFloat(String(s).replace('%',''))||0;
-
 function getRoiPct(el){
   return { left:pct(el.style.left), top:pct(el.style.top), width:pct(el.style.width), height:pct(el.style.height) };
 }
@@ -283,86 +291,172 @@ function syncPreviewRoiSliders(){
   els.pRoiWidth.value = Math.round(r.width);
   els.pRoiHeight.value = Math.round(r.height);
 }
-
-/* =============================
-   Cámara (manteniendo lógica original)
-============================= */
 function ensureReader(){
   if(!codeReader) codeReader = new ZXing.BrowserMultiFormatReader();
   return codeReader;
 }
 
+/* ========= Cámara con mejores constraints ========= */
 async function startCam(){
   ensureReader();
-  if(navigator.mediaDevices.getUserMedia){
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: CameraMode } })
-      .then((stream)=>{
-        streamObj = stream;
-        els.video.srcObject = stream;
-        els.video.play();
-        els.pCam.textContent = 'Cam: running';
-        // Decodificación en vivo (igual que el adjunto)
-        codeReader.decodeFromStream(stream, els.video, (result, err) => {
-          if(!els.autoDecode.checked) return;
-          if(result){
-            // Mantener comportamiento original (parseCode128 si format==10)
-            if(result.format == 10){
-              try{
-                els.result.innerText = JSON.stringify(parseCode128(result.text), null, 2);
-              }catch(e){
-                els.result.innerText = result.text;
-              }
-            }else{
-              els.result.innerText = (result.text || String(result));
-            }
-          }
-          if (err && !(err instanceof ZXing.NotFoundException)) {
-            console.error(err);
-            els.result.textContent = err;
-          }
-        });
-        loop();
-      })
-      .catch((err)=>{ console.log("Something went wrong!", err); els.pCam.textContent='Cam: error'; });
-  }
-}
+  stopCam(); // limpiar previa
+  const base = {
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1920, min: 640, max: 3840 },
+      height:{ ideal: 1080, min: 360, max: 2160 },
+      frameRate:{ ideal: 30, max: 30 },
+      advanced: [{ focusMode: 'continuous' }]
+    },
+    audio: false
+  };
 
-function stopCam(){
-  if(!streamObj) return;
-  streamObj.getTracks().forEach((track)=>{
-    if(track.readyState==='live' && track.kind==='video'){ track.stop(); }
+  try{
+    // intentamos exact environment primero
+    const exactEnv = structuredClone(base);
+    exactEnv.video.facingMode = { exact: 'environment' };
+    streamObj = await navigator.mediaDevices.getUserMedia(exactEnv);
+  }catch{
+    try{
+      streamObj = await navigator.mediaDevices.getUserMedia(base);
+    }catch(e){
+      // último recurso: user
+      streamObj = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
+    }
+  }
+
+  els.video.srcObject = streamObj;
+  await els.video.play();
+  els.pCam.textContent = 'Cam: running';
+
+  // ImageCapture (torch/focus/exposure)
+  try{
+    const track = streamObj.getVideoTracks()[0];
+    if('ImageCapture' in window){
+      imgCapture = new ImageCapture(track);
+      if(imgCapture.getPhotoCapabilities){
+        const caps = await imgCapture.getPhotoCapabilities();
+        const canTorch = !!caps?.torch;
+        els.torchButton.disabled = !canTorch;
+        els.pTorch.textContent = canTorch ? 'Torch: off' : 'Torch: n/a';
+      }
+    }else{
+      imgCapture = null;
+      els.torchButton.disabled = true;
+      els.pTorch.textContent = 'Torch: n/a';
+    }
+  }catch{
+    imgCapture = null;
+    els.torchButton.disabled = true;
+    els.pTorch.textContent = 'Torch: n/a';
+  }
+
+  // Live decode original
+  codeReader.decodeFromStream(streamObj, els.video, (result, err) => {
+    if(!els.autoDecode.checked) return;
+    if(result){
+      els.result.innerText = result.text || String(result);
+    }
+    if (err && !(err instanceof ZXing.NotFoundException)) {
+      console.error(err);
+      els.result.textContent = err;
+    }
   });
-  streamObj = null;
+
+  // bucle de frames para tips/estado
+  lastFrameNow = 0;
+  requestVideoFrame(loop);
+}
+function stopCam(){
+  if(streamObj){
+    streamObj.getTracks().forEach(t=>t.stop());
+    streamObj = null;
+  }
+  els.video.srcObject = null;
   els.pCam.textContent = 'Cam: stopped';
 }
-
 function changeCam(){
-  if(streamObj) stopCam();
-  counter = (counter + 1) % 2;
-  switch(counter){
-    case 0: CameraMode='user'; break;
-    case 1: CameraMode='environment'; break;
-  }
+  // alterna entre user/environment
+  CameraMode = (CameraMode === 'environment') ? 'user' : 'environment';
   startCam();
 }
 
-/* =============================
-   Bucle de procesamiento (para capturas/estado)
-============================= */
-function loop(ts){
-  if(!els.video.srcObject) return;
-  // podemos añadir métricas/zoom si el dispositivo lo soporta más adelante
-  if(!frozen) { /* noop: decoding lo maneja ZXing callback */ }
-  requestVideoFrame(loop);
-}
+/* ========= loop de frames (tips + throttling) ========= */
 function requestVideoFrame(cb){
   if (typeof els.video.requestVideoFrameCallback === 'function') els.video.requestVideoFrameCallback(cb);
   else setTimeout(() => cb(performance.now(), {}), 1000/30);
 }
+function loop(now, meta){
+  if(!els.video.srcObject) return;
+  // sólo estado/tips cada ~targetFPS
+  if (now - lastFrameNow > 1000/targetFPS) {
+    lastFrameNow = now;
+    updateLiveTips();
+    els.pFps.textContent = `Proc: ${targetFPS} fps`;
+  }
+  requestVideoFrame(loop);
+}
 
-/* =============================
-   ROI UX: ratón (cámara)
-============================= */
+/* ========= Torch ========= */
+async function toggleTorch(){
+  if(!streamObj) return;
+  const track = streamObj.getVideoTracks()[0];
+  try{
+    torchOn = !torchOn;
+    await track.applyConstraints({ advanced:[{ torch: torchOn }] });
+    els.pTorch.textContent = `Torch: ${torchOn ? 'on' : 'off'}`;
+  }catch(e){
+    els.pTorch.textContent = 'Torch: n/a';
+    els.torchButton.disabled = true;
+  }
+}
+
+/* ========= Consejos en vivo (distancia/brillo básico) ========= */
+function updateLiveTips(){
+  const v = els.video;
+  if(!v.videoWidth) return;
+  // medimos ROI en píxeles fuente
+  const stageRect = els.videoStage.getBoundingClientRect();
+  const vw = v.videoWidth, vh = v.videoHeight;
+  const rs = Math.max(stageRect.width/vw, stageRect.height/vh);
+  const dispW = vw*rs, dispH = vh*rs;
+  const dx = (dispW - stageRect.width)/2;
+  const dy = (dispH - stageRect.height)/2;
+  const r = getRoiPct(els.roi);
+  const roiPx = {
+    x: Math.round((r.left/100)*stageRect.width - dx),
+    y: Math.round((r.top/100)*stageRect.height - dy),
+    w: Math.round((r.width/100)*stageRect.width),
+    h: Math.round((r.height/100)*stageRect.height)
+  };
+  const sx = Math.max(0, Math.round(roiPx.x/rs));
+  const sy = Math.max(0, Math.round(roiPx.y/rs));
+  const sw = Math.max(1, Math.round(roiPx.w/rs));
+  const sh = Math.max(1, Math.round(roiPx.h/rs));
+
+  // capturamos mini roi para estimar contraste/saturación de luz
+  workCanvas.width = Math.max(1, Math.round(sw/4));
+  workCanvas.height = Math.max(1, Math.round(sh/4));
+  workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, workCanvas.width, workCanvas.height);
+  const { data } = workCtx.getImageData(0,0,workCanvas.width, workCanvas.height);
+
+  // varianza simple de luminancia y media para tips
+  let sum=0, sum2=0, n=data.length/4, bright=0;
+  for(let i=0;i<data.length;i+=4){
+    const Y = (0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2]);
+    sum += Y; sum2 += Y*Y;
+  }
+  const mean = sum/n;
+  const variance = (sum2/n) - (mean*mean);
+  const tips = [];
+  if (sw < 400) tips.push('Acércate (ROI < 400 px de ancho).');
+  if (mean > 220) tips.push('Reduce brillo/evita reflejos.');
+  if (mean < 40)  tips.push('Más luz o activa torch.');
+  if (variance < 150) tips.push('Poco contraste: prueba inclinar la tarjeta.');
+  els.liveTips.textContent = tips.join(' ');
+}
+
+/* ========= ROI UX: ratón (cámara) ========= */
 (function(){
   const roi = els.roi; const stage = els.videoStage; let drag=null; let start={};
   roi.addEventListener('mousedown', (e)=>{
@@ -391,11 +485,7 @@ function requestVideoFrame(cb){
   window.addEventListener('mouseup',()=> drag=null);
 })();
 
-/* =============================
-   ROI UX: táctil (cámara)
-   - 1 dedo mueve
-   - 2 dedos escalan (pinch)
-============================= */
+/* ========= ROI UX: táctil (cámara) ========= */
 (function(){
   const stage = els.videoStage, roi = els.roi;
   let tState = null;
@@ -441,9 +531,7 @@ function requestVideoFrame(cb){
   window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
 })();
 
-/* =============================
-   Sliders y botones ROI (cámara)
-============================= */
+/* ========= Sliders/botones ROI (cámara) ========= */
 els.roiWidth.addEventListener('input', ()=>{
   const r = getRoiPct(els.roi);
   const newW = Number(els.roiWidth.value);
@@ -465,21 +553,28 @@ els.btnLeft.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPc
 els.btnRight.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{left: Math.min(100 - r.width, r.left + stepPct)}); syncCameraRoiSliders(); });
 els.btnCenter.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{left:(100-r.width)/2, top:(100-r.height)/2}); syncCameraRoiSliders(); });
 
-/* =============================
-   Capturar a Vista Previa (ROI de cámara)
-============================= */
+/* ========= Capturar a Vista Previa (ROI de cámara) ========= */
 els.btnCapture.addEventListener('click', async ()=>{
   if(!els.video.videoWidth) return;
+  const { sx, sy, sw, sh } = roiToSourceRect();
+  workCanvas.width = sw; workCanvas.height = sh;
+  workCtx.drawImage(els.video, sx, sy, sw, sh, 0, 0, sw, sh);
+  const dataUrl = workCanvas.toDataURL('image/png');
+  els.previewImg.src = dataUrl;
+  els.previewB64.value = dataUrl;
+  els.pRoi.style.display = 'block';
+  setRoiPct(els.pRoi,{left:10, top:10, width:80, height:80});
+  syncPreviewRoiSliders();
+  if(els.autoExtractParse.checked){ await extractFromPreview(); parseData(); }
+});
+function roiToSourceRect(){
   const v = els.video;
   const stageRect = els.videoStage.getBoundingClientRect();
   const vw = v.videoWidth, vh = v.videoHeight;
-
-  // Mapear ROI% de la pantalla a px del frame del video (object-fit:cover implícito por stage)
   const rs = Math.max(stageRect.width/vw, stageRect.height/vh);
   const dispW = vw*rs, dispH = vh*rs;
   const dx = (dispW - stageRect.width)/2;
   const dy = (dispH - stageRect.height)/2;
-
   const r = getRoiPct(els.roi);
   const roiPx = {
     x: Math.round((r.left/100)*stageRect.width - dx),
@@ -491,28 +586,10 @@ els.btnCapture.addEventListener('click', async ()=>{
   const sy = Math.max(0, Math.round(roiPx.y/rs));
   const sw = Math.max(1, Math.round(roiPx.w/rs));
   const sh = Math.max(1, Math.round(roiPx.h/rs));
+  return { sx, sy, sw, sh };
+}
 
-  workCanvas.width = sw; workCanvas.height = sh;
-  workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
-
-  const dataUrl = workCanvas.toDataURL('image/png');
-  els.previewImg.src = dataUrl;
-  els.previewB64.value = dataUrl;
-
-  // Mostrar ROI de vista previa y centrarlo
-  els.pRoi.style.display = 'block';
-  setRoiPct(els.pRoi,{left:10, top:10, width:80, height:80});
-  syncPreviewRoiSliders();
-
-  // Flujo auto: extraer y parsear
-  if(els.autoExtractParse.checked){
-    await extractFromPreview(); parseData();
-  }
-});
-
-/* =============================
-   ROI de Vista Previa — UX ratón y táctil
-============================= */
+/* ========= ROI Preview — ratón y táctil ========= */
 (function(){
   // Ratón
   const roi = els.pRoi; const stage = els.pStage; let drag=null; let start={};
@@ -585,9 +662,7 @@ els.btnCapture.addEventListener('click', async ()=>{
   window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
 })();
 
-/* =============================
-   Sliders/botones ROI Preview
-============================= */
+/* ========= Sliders/botones ROI Preview ========= */
 els.pRoiWidth.addEventListener('input', ()=>{
   if(els.pRoi.style.display==='none') return;
   const r = getRoiPct(els.pRoi);
@@ -610,9 +685,7 @@ els.pBtnLeft.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoi
 els.pBtnRight.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{left: Math.min(100 - r.width, r.left + 2)}); syncPreviewRoiSliders(); });
 els.pBtnCenter.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{left:(100-r.width)/2, top:(100-r.height)/2}); syncPreviewRoiSliders(); });
 
-/* =============================
-   Cargar imagen (original) → preview
-============================= */
+/* ========= Cargar imagen (original) → preview ========= */
 window.addEventListener('load', function () {
   ensureReader();
 
@@ -623,7 +696,6 @@ window.addEventListener('load', function () {
       const image = document.createElement('img');
       image.src = URL.createObjectURL(files[0]);
       image.width = 300;
-      // Mostrar en el panel preview
       image.onload = ()=>{
         els.previewImg.src = image.src;
         els.previewB64.value = image.src;
@@ -631,7 +703,7 @@ window.addEventListener('load', function () {
         setRoiPct(els.pRoi,{left:10,top:10,width:80,height:80});
         syncPreviewRoiSliders();
       };
-      document.getElementById('preview').appendChild(image); // conservar funcionalidad original
+      document.getElementById('preview').appendChild(image); // conserva funcionalidad original
     }
   });
 
@@ -639,6 +711,11 @@ window.addEventListener('load', function () {
   els.startBtn.addEventListener('click', startCam);
   els.stopBtn.addEventListener('click', stopCam);
   els.changeBtn.addEventListener('click', changeCam);
+
+  // Botones nuevos
+  els.smartFreezeButton.addEventListener('click', smartFreezeDecode);
+  els.torchButton.addEventListener('click', toggleTorch);
+  els.fpsSel.addEventListener('change', ()=>{ targetFPS = Number(els.fpsSel.value)||12; });
 
   // Clear original
   els.clearButton.addEventListener('click', () => {
@@ -654,19 +731,15 @@ window.addEventListener('load', function () {
     if (prev.firstChild && prev.firstChild.nodeType == Node.ELEMENT_NODE) {
       const img = prev.firstChild.cloneNode(true);
       codeReader.decodeFromImage(img)
-        .then(result => {
-          els.resultImg.textContent = result.text;
-        })
-        .catch(err => {
-          els.resultImg.textContent = err;
-        });
+        .then(result => { els.resultImg.textContent = result.text; })
+        .catch(err => { els.resultImg.textContent = err; });
     }
   });
 
-  // Extraer de Vista Previa (nuevo)
+  // Extraer de Vista Previa
   els.btnExtractPreview.addEventListener('click', extractFromPreview);
 
-  // Parsear Datos (nuevo)
+  // Parsear Datos
   els.btnParse.addEventListener('click', parseData);
 });
 
@@ -675,10 +748,7 @@ function clearPreview(){
   while (prev.firstChild) prev.removeChild(prev.firstChild);
 }
 
-/* =============================
-   Extraer de Vista Previa (Texto crudo)
-   - Usa ROI de Vista Previa si está marcado
-============================= */
+/* ========= Extraer de Vista Previa (Texto crudo) ========= */
 async function extractFromPreview(){
   ensureReader();
   const img = els.previewImg;
@@ -689,7 +759,7 @@ async function extractFromPreview(){
 
     let dataUrlToDecode = img.src;
     if(els.usePreviewROI.checked && els.pRoi.style.display !== 'none'){
-      // Recortar al ROI de vista previa en naturalWidth/Height
+      // Recorte a ROI natural
       const r = getRoiPct(els.pRoi);
       const nx = Math.round((r.left/100)  * (img.naturalWidth  || img.width));
       const ny = Math.round((r.top/100)   * (img.naturalHeight || img.height));
@@ -700,52 +770,158 @@ async function extractFromPreview(){
       const cx = c.getContext('2d', { willReadFrequently:true });
       c.width = Math.max(1,nw); c.height = Math.max(1,nh);
 
-      // Dibujar imagen completa en buffer para evitar CORS en drawImage directo (cuando es dataURL no hay problema, pero conservamos patrón)
       const buffer = document.createElement('canvas');
       const bctx = buffer.getContext('2d', { willReadFrequently:true });
       buffer.width = img.naturalWidth || img.width;
       buffer.height = img.naturalHeight || img.height;
       bctx.drawImage(img, 0, 0, buffer.width, buffer.height);
 
+      // unsharp simple
       cx.drawImage(buffer, nx, ny, nw, nh, 0, 0, nw, nh);
+      unsharp(cx, nw, nh);
+
       dataUrlToDecode = c.toDataURL('image/png');
-      // Actualizar preview también (opcional)
       els.previewImg.src = dataUrlToDecode;
       els.previewB64.value = dataUrlToDecode;
     }
 
-    // Decodificar con el mismo lector que el adjunto
+    // Decodificar vía Image (evitamos decodeFromCanvas inexistente)
     const tmp = new Image();
     tmp.onload = ()=>{
       codeReader.decodeFromImage(tmp)
         .then(result => { els.rawText.value = result?.text || '(sin lectura)'; })
-        .catch(err => { els.rawText.value = '(sin lectura)'; });
+        .catch(() => { els.rawText.value = '(sin lectura)'; });
     };
     tmp.src = dataUrlToDecode;
 
-  }catch(e){
+  }catch{
     els.rawText.value = '(sin lectura)';
   }
 }
-
 async function ensureImageLoaded(imageEl){
   if(imageEl.complete && imageEl.naturalWidth) return;
   await new Promise((res,rej)=>{ imageEl.onload = ()=>res(); imageEl.onerror = e=>rej(e); });
 }
 
-/* =============================
-   Parseo de datos (DUI SV → genérico)
-============================= */
+/* ========= Freeze simple (original-like) ========= */
+function decodeFreezeOnce(){
+  frozen = true;
+  setTimeout(()=>{ frozen=false; }, 400);
+}
+document.getElementById('freezeButton').addEventListener('click', decodeFreezeOnce);
+
+/* ========= Freeze & Smart Decode (ROI + normalización + rotaciones) ========= */
+async function smartFreezeDecode(){
+  if(!els.video.videoWidth) return;
+  const { sx, sy, sw, sh } = roiToSourceRect();
+  const tryAngles = [0, 90, -90];
+  const tryHard = !!els.tryHarder.checked;
+
+  // preparar canvas ROI
+  const c = document.createElement('canvas');
+  const cx = c.getContext('2d', { willReadFrequently:true });
+  c.width = sw; c.height = sh;
+
+  // pasa 1: recorte + unsharp
+  cx.drawImage(els.video, sx, sy, sw, sh, 0, 0, sw, sh);
+  unsharp(cx, sw, sh);
+
+  // intentos con rotaciones discretas
+  for(const ang of tryAngles){
+    const durl = (ang===0) ? c.toDataURL('image/png') : rotateToDataURL(c, ang);
+    const txt = await decodeDataUrl(durl);
+    if(txt){
+      // si queremos dedupe: pedimos 2 consecutivos iguales; aquí devolvemos el primero válido
+      els.result.innerText = txt;
+      els.rawText.value = txt; // útil para parseo posterior
+      return;
+    }
+  }
+
+  // fallback: sin unsharp
+  cx.clearRect(0,0,sw,sh);
+  cx.drawImage(els.video, sx, sy, sw, sh, 0, 0, sw, sh);
+  for(const ang of tryAngles){
+    const durl = (ang===0) ? c.toDataURL('image/png') : rotateToDataURL(c, ang);
+    const txt = await decodeDataUrl(durl);
+    if(txt){ els.result.innerText = txt; els.rawText.value = txt; return; }
+  }
+
+  if(tryHard){
+    // pesada: escalar arriba un poco (1.25x) y reintentar 0/±90
+    const upW = Math.round(sw*1.25), upH = Math.round(sh*1.25);
+    const cc = document.createElement('canvas'); cc.width = upW; cc.height = upH;
+    const ccx = cc.getContext('2d', { willReadFrequently:true });
+    ccx.imageSmoothingEnabled = true;
+    ccx.drawImage(els.video, sx, sy, sw, sh, 0, 0, upW, upH);
+    unsharp(ccx, upW, upH);
+    for(const ang of tryAngles){
+      const durl = (ang===0) ? cc.toDataURL('image/png') : rotateToDataURL(cc, ang);
+      const txt = await decodeDataUrl(durl);
+      if(txt){ els.result.innerText = txt; els.rawText.value = txt; return; }
+    }
+  }
+
+  els.result.innerText = '(sin lectura en smart decode)';
+}
+function rotateToDataURL(srcCanvas, deg){
+  const rad = deg*Math.PI/180;
+  const sW = srcCanvas.width, sH = srcCanvas.height;
+  const dst = document.createElement('canvas');
+  if(Math.abs(deg)===90){ dst.width = sH; dst.height = sW; } else { dst.width = sW; dst.height = sH; }
+  const dx = dst.getContext('2d', { willReadFrequently:true });
+  dx.save();
+  dx.translate(dst.width/2, dst.height/2);
+  dx.rotate(rad);
+  dx.drawImage(srcCanvas, -sW/2, -sH/2);
+  dx.restore();
+  return dst.toDataURL('image/png');
+}
+function unsharp(ctx, w, h){
+  // kernel sharpen ligero
+  const src = ctx.getImageData(0,0,w,h);
+  const dst = ctx.createImageData(w,h);
+  const k = [0,-1,0,-1,5,-1,0,-1,0];
+  const d=src.data, o=dst.data;
+  const stride = w*4;
+  for(let y=1;y<h-1;y++){
+    for(let x=1;x<w-1;x++){
+      let r=0,g=0,b=0,a=0, ki=0;
+      for(let ky=-1;ky<=1;ky++){
+        for(let kx=-1;kx<=1;kx++){
+          const idx = ((y+ky)*w + (x+kx))*4;
+          const kv = k[ki++];
+          r += d[idx+0]*kv; g += d[idx+1]*kv; b += d[idx+2]*kv; a += d[idx+3]*(ki===5?1:0);
+        }
+      }
+      const di = (y*w + x)*4;
+      o[di]=clamp255(r); o[di+1]=clamp255(g); o[di+2]=clamp255(b); o[di+3]=255;
+    }
+  }
+  ctx.putImageData(dst,0,0);
+}
+function clamp255(v){ return v<0?0:(v>255?255:v|0); }
+function decodeDataUrl(durl){
+  return new Promise(res=>{
+    const im = new Image();
+    im.onload = ()=>{
+      codeReader.decodeFromImage(im)
+        .then(r=>res(r?.text||''))
+        .catch(()=>res(''));
+    };
+    im.onerror = ()=>res('');
+    im.src = durl;
+  });
+}
+
+/* ========= Parseo (DUI SV → genérico) ========= */
 function parseData(){
   const text = (els.rawText.value || '').trim();
   if(!text){ alert('No hay texto para parsear. Ejecuta primero “Extraer de Vista Previa”.'); return; }
-
-  // Intento dedicado (DUI SV)
   const { rows: duiRows, score } = parseDUI_SV(text);
   const rows = (score >= 2) ? duiRows : parseGeneric(text);
   renderTable(rows);
 }
-
 function normalizeSpaces(s){ return s.replace(/[ \t]+/g,' ').replace(/\u00A0/g,' ').trim(); }
 function matchOne(s, re){ const m = s.match(re); return m? m[0] : null; }
 function matchNearLabel(s, labelRe, valueRe, span){
@@ -769,7 +945,6 @@ function pickNameLine(s){
   if(/\b(NOMBRE|NOMBRES|APELLIDO|APELLIDOS)\b/.test(s)) return s.replace(/\b(NOMBRE|NOMBRES|APELLIDOS?)\b\s*[:\-]?\s*/,'').trim();
   return s.replace(/[^A-ZÁÉÍÓÚÜÑ ]/g,' ').replace(/\s+/g,' ').trim();
 }
-
 function parseDUI_SV(text){
   const rows = []; const add=(k,v)=>{ if(v){ rows.push([k, v.trim()]); } };
   const T = normalizeSpaces(text.toUpperCase());
@@ -798,7 +973,6 @@ function parseDUI_SV(text){
   const score = (dui?1:0) + (nombreCompleto?1:0) + (rows.filter(([k,v])=>k.startsWith('FECHA_') && v).length?1:0);
   return { rows, score };
 }
-
 function parseGeneric(text){
   const rows = []; const add=(k,v)=> rows.push([k, String(v||'').trim()]);
   const kvRe = /^\s*([A-Za-zÁÉÍÓÚÑÜ0-9 ._\-\/]{2,30})\s*[:=]\s*(.+?)\s*$/gm; let m;
@@ -815,7 +989,6 @@ function parseGeneric(text){
   return rows;
 }
 function normalizeKey(k){ return k.replace(/\s+/g,' ').trim().toUpperCase(); }
-
 function renderTable(rows){
   const tb = els.tblBody; tb.innerHTML = '';
   if(!rows.length){
@@ -830,31 +1003,18 @@ function renderTable(rows){
   }
 }
 
-/* =============================
-   Botones originales + extra
-============================= */
-function decodeFreezeOnce(){
-  // Congelar un frame y pedir al lector intento único (para “Try harder” el flujo ya es live)
-  // Nota: mantenemos decodeFromStream como fuente principal,
-  // aquí solo “disparamos” un ciclo adicional para feedback rápido.
-  // (ZXing JS no expone directamente hints aquí; conservamos simplicidad).
-  // El resultado seguirá apareciendo en #result vía el callback live.
-  frozen = true;
-  setTimeout(()=>{ frozen=false; }, 400); // pseudo freeze breve
-}
-
-/* =============================
-   Enlaces UI
-============================= */
+/* ========= Enlaces UI adicionales ========= */
 document.getElementById('freezeButton').addEventListener('click', decodeFreezeOnce);
 
-/* =============================
-   Preview container original (preservado)
-============================= */
+/* ========= Contenedor preview original ========= */
 const previewDiv = document.createElement('div');
 previewDiv.id = 'preview';
 previewDiv.style.marginTop = '10px';
-document.querySelector('.content').appendChild(previewDiv); // no afecta los paneles arriba
+document.querySelector('.content').appendChild(previewDiv);
+
+/* ========= Extra: mapeo de errores comunes ========= */
+// Evita "Illegal invocation" usando funciones ligadas al contexto correcto (ya aplicado arriba)
 </script>
 </body>
 </html>
+
