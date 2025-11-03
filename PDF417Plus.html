@@ -1,102 +1,105 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Code Scanner + ROI + Preview Parser (Dark)</title>
-  <style>
-    :root{
-      --bg:#0b0f14;--panel:#121820;--muted:#2b3644;--ring:#2f7de1;--text:#e6eef8;--accent:#58b368;--warn:#d69e2e;--err:#ef4444;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-    header{position:sticky;top:0;z-index:10;background:#0b0f14cc;border-bottom:1px solid #091019;backdrop-filter:saturate(1.1) blur(4px)}
-    .bar{display:flex;gap:.5rem;align-items:center;padding:.6rem .9rem;flex-wrap:wrap}
-    .pill{padding:.3rem .6rem;border:1px solid var(--muted);border-radius:999px;background:var(--panel)}
-    .pill.ok{border-color:#254c36;background:#132018}
-    .grid{display:grid;gap:1rem}
-    .row{display:grid;grid-template-columns:1.2fr .8fr;gap:1rem;padding:1rem}
-    @media (max-width:980px){.row{grid-template-columns:1fr}}
-    .card{background:var(--panel);border:1px solid var(--muted);border-radius:.8rem;overflow:hidden}
-    .card h3{margin:0;padding:.8rem 1rem;border-bottom:1px solid var(--muted);background:#0f141c}
-    .content{padding:1rem}
-    .btn{appearance:none;border:1px solid var(--muted);background:#0f141c;color:var(--text);padding:.5rem .75rem;border-radius:.6rem;cursor:pointer}
-    .btn:hover{border-color:#3a485b}
-    .btn.primary{border-color:#2b4b7c;background:#122036}
-    .row-controls{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-    label.small{font-size:12px;opacity:.9}
-    input[type="range"]{width:200px}
-    .stage{position:relative;background:#000;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden}
-    video{width:100%;height:auto;display:block;object-fit:cover}
-    /* ROI */
-    .roi{position:absolute;border:2px solid var(--ring);box-shadow:0 0 0 2px #0006,0 0 24px #000 inset;cursor:move;touch-action:none}
-    .roi .handle{position:absolute;width:14px;height:14px;background:var(--ring);border:2px solid #000;border-radius:50%}
-    .roi .handle.nw{left:-7px;top:-7px}
-    .roi .handle.ne{right:-7px;top:-7px}
-    .roi .handle.sw{left:-7px;bottom:-7px}
-    .roi .handle.se{right:-7px;bottom:-7px}
-    /* Preview */
-    .previewBox{display:grid;grid-template-columns:minmax(180px,340px) 1fr;gap:1rem}
-    @media (max-width:900px){.previewBox{grid-template-columns:1fr}}
-    .pstage{position:relative;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden;background:#0a0f15}
-    .preview{display:block;width:100%;height:auto}
-    textarea.mono{width:100%;min-height:120px;background:#0a0f15;border:1px solid var(--muted);color:var(--text);border-radius:.6rem;padding:.5rem;resize:vertical}
-    table{width:100%;border-collapse:collapse;background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden}
-    th,td{padding:.5rem .6rem;border-bottom:1px solid #273245;vertical-align:top}
-    th{background:#0c121a;text-align:left}
-    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-    .block{background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem}
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>PDF417 Scanner — Auto-Detect + ROI + Parse (Dark, WASM/JS)</title>
+<style>
+:root{
+  --bg:#0b0f14;--panel:#121820;--muted:#2b3644;--ring:#2f7de1;--text:#e6eef8;--accent:#58b368;--warn:#d69e2e;--err:#ef4444;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+header{position:sticky;top:0;z-index:10;background:#0b0f14cc;border-bottom:1px solid #091019;backdrop-filter:saturate(1.1) blur(4px)}
+.bar{display:flex;gap:.5rem;align-items:center;padding:.6rem .9rem;flex-wrap:wrap}
+.pill{padding:.3rem .6rem;border:1px solid var(--muted);border-radius:999px;background:var(--panel)}
+.pill.ok{border-color:#254c36;background:#132018}
+.pill.err{border-color:#5f2323;background:#1c0f0f}
+.grid{display:grid;gap:1rem}
+.row{display:grid;grid-template-columns:1.2fr .8fr;gap:1rem;padding:1rem}
+@media (max-width:980px){.row{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--muted);border-radius:.8rem;overflow:hidden}
+.card h3{margin:0;padding:.8rem 1rem;border-bottom:1px solid var(--muted);background:#0f141c}
+.content{padding:1rem}
+.btn{appearance:none;border:1px solid var(--muted);background:#0f141c;color:var(--text);padding:.5rem .75rem;border-radius:.6rem;cursor:pointer}
+.btn:hover{border-color:#3a485b}
+.btn.primary{border-color:#2b4b7c;background:#122036}
+.row-controls{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+label.small{font-size:12px;opacity:.9}
+input[type="range"]{width:200px}
+.stage{position:relative;background:#000;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden}
+video{width:100%;height:auto;display:block;object-fit:cover}
+.roi{position:absolute;border:2px solid var(--ring);box-shadow:0 0 0 2px #0006,0 0 24px #000 inset;cursor:move;touch-action:none}
+.roi .handle{position:absolute;width:14px;height:14px;background:var(--ring);border:2px solid #000;border-radius:50%}
+.roi .handle.nw{left:-7px;top:-7px}.roi .handle.ne{right:-7px;top:-7px}
+.roi .handle.sw{left:-7px;bottom:-7px}.roi .handle.se{right:-7px;bottom:-7px}
+.previewBox{display:grid;grid-template-columns:minmax(180px,340px) 1fr;gap:1rem}
+@media (max-width:900px){.previewBox{grid-template-columns:1fr}}
+.pstage{position:relative;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden;background:#0a0f15}
+.preview{display:block;width:100%;height:auto}
+textarea.mono{width:100%;min-height:120px;background:#0a0f15;border:1px solid var(--muted);color:var(--text);border-radius:.6rem;padding:.5rem;resize:vertical}
+table{width:100%;border-collapse:collapse;background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;overflow:hidden}
+th,td{padding:.5rem .6rem;border-bottom:1px solid #273245;vertical-align:top}
+th{background:#0c121a;text-align:left}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+.block{background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem}
+.badge{display:inline-block;padding:.15rem .4rem;border-radius:.4rem;border:1px solid var(--muted);background:#0e151e;font-size:12px;opacity:.9}
+</style>
 </head>
 <body>
 <header>
   <div class="bar">
-    <span class="pill ok">ZXing listo</span>
+    <span class="pill ok">UI lista</span>
+    <span class="pill" id="pEngine">Engine: JS</span>
     <span class="pill" id="pCam">Cam: idle</span>
-    <span class="pill" id="pZoom">Zoom: n/a</span>
     <span class="pill" id="pTorch">Torch: n/a</span>
     <span class="pill" id="pFps">Proc: 12 fps</span>
+    <span class="pill" id="pAuto">Auto: off</span>
+    <span class="pill" id="pStable">Stable: no</span>
   </div>
 </header>
 
 <div class="row">
-  <!-- CÁMARA + ROI -->
+  <!-- Cámara -->
   <div class="card">
-    <h3>Cámara en vivo (funciones originales + mejoras)</h3>
+    <h3>Cámara en vivo (Auto-Detect + ROI + Smart Decode)</h3>
     <div class="content grid">
 
-      <!-- Controles cámara -->
       <div class="row-controls">
         <button id="startButton" class="btn primary">Start</button>
         <button id="stopButton" class="btn">Stop</button>
         <button id="changeButton" class="btn">ChangeCamera</button>
-        <button id="freezeButton" class="btn" title="Congelar & decodificar (simple)">Freeze & Decode</button>
-        <button id="smartFreezeButton" class="btn" title="Congelar & decodificar con ROI/normalización">Freeze & Smart Decode</button>
+        <button id="freezeButton" class="btn">Freeze & Decode</button>
+        <button id="smartFreezeButton" class="btn">Freeze & Smart Decode</button>
         <button id="torchButton" class="btn" disabled>Torch</button>
-        <label class="small">FPS objetivo
+
+        <label class="small">FPS
           <select id="fpsSel" class="btn">
-            <option value="10">10</option>
-            <option value="12" selected>12</option>
-            <option value="15">15</option>
+            <option>10</option><option selected>12</option><option>15</option>
           </select>
         </label>
-        <label class="small"><input type="checkbox" id="autoDecode" checked/> Auto decode live</label>
-        <label class="small"><input type="checkbox" id="tryHarder"/> Try harder al congelar</label>
+
+        <label class="small"><input type="checkbox" id="autoDetect"/> Auto-detectar (persistente)</label>
+        <label class="small"><input type="checkbox" id="autoParse" checked/> Extraer & Parsear al detectar</label>
+        <label class="small"><input type="checkbox" id="tryHarder"/> TryHarder en congelado</label>
+
+        <label class="small"><input type="checkbox" id="useWasm"/> WASM (rápido zxing-cpp)</label>
+        <span class="badge">Si WASM falla, cae a JS automáticamente</span>
       </div>
 
-      <!-- Área de video con ROI -->
       <div id="videoStage" class="stage">
-        <video id="video" playsinline style="border:0"></video>
+        <video id="video" playsinline></video>
+        <!-- ROI guiado (usuario) -->
         <div class="roi" id="roi" style="left:20%;top:20%;width:60%;height:50%">
           <div class="handle nw" data-h="nw"></div>
           <div class="handle ne" data-h="ne"></div>
           <div class="handle sw" data-h="sw"></div>
           <div class="handle se" data-h="se"></div>
         </div>
+        <!-- ROI auto (display) -->
+        <div class="roi" id="autoBox" style="display:none;pointer-events:none;border-color:#58b368"></div>
       </div>
 
-      <!-- Controles ROI (ancho/alto + posición + captura) -->
       <div class="grid">
         <div class="block">
           <div class="row-controls"><strong>Dimensiones ROI (Cámara)</strong></div>
@@ -114,27 +117,26 @@
             <button class="btn" id="btnUp">▲</button>
             <button class="btn" id="btnDown">▼</button>
             <button class="btn" id="btnCenter">Centrar</button>
+            <span class="badge" id="tips"></span>
           </div>
-          <div id="liveTips" class="row-controls" style="margin-top:.3rem;opacity:.85"></div>
         </div>
       </div>
 
-      <!-- Resultados live (original) -->
       <div class="grid">
         <div><strong>Camera Decode :</strong></div>
         <div id="result" class="mono" style="white-space:pre-wrap;background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem;min-height:48px"></div>
       </div>
+
     </div>
   </div>
 
-  <!-- PREVIEW + PARSEO -->
+  <!-- Vista previa / Parseo -->
   <div class="card">
-    <h3>Vista previa (Base64), extracción y parseo</h3>
+    <h3>Vista previa (Base64) + Extracción y Parseo</h3>
     <div class="content grid">
-      <!-- Controles imagen + extras -->
       <div class="row-controls">
         <button id="clearButton" class="btn">Clear Image</button>
-        <input type="file" id="myFile" name="filename" accept="image/png, image/jpeg" class="btn" />
+        <input type="file" id="myFile" accept="image/png,image/jpeg" class="btn"/>
         <button id="decodeButton" class="btn">Decode Image (original)</button>
         <button id="btnExtractPreview" class="btn">Extraer de Vista Previa (Texto crudo)</button>
         <button id="btnParse" class="btn">Parsear Datos</button>
@@ -142,7 +144,6 @@
         <label class="small"><input type="checkbox" id="autoExtractParse" checked/> Auto extraer/parsear al capturar</label>
       </div>
 
-      <!-- Preview con su propio ROI -->
       <div class="previewBox">
         <div id="pStage" class="pstage">
           <img id="previewImg" class="preview" alt="Vista previa"/>
@@ -155,7 +156,7 @@
         </div>
         <div class="grid">
           <label class="small">Data URL (Base64):</label>
-          <textarea id="previewB64" class="mono" readonly placeholder="Aquí aparecerá la imagen capturada (ROI) o cargada"></textarea>
+          <textarea id="previewB64" class="mono" readonly placeholder="Aquí aparecerá la imagen capturada/cargada"></textarea>
 
           <div class="block">
             <div class="row-controls"><strong>ROI en Vista Previa</strong></div>
@@ -172,849 +173,962 @@
         </div>
       </div>
 
-      <!-- Salidas -->
       <div class="grid">
         <div><strong>Image Decode :</strong></div>
         <div id="resultImg" class="mono" style="white-space:pre-wrap;background:#0f141c;border:1px solid var(--muted);border-radius:.6rem;padding:.6rem;min-height:48px"></div>
         <div><strong>Texto crudo extraído:</strong></div>
-        <textarea id="rawText" class="mono" readonly placeholder="Usa 'Extraer de Vista Previa' para decodificar PDF417 desde la imagen o ROI de vista previa."></textarea>
+        <textarea id="rawText" class="mono" readonly placeholder="Usa 'Extraer de Vista Previa' o activa Auto-detectar."></textarea>
       </div>
 
       <div class="grid">
         <h4 style="margin:0">Tabla de resultados (parseo)</h4>
         <table id="tblResults">
           <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-          <tbody id="tblBody"><tr><td colspan="2" style="opacity:.8">Sin datos. Extrae el texto y presiona “Parsear Datos”.</td></tr></tbody>
+        <tbody id="tblBody"><tr><td colspan="2" style="opacity:.8">Sin datos. Extrae y presiona “Parsear Datos”.</td></tr></tbody>
         </table>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Librerías originales -->
+<!-- Librerías JS (compat) -->
 <script src="https://rutvikpanchal.github.io/PDF417CodeScanner/vendor/parse-usdl/parser.js"></script>
 <script src="https://rutvikpanchal.github.io/PDF417CodeScanner/vendor/zxing/index.js"></script>
 
 <script>
-/* ========= Referencias UI ========= */
+/* ===========================
+   Estado & Referencias
+=========================== */
 const els = {
-  video: document.getElementById('video'),
-  videoStage: document.getElementById('videoStage'),
-  pCam: document.getElementById('pCam'),
-  pZoom: document.getElementById('pZoom'),
-  pTorch: document.getElementById('pTorch'),
-  pFps: document.getElementById('pFps'),
-  roi: document.getElementById('roi'),
-  roiWidth: document.getElementById('roiWidth'),
-  roiHeight: document.getElementById('roiHeight'),
-  btnLeft: document.getElementById('btnLeft'),
-  btnRight: document.getElementById('btnRight'),
-  btnUp: document.getElementById('btnUp'),
-  btnDown: document.getElementById('btnDown'),
-  btnCenter: document.getElementById('btnCenter'),
-  btnCapture: document.getElementById('btnCapture'),
-  autoDecode: document.getElementById('autoDecode'),
-  tryHarder: document.getElementById('tryHarder'),
-  liveTips: document.getElementById('liveTips'),
-  torchButton: document.getElementById('torchButton'),
-  fpsSel: document.getElementById('fpsSel'),
-  // preview + ROI preview
-  pStage: document.getElementById('pStage'),
-  previewImg: document.getElementById('previewImg'),
-  pRoi: document.getElementById('pRoi'),
-  pRoiWidth: document.getElementById('pRoiWidth'),
-  pRoiHeight: document.getElementById('pRoiHeight'),
-  pBtnLeft: document.getElementById('pBtnLeft'),
-  pBtnRight: document.getElementById('pBtnRight'),
-  pBtnUp: document.getElementById('pBtnUp'),
-  pBtnDown: document.getElementById('pBtnDown'),
-  pBtnCenter: document.getElementById('pBtnCenter'),
-  usePreviewROI: document.getElementById('usePreviewROI'),
-  autoExtractParse: document.getElementById('autoExtractParse'),
-  previewB64: document.getElementById('previewB64'),
-  // botones originales
-  startBtn: document.getElementById('startButton'),
-  stopBtn: document.getElementById('stopButton'),
-  changeBtn: document.getElementById('changeButton'),
-  clearButton: document.getElementById('clearButton'),
-  decodeButton: document.getElementById('decodeButton'),
-  smartFreezeButton: document.getElementById('smartFreezeButton'),
+  video: video, videoStage, pEngine, pCam, pTorch, pFps, pAuto, pStable,
+  startBtn: startButton, stopBtn: stopButton, changeBtn: changeButton,
+  freezeBtn: freezeButton, smartFreezeButton, torchButton, fpsSel,
+  autoDetect, autoParse, tryHarder, useWasm,
+  roi, roiWidth, roiHeight, btnLeft, btnRight, btnUp, btnDown, btnCenter, tips: document.getElementById('tips'),
+  autoBox: document.getElementById('autoBox'),
+  // preview
+  pStage, previewImg, pRoi, pRoiWidth, pRoiHeight, pBtnLeft, pBtnRight, pBtnUp, pBtnDown, pBtnCenter,
+  usePreviewROI, autoExtractParse, previewB64,
+  clearButton, decodeButton, btnExtractPreview, btnParse, myFile,
   // resultados
-  result: document.getElementById('result'),
-  resultImg: document.getElementById('resultImg'),
-  // extracción y parseo
-  btnExtractPreview: document.getElementById('btnExtractPreview'),
-  btnParse: document.getElementById('btnParse'),
-  rawText: document.getElementById('rawText'),
-  tblBody: document.getElementById('tblBody'),
-  // input file original
-  myFile: document.getElementById('myFile')
+  result, resultImg, rawText, tblBody
 };
 
-/* ========= Estado ========= */
-let streamObj = null;
-let CameraMode = 'environment'; // prefer rear
-let codeReader = null; // ZXing.BrowserMultiFormatReader
-let frozen = false;
-let targetFPS = 12;
-let lastFrameNow = 0;
-let imgCapture = null; // ImageCapture
-let torchOn = false;
+let streamObj=null, jsReader=null, imgCapture=null;
+let targetFPS=12, lastTick=0;
+let torchOn=false;
+let autoMode=false;
+let roiWorker=null;      // worker de ROI (ligero)
+let wasmWorker=null;     // worker de ZXing WASM (rápido)
+let wasmReady=false;
+let lastAutoText='', confirmCount=0;
+let stableSince=0, lastAutoROI=null;
 
-const workCanvas = document.createElement('canvas');
-const workCtx = workCanvas.getContext('2d', { willReadFrequently:true });
-
-/* ========= Utils ========= */
+/* ===========================
+   Utils
+=========================== */
 const pct = s => parseFloat(String(s).replace('%',''))||0;
-function getRoiPct(el){
-  return { left:pct(el.style.left), top:pct(el.style.top), width:pct(el.style.width), height:pct(el.style.height) };
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const clamp255=v=>v<0?0:(v>255?255:v|0);
+const nowMs=()=>performance.now();
+function getRoiPct(el){ return { left:pct(el.style.left), top:pct(el.style.top), width:pct(el.style.width), height:pct(el.style.height) }; }
+function setRoiPct(el, o){
+  const W = o.width ?? pct(el.style.width), H = o.height ?? pct(el.style.height);
+  const L = clamp(o.left ?? pct(el.style.left), 0, 100 - W);
+  const T = clamp(o.top  ?? pct(el.style.top),  0, 100 - H);
+  el.style.left = L+'%'; el.style.top = T+'%'; el.style.width = clamp(W,5,100)+'%'; el.style.height = clamp(H,5,100)+'%';
 }
-function setRoiPct(el, {left, top, width, height}){
-  const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-  const W = width  ?? pct(el.style.width);
-  const H = height ?? pct(el.style.height);
-  const L = clamp(left ?? pct(el.style.left), 0, 100 - W);
-  const T = clamp(top  ?? pct(el.style.top),  0, 100 - H);
-  el.style.left   = L + '%';
-  el.style.top    = T + '%';
-  el.style.width  = clamp(W, 5, 100) + '%';
-  el.style.height = clamp(H, 5, 100) + '%';
-}
-function syncCameraRoiSliders(){
-  const r = getRoiPct(els.roi);
-  els.roiWidth.value = Math.round(r.width);
-  els.roiHeight.value = Math.round(r.height);
-}
-function syncPreviewRoiSliders(){
-  if(els.pRoi.style.display==='none') return;
-  const r = getRoiPct(els.pRoi);
-  els.pRoiWidth.value = Math.round(r.width);
-  els.pRoiHeight.value = Math.round(r.height);
-}
-function ensureReader(){
-  if(!codeReader) codeReader = new ZXing.BrowserMultiFormatReader();
-  return codeReader;
-}
+function ensureJsReader(){ if(!jsReader) jsReader = new ZXing.BrowserPDF417Reader(); return jsReader; }
+function syncCamSliders(){ const r=getRoiPct(els.roi); roiWidth.value=Math.round(r.width); roiHeight.value=Math.round(r.height); }
+function syncPrevSliders(){ if(pRoi.style.display==='none')return; const r=getRoiPct(pRoi); pRoiWidth.value=Math.round(r.width); pRoiHeight.value=Math.round(r.height); }
 
-/* ========= Cámara con mejores constraints ========= */
+/* ===========================
+   Cámara
+=========================== */
 async function startCam(){
-  ensureReader();
-  stopCam(); // limpiar previa
-  const base = {
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1920, min: 640, max: 3840 },
-      height:{ ideal: 1080, min: 360, max: 2160 },
-      frameRate:{ ideal: 30, max: 30 },
-      advanced: [{ focusMode: 'continuous' }]
-    },
-    audio: false
-  };
+  ensureJsReader();
+  stopCam();
 
+  const base = {
+    video:{
+      facingMode: { ideal:'environment' },
+      width:{ ideal:1920, min:640, max:3840 },
+      height:{ ideal:1080, min:360, max:2160 },
+      frameRate:{ ideal:30, max:30 },
+      advanced:[{ focusMode:'continuous' }]
+    },
+    audio:false
+  };
   try{
-    // intentamos exact environment primero
-    const exactEnv = structuredClone(base);
-    exactEnv.video.facingMode = { exact: 'environment' };
-    streamObj = await navigator.mediaDevices.getUserMedia(exactEnv);
+    const exact = structuredClone(base); exact.video.facingMode = { exact:'environment' };
+    streamObj = await navigator.mediaDevices.getUserMedia(exact);
   }catch{
-    try{
-      streamObj = await navigator.mediaDevices.getUserMedia(base);
-    }catch(e){
-      // último recurso: user
-      streamObj = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
-    }
+    try{ streamObj = await navigator.mediaDevices.getUserMedia(base); }
+    catch{ streamObj = await navigator.mediaDevices.getUserMedia({video:true,audio:false}); }
   }
 
-  els.video.srcObject = streamObj;
-  await els.video.play();
-  els.pCam.textContent = 'Cam: running';
+  video.srcObject = streamObj; await video.play();
+  pCam.textContent = 'Cam: running';
 
-  // ImageCapture (torch/focus/exposure)
+  // ImageCapture (torch)
   try{
     const track = streamObj.getVideoTracks()[0];
     if('ImageCapture' in window){
       imgCapture = new ImageCapture(track);
-      if(imgCapture.getPhotoCapabilities){
-        const caps = await imgCapture.getPhotoCapabilities();
-        const canTorch = !!caps?.torch;
-        els.torchButton.disabled = !canTorch;
-        els.pTorch.textContent = canTorch ? 'Torch: off' : 'Torch: n/a';
-      }
-    }else{
-      imgCapture = null;
-      els.torchButton.disabled = true;
-      els.pTorch.textContent = 'Torch: n/a';
-    }
-  }catch{
-    imgCapture = null;
-    els.torchButton.disabled = true;
-    els.pTorch.textContent = 'Torch: n/a';
-  }
+      const caps = (imgCapture.getPhotoCapabilities) ? await imgCapture.getPhotoCapabilities() : null;
+      const canTorch = !!caps?.torch;
+      torchButton.disabled = !canTorch;
+      pTorch.textContent = canTorch? 'Torch: off' : 'Torch: n/a';
+    } else { pTorch.textContent='Torch: n/a'; torchButton.disabled=true; }
+  }catch{ pTorch.textContent='Torch: n/a'; torchButton.disabled=true; }
 
-  // Live decode original
-  codeReader.decodeFromStream(streamObj, els.video, (result, err) => {
-    if(!els.autoDecode.checked) return;
-    if(result){
-      els.result.innerText = result.text || String(result);
-    }
-    if (err && !(err instanceof ZXing.NotFoundException)) {
-      console.error(err);
-      els.result.textContent = err;
-    }
+  // JS live decode (compat) — sólo muestra si no está en auto-mode
+  jsReader.decodeFromStream(streamObj, video, (result, err)=>{
+    if(result && !autoMode){ resultDiv(result.text); }
+    if(err && !(err instanceof ZXing.NotFoundException)){ console.error(err); }
   });
 
-  // bucle de frames para tips/estado
-  lastFrameNow = 0;
+  lastTick = 0;
   requestVideoFrame(loop);
 }
 function stopCam(){
-  if(streamObj){
-    streamObj.getTracks().forEach(t=>t.stop());
-    streamObj = null;
-  }
-  els.video.srcObject = null;
-  els.pCam.textContent = 'Cam: stopped';
-}
-function changeCam(){
-  // alterna entre user/environment
-  CameraMode = (CameraMode === 'environment') ? 'user' : 'environment';
-  startCam();
+  if(streamObj){ streamObj.getTracks().forEach(t=>t.stop()); streamObj=null; }
+  video.srcObject=null; pCam.textContent='Cam: stopped';
 }
 
-/* ========= loop de frames (tips + throttling) ========= */
-function requestVideoFrame(cb){
-  if (typeof els.video.requestVideoFrameCallback === 'function') els.video.requestVideoFrameCallback(cb);
-  else setTimeout(() => cb(performance.now(), {}), 1000/30);
+/* ===========================
+   ROI worker (ligero)
+=========================== */
+function ensureRoiWorker(){
+  if(roiWorker) return roiWorker;
+  const code = `
+  let lastGradMean=0;
+  onmessage = (e)=>{
+    const {type, width, height, data, maxWidth=480} = e.data;
+    if(type!=='frame') return;
+    const scale = Math.min(1, maxWidth/width);
+    const w = Math.max(1, Math.round(width*scale));
+    const h = Math.max(1, Math.round(height*scale));
+    const gray = new Uint8ClampedArray(w*h);
+    for(let y=0;y<h;y++){
+      for(let x=0;x<w;x++){
+        const sx = Math.floor(x/scale), sy = Math.floor(y/scale);
+        const i = (sy*width + sx)*4;
+        const Y = 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
+        gray[y*w + x] = Y|0;
+      }
+    }
+    const colProj = new Float32Array(w);
+    for(let x=0;x<w;x++){
+      let sum=0;
+      for(let y=1;y<h;y++){
+        const a = gray[(y-1)*w + x], b = gray[y*w + x];
+        sum += Math.abs(b-a);
+      }
+      colProj[x]=sum;
+    }
+    let mu=0,s2=0;
+    for(let x=0;x<w;x++){ mu+=colProj[x]; s2+=colProj[x]*colProj[x]; }
+    mu/=w; s2 = s2/w - mu*mu; const sd=Math.sqrt(Math.max(1e-6,s2));
+    const th = mu + 0.8*sd;
+    let bestL=0,bestR=-1,curL=-1;
+    for(let x=0;x<w;x++){
+      if(colProj[x]>th){ if(curL<0) curL=x; }
+      else { if(curL>=0){ if(x-1-curL > bestR-bestL){ bestL=curL; bestR=x-1; } curL=-1; } }
+    }
+    if(curL>=0 && w-1-curL > bestR-bestL){ bestL=curL; bestR=w-1; }
+    if(bestR<0){ postMessage({type:'roi-none'}); return; }
+
+    const x0 = bestL, x1 = bestR;
+    const rowProj = new Float32Array(h);
+    for(let y=0;y<h;y++){
+      let sum=0;
+      for(let x=x0;x<=x1;x++) sum += gray[y*w + x];
+      rowProj[y]=sum/(x1-x0+1);
+    }
+    let rmu=0,rs2=0; for(let y=0;y<h;y++){ rmu+=rowProj[y]; rs2+=rowProj[y]*rowProj[y]; }
+    rmu/=h; rs2=rs2/h - rmu*rmu; const rsd=Math.sqrt(Math.max(1e-6,rs2));
+    const rthLo = rmu - 0.6*rsd, rthHi = rmu + 0.6*rsd;
+    let yTop=-1,yBot=-1;
+    for(let y=0;y<h;y++){ if(rowProj[y]>rthLo && rowProj[y]<rthHi){ yTop=y; break; } }
+    for(let y=h-1;y>=0;y--){ if(rowProj[y]>rthLo && rowProj[y]<rthHi){ yBot=y; break; } }
+    if(yTop<0 || yBot<0 || yBot-yTop<6){ yTop = Math.max(0, Math.floor(h*0.25)); yBot = Math.min(h-1, Math.floor(h*0.75)); }
+
+    const expand = Math.round(0.03*w);
+    const rx0 = Math.max(0, x0-expand), rx1 = Math.min(w-1, x1+expand);
+    const ry0 = Math.max(0, yTop-expand), ry1 = Math.min(h-1, yBot+expand);
+
+    const srcX = Math.max(0, Math.round(rx0/scale));
+    const srcY = Math.max(0, Math.round(ry0/scale));
+    const srcW = Math.max(1, Math.round((rx1-rx0+1)/scale));
+    const srcH = Math.max(1, Math.round((ry1-ry0+1)/scale));
+
+    let gradSum=0; for(let x=0;x<w;x++) gradSum+=colProj[x];
+    const gradMean = gradSum/w;
+    const stable = Math.abs(gradMean - lastGradMean) < 0.03*gradMean;
+    lastGradMean = gradMean;
+
+    postMessage({type:'roi', x:srcX, y:srcY, w:srcW, h:srcH, stable});
+  };`;
+  roiWorker = new Worker(URL.createObjectURL(new Blob([code], {type:'application/javascript'})));
+  return roiWorker;
 }
-function loop(now, meta){
-  if(!els.video.srcObject) return;
-  // sólo estado/tips cada ~targetFPS
-  if (now - lastFrameNow > 1000/targetFPS) {
-    lastFrameNow = now;
-    updateLiveTips();
-    els.pFps.textContent = `Proc: ${targetFPS} fps`;
+
+/* ===========================
+   WASM worker (zxing-cpp rápido)
+   Nota: Requiere COOP/COEP si el navegador lo exige para Wasm multi-thread, y CORS permitido en el CDN.
+   Si falla la carga, informará 'wasm-error' y el main caerá a JS.
+=========================== */
+function ensureWasmWorker(){
+  if(wasmWorker) return wasmWorker;
+  const code = `
+// Intento de import dinámico (ESM) desde CDN confiable
+let ZX=null, reader=null, ready=false;
+async function init(){
+  try{
+    // Puedes fijar versión para estabilidad:
+    // const url = 'https://cdn.jsdelivr.net/npm/@zxing/wasm@1.2.7/dist/esm/index.min.js';
+    const url = 'https://cdn.jsdelivr.net/npm/@zxing/wasm@latest/dist/esm/index.min.js';
+    ZX = await import(url);
+    await ZX?.ZXingReadBarcodesWasm? ZX.ZXingReadBarcodesWasm() : ZX?.default?.load?.();
+    // API 1: función de conveniencia
+    if (ZX && ZX.readBarcodesFromImage) {
+      ready = true;
+      postMessage({type:'wasm-ready', impl:'func'});
+      return;
+    }
+    // API 2: lector de bajo nivel
+    if (ZX && ZX.BarcodeReader){
+      reader = new ZX.BarcodeReader();
+      ready = true;
+      postMessage({type:'wasm-ready', impl:'reader'});
+      return;
+    }
+    throw new Error('No API usable');
+  }catch(err){
+    postMessage({type:'wasm-error', error:String(err&&err.message||err)});
+  }
+}
+onmessage = async (e)=>{
+  const {type} = e.data||{};
+  if(type==='init'){ if(!ready) await init(); return; }
+  if(type==='decode' && ready){
+    const {data,width,height, rotate=0, formats=['PDF_417'], tryHarder=false} = e.data;
+    try{
+      // Si hay helper:
+      if (ZX.readBarcodesFromImage){
+        const opts = { formats, tryHarder, rotation: rotate };
+        const res = await ZX.readBarcodesFromImage(data, width, height, opts);
+        if(res && res.length){ postMessage({type:'result', text:res[0].text}); return; }
+      } else if (reader){
+        const res = reader.decode({data, width, height, tryHarder, formats: formats.map(f=>ZX.BarcodeFormat[f])});
+        if(res && res.length){ postMessage({type:'result', text:res[0].text}); return; }
+      }
+      postMessage({type:'none'});
+    }catch(err){
+      postMessage({type:'decode-error', error:String(err&&err.message||err)});
+    }
+  }
+};`;
+  wasmWorker = new Worker(URL.createObjectURL(new Blob([code], {type:'application/javascript'})), {type:'module'});
+  wasmWorker.onmessage = (ev)=>{
+    const m=ev.data||{};
+    if(m.type==='wasm-ready'){ wasmReady=true; pEngine.textContent='Engine: WASM'; pEngine.classList.add('ok'); pEngine.classList.remove('err'); }
+    if(m.type==='wasm-error'){ wasmReady=false; pEngine.textContent='Engine: JS (fallback)'; pEngine.classList.remove('ok'); pEngine.classList.add('err'); console.warn('WASM init error:', m.error); }
+  };
+  // pedir init
+  wasmWorker.postMessage({type:'init'});
+  return wasmWorker;
+}
+
+/* ===========================
+   Frame loop (auto-detectar)
+=========================== */
+function requestVideoFrame(cb){
+  if(typeof video.requestVideoFrameCallback==='function') video.requestVideoFrameCallback(cb);
+  else setTimeout(()=>cb(nowMs(),{}), 1000/30);
+}
+function loop(ts){
+  if(!video.srcObject) return;
+  if(ts - lastTick > 1000/targetFPS){
+    lastTick = ts;
+    pFps.textContent = `Proc: ${targetFPS} fps`;
+    if(autoMode) autoDetectStep();
   }
   requestVideoFrame(loop);
 }
 
-/* ========= Torch ========= */
-async function toggleTorch(){
-  if(!streamObj) return;
-  const track = streamObj.getVideoTracks()[0];
-  try{
-    torchOn = !torchOn;
-    await track.applyConstraints({ advanced:[{ torch: torchOn }] });
-    els.pTorch.textContent = `Torch: ${torchOn ? 'on' : 'off'}`;
-  }catch(e){
-    els.pTorch.textContent = 'Torch: n/a';
-    els.torchButton.disabled = true;
-  }
-}
+/* ===========================
+   Auto-detectar paso
+=========================== */
+const autoCanvas=document.createElement('canvas'), autoCtx=autoCanvas.getContext('2d',{willReadFrequently:true});
+async function autoDetectStep(){
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if(!vw) return;
 
-/* ========= Consejos en vivo (distancia/brillo básico) ========= */
-function updateLiveTips(){
-  const v = els.video;
-  if(!v.videoWidth) return;
-  // medimos ROI en píxeles fuente
-  const stageRect = els.videoStage.getBoundingClientRect();
-  const vw = v.videoWidth, vh = v.videoHeight;
-  const rs = Math.max(stageRect.width/vw, stageRect.height/vh);
-  const dispW = vw*rs, dispH = vh*rs;
-  const dx = (dispW - stageRect.width)/2;
-  const dy = (dispH - stageRect.height)/2;
-  const r = getRoiPct(els.roi);
-  const roiPx = {
-    x: Math.round((r.left/100)*stageRect.width - dx),
-    y: Math.round((r.top/100)*stageRect.height - dy),
-    w: Math.round((r.width/100)*stageRect.width),
-    h: Math.round((r.height/100)*stageRect.height)
-  };
-  const sx = Math.max(0, Math.round(roiPx.x/rs));
-  const sy = Math.max(0, Math.round(roiPx.y/rs));
-  const sw = Math.max(1, Math.round(roiPx.w/rs));
-  const sh = Math.max(1, Math.round(roiPx.h/rs));
+  autoCanvas.width = vw; autoCanvas.height = vh;
+  autoCtx.drawImage(video, 0, 0, vw, vh);
+  const img = autoCtx.getImageData(0,0,vw,vh);
 
-  // capturamos mini roi para estimar contraste/saturación de luz
-  workCanvas.width = Math.max(1, Math.round(sw/4));
-  workCanvas.height = Math.max(1, Math.round(sh/4));
-  workCtx.drawImage(v, sx, sy, sw, sh, 0, 0, workCanvas.width, workCanvas.height);
-  const { data } = workCtx.getImageData(0,0,workCanvas.width, workCanvas.height);
+  const w = ensureRoiWorker();
+  let handled=false;
+  w.onmessage = async (e)=>{
+    if(handled) return; handled=true;
+    const msg=e.data;
+    if(msg.type==='roi'){
+      drawAutoBox(msg);
+      pStable.textContent = 'Stable: ' + (msg.stable?'yes':'no');
 
-  // varianza simple de luminancia y media para tips
-  let sum=0, sum2=0, n=data.length/4, bright=0;
-  for(let i=0;i<data.length;i+=4){
-    const Y = (0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2]);
-    sum += Y; sum2 += Y*Y;
-  }
-  const mean = sum/n;
-  const variance = (sum2/n) - (mean*mean);
-  const tips = [];
-  if (sw < 400) tips.push('Acércate (ROI < 400 px de ancho).');
-  if (mean > 220) tips.push('Reduce brillo/evita reflejos.');
-  if (mean < 40)  tips.push('Más luz o activa torch.');
-  if (variance < 150) tips.push('Poco contraste: prueba inclinar la tarjeta.');
-  els.liveTips.textContent = tips.join(' ');
-}
+      const bigEnough = (msg.w >= 400);
+      const now = nowMs();
+      const sameRegion = lastAutoROI && iou(lastAutoROI, msg) > 0.6;
+      if(msg.stable && sameRegion) { if(!stableSince) stableSince = now; }
+      else { stableSince = 0; }
+      lastAutoROI = msg;
 
-/* ========= ROI UX: ratón (cámara) ========= */
-(function(){
-  const roi = els.roi; const stage = els.videoStage; let drag=null; let start={};
-  roi.addEventListener('mousedown', (e)=>{
-    e.preventDefault();
-    const h = e.target.closest('.handle')?.dataset.h || 'move';
-    const s = stage.getBoundingClientRect();
-    drag = { mode:h, base:{ x:e.clientX, y:e.clientY }, sw:s.width, sh:s.height };
-    start = { left: pct(roi.style.left), top: pct(roi.style.top), w: pct(roi.style.width), h: pct(roi.style.height) };
-  });
-  window.addEventListener('mousemove',(e)=>{
-    if(!drag) return; e.preventDefault();
-    const dx = (e.clientX - drag.base.x)/drag.sw*100;
-    const dy = (e.clientY - drag.base.y)/drag.sh*100;
-    let L=start.left, T=start.top, W=start.w, H=start.h;
-    const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-    switch(drag.mode){
-      case 'move': L=clamp(start.left+dx,0,100-W); T=clamp(start.top+dy,0,100-H); break;
-      case 'nw': L=clamp(start.left+dx,0,start.left+start.w-5); T=clamp(start.top+dy,0,start.top+start.h-5); W=start.w-(L-start.left); H=start.h-(T-start.top); break;
-      case 'ne': T=clamp(start.top+dy,0,start.top+start.h-5); W=clamp(start.w+dx,5,100-start.left); H=start.h-(T-start.top); break;
-      case 'sw': L=clamp(start.left+dx,0,start.left+start.w-5); W=start.w-(L-start.left); H=clamp(start.h+dy,5,100-start.top); break;
-      case 'se': W=clamp(start.w+dx,5,100-start.left); H=clamp(start.h+dy,5,100-start.top); break;
-    }
-    setRoiPct(roi,{left:L, top:T, width:W, height:H});
-    syncCameraRoiSliders();
-  });
-  window.addEventListener('mouseup',()=> drag=null);
-})();
-
-/* ========= ROI UX: táctil (cámara) ========= */
-(function(){
-  const stage = els.videoStage, roi = els.roi;
-  let tState = null;
-  const getTouches = e => Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY,id:t.identifier}));
-  const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-  function sRect(){ return stage.getBoundingClientRect(); }
-
-  roi.addEventListener('touchstart', (e)=>{
-    e.preventDefault();
-    const touches = getTouches(e); const r0 = getRoiPct(roi);
-    if(touches.length === 1){ tState = {mode:'move', startTouch:touches[0], start:r0}; }
-    else if(touches.length >= 2){ const [a,b] = touches; tState = {mode:'pinch', d0:dist(a,b), start:r0}; }
-  }, {passive:false});
-
-  roi.addEventListener('touchmove', (e)=>{
-    if(!tState) return; e.preventDefault();
-    const touches = getTouches(e); const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-    if(touches.length===1 && tState.mode==='move'){
-      const s = sRect();
-      const dx = (touches[0].x - tState.startTouch.x)/s.width*100;
-      const dy = (touches[0].y - tState.startTouch.y)/s.height*100;
-      const W = tState.start.width, H = tState.start.height;
-      const L = clamp(tState.start.left + dx, 0, 100 - W);
-      const T = clamp(tState.start.top + dy, 0, 100 - H);
-      setRoiPct(roi,{left:L, top:T, width:W, height:H});
-    }else if(touches.length>=2 && tState.mode==='pinch'){
-      const [a,b] = touches; const s = sRect(); const d1 = dist(a,b);
-      const scale = clamp(d1 / (tState.d0||1), 0.5, 3);
-      const start = tState.start;
-      const cx = start.left + start.width/2, cy = start.top + start.height/2;
-      let newW = clamp(start.width * scale, 5, 100);
-      let newH = clamp(start.height * scale, 5, 100);
-      let newL = cx - newW/2, newT = cy - newH/2;
-      if(newL < 0) newL = 0; if(newT < 0) newT = 0;
-      if(newL + newW > 100) newL = 100 - newW;
-      if(newT + newH > 100) newT = 100 - newH;
-      setRoiPct(roi,{left:newL, top:newT, width:newW, height:newH});
-    }
-    syncCameraRoiSliders();
-  }, {passive:false});
-
-  window.addEventListener('touchend', ()=>{ tState=null; }, {passive:true});
-  window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
-})();
-
-/* ========= Sliders/botones ROI (cámara) ========= */
-els.roiWidth.addEventListener('input', ()=>{
-  const r = getRoiPct(els.roi);
-  const newW = Number(els.roiWidth.value);
-  const cx = r.left + r.width/2;
-  let L = cx - newW/2; if(L<0) L=0; if(L+newW>100) L=100-newW;
-  setRoiPct(els.roi,{left:L, top:r.top, width:newW, height:r.height});
-});
-els.roiHeight.addEventListener('input', ()=>{
-  const r = getRoiPct(els.roi);
-  const newH = Number(els.roiHeight.value);
-  const cy = r.top + r.height/2;
-  let T = cy - newH/2; if(T<0) T=0; if(T+newH>100) T=100-newH;
-  setRoiPct(els.roi,{left:r.left, top:T, width:r.width, height:newH});
-});
-const stepPct = 2;
-els.btnUp.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{top: Math.max(0, r.top - stepPct)}); syncCameraRoiSliders(); });
-els.btnDown.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{top: Math.min(100 - r.height, r.top + stepPct)}); syncCameraRoiSliders(); });
-els.btnLeft.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{left: Math.max(0, r.left - stepPct)}); syncCameraRoiSliders(); });
-els.btnRight.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{left: Math.min(100 - r.width, r.left + stepPct)}); syncCameraRoiSliders(); });
-els.btnCenter.addEventListener('click', ()=>{ const r=getRoiPct(els.roi); setRoiPct(els.roi,{left:(100-r.width)/2, top:(100-r.height)/2}); syncCameraRoiSliders(); });
-
-/* ========= Capturar a Vista Previa (ROI de cámara) ========= */
-els.btnCapture.addEventListener('click', async ()=>{
-  if(!els.video.videoWidth) return;
-  const { sx, sy, sw, sh } = roiToSourceRect();
-  workCanvas.width = sw; workCanvas.height = sh;
-  workCtx.drawImage(els.video, sx, sy, sw, sh, 0, 0, sw, sh);
-  const dataUrl = workCanvas.toDataURL('image/png');
-  els.previewImg.src = dataUrl;
-  els.previewB64.value = dataUrl;
-  els.pRoi.style.display = 'block';
-  setRoiPct(els.pRoi,{left:10, top:10, width:80, height:80});
-  syncPreviewRoiSliders();
-  if(els.autoExtractParse.checked){ await extractFromPreview(); parseData(); }
-});
-function roiToSourceRect(){
-  const v = els.video;
-  const stageRect = els.videoStage.getBoundingClientRect();
-  const vw = v.videoWidth, vh = v.videoHeight;
-  const rs = Math.max(stageRect.width/vw, stageRect.height/vh);
-  const dispW = vw*rs, dispH = vh*rs;
-  const dx = (dispW - stageRect.width)/2;
-  const dy = (dispH - stageRect.height)/2;
-  const r = getRoiPct(els.roi);
-  const roiPx = {
-    x: Math.round((r.left/100)*stageRect.width - dx),
-    y: Math.round((r.top/100)*stageRect.height - dy),
-    w: Math.round((r.width/100)*stageRect.width),
-    h: Math.round((r.height/100)*stageRect.height)
-  };
-  const sx = Math.max(0, Math.round(roiPx.x/rs));
-  const sy = Math.max(0, Math.round(roiPx.y/rs));
-  const sw = Math.max(1, Math.round(roiPx.w/rs));
-  const sh = Math.max(1, Math.round(roiPx.h/rs));
-  return { sx, sy, sw, sh };
-}
-
-/* ========= ROI Preview — ratón y táctil ========= */
-(function(){
-  // Ratón
-  const roi = els.pRoi; const stage = els.pStage; let drag=null; let start={};
-  roi.addEventListener('mousedown', (e)=>{
-    e.preventDefault();
-    const h = e.target.closest('.handle')?.dataset.h || 'move';
-    const s = stage.getBoundingClientRect();
-    drag = { mode:h, base:{ x:e.clientX, y:e.clientY }, sw:s.width, sh:s.height };
-    start = { left: pct(roi.style.left), top: pct(roi.style.top), w: pct(roi.style.width), h: pct(roi.style.height) };
-  });
-  window.addEventListener('mousemove',(e)=>{
-    if(!drag) return; e.preventDefault();
-    const dx = (e.clientX - drag.base.x)/drag.sw*100;
-    const dy = (e.clientY - drag.base.y)/drag.sh*100;
-    let L=start.left, T=start.top, W=start.w, H=start.h;
-    const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-    switch(drag.mode){
-      case 'move': L=clamp(start.left+dx,0,100-W); T=clamp(start.top+dy,0,100-H); break;
-      case 'nw': L=clamp(start.left+dx,0,start.left+start.w-5); T=clamp(start.top+dy,0,start.top+start.h-5); W=start.w-(L-start.left); H=start.h-(T-start.top); break;
-      case 'ne': T=clamp(start.top+dy,0,start.top+start.h-5); W=clamp(start.w+dx,5,100-start.left); H=start.h-(T-start.top); break;
-      case 'sw': L=clamp(start.left+dx,0,start.left+start.w-5); W=start.w-(L-start.left); H=clamp(start.h+dy,5,100-start.top); break;
-      case 'se': W=clamp(start.w+dx,5,100-start.left); H=clamp(start.h+dy,5,100-start.top); break;
-    }
-    setRoiPct(roi,{left:L, top:T, width:W, height:H});
-    syncPreviewRoiSliders();
-  });
-  window.addEventListener('mouseup',()=> drag=null);
-
-  // Táctil
-  let tState = null;
-  const getTouches = e => Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY,id:t.identifier}));
-  const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-  function sRect(){ return stage.getBoundingClientRect(); }
-
-  roi.addEventListener('touchstart', (e)=>{
-    e.preventDefault();
-    const touches = getTouches(e); const r0 = getRoiPct(roi);
-    if(touches.length === 1){ tState = {mode:'move', startTouch:touches[0], start:r0}; }
-    else if(touches.length >= 2){ const [a,b] = touches; tState = {mode:'pinch', d0:dist(a,b), start:r0}; }
-  }, {passive:false});
-
-  roi.addEventListener('touchmove', (e)=>{
-    if(!tState) return; e.preventDefault();
-    const touches = getTouches(e); const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-    if(touches.length===1 && tState.mode==='move'){
-      const s = sRect();
-      const dx = (touches[0].x - tState.startTouch.x)/s.width*100;
-      const dy = (touches[0].y - tState.startTouch.y)/s.height*100;
-      const W = tState.start.width, H = tState.start.height;
-      const L = clamp(tState.start.left + dx, 0, 100 - W);
-      const T = clamp(tState.start.top + dy, 0, 100 - H);
-      setRoiPct(roi,{left:L, top:T, width:W, height:H});
-    }else if(touches.length>=2 && tState.mode==='pinch'){
-      const [a,b] = touches; const s = sRect(); const d1 = dist(a,b);
-      const scale = clamp(d1 / (tState.d0||1), 0.5, 3);
-      const start = tState.start;
-      const cx = start.left + start.width/2, cy = start.top + start.height/2;
-      let newW = clamp(start.width * scale, 5, 100);
-      let newH = clamp(start.height * scale, 5, 100);
-      let newL = cx - newW/2, newT = cy - newH/2;
-      if(newL < 0) newL = 0; if(newT < 0) newT = 0;
-      if(newL + newW > 100) newL = 100 - newW;
-      if(newT + newH > 100) newT = 100 - newH;
-      setRoiPct(roi,{left:newL, top:newT, width:newW, height:newH});
-    }
-    syncPreviewRoiSliders();
-  }, {passive:false});
-
-  window.addEventListener('touchend', ()=>{ tState=null; }, {passive:true});
-  window.addEventListener('touchcancel', ()=>{ tState=null; }, {passive:true});
-})();
-
-/* ========= Sliders/botones ROI Preview ========= */
-els.pRoiWidth.addEventListener('input', ()=>{
-  if(els.pRoi.style.display==='none') return;
-  const r = getRoiPct(els.pRoi);
-  const newW = Number(els.pRoiWidth.value);
-  const cx = r.left + r.width/2;
-  let L = cx - newW/2; if(L<0) L=0; if(L+newW>100) L=100-newW;
-  setRoiPct(els.pRoi,{left:L, top:r.top, width:newW, height:r.height});
-});
-els.pRoiHeight.addEventListener('input', ()=>{
-  if(els.pRoi.style.display==='none') return;
-  const r = getRoiPct(els.pRoi);
-  const newH = Number(els.pRoiHeight.value);
-  const cy = r.top + r.height/2;
-  let T = cy - newH/2; if(T<0) T=0; if(T+newH>100) T=100-newH;
-  setRoiPct(els.pRoi,{left:r.left, top:T, width:r.width, height:newH});
-});
-els.pBtnUp.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{top: Math.max(0, r.top - 2)}); syncPreviewRoiSliders(); });
-els.pBtnDown.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{top: Math.min(100 - r.height, r.top + 2)}); syncPreviewRoiSliders(); });
-els.pBtnLeft.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{left: Math.max(0, r.left - 2)}); syncPreviewRoiSliders(); });
-els.pBtnRight.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{left: Math.min(100 - r.width, r.left + 2)}); syncPreviewRoiSliders(); });
-els.pBtnCenter.addEventListener('click', ()=>{ const r=getRoiPct(els.pRoi); setRoiPct(els.pRoi,{left:(100-r.width)/2, top:(100-r.height)/2}); syncPreviewRoiSliders(); });
-
-/* ========= Cargar imagen (original) → preview ========= */
-window.addEventListener('load', function () {
-  ensureReader();
-
-  els.myFile.addEventListener('change', () => {
-    const files = els.myFile.files;
-    if (files.length != 0) {
-      clearPreview();
-      const image = document.createElement('img');
-      image.src = URL.createObjectURL(files[0]);
-      image.width = 300;
-      image.onload = ()=>{
-        els.previewImg.src = image.src;
-        els.previewB64.value = image.src;
-        els.pRoi.style.display='block';
-        setRoiPct(els.pRoi,{left:10,top:10,width:80,height:80});
-        syncPreviewRoiSliders();
-      };
-      document.getElementById('preview').appendChild(image); // conserva funcionalidad original
-    }
-  });
-
-  // Botones originales
-  els.startBtn.addEventListener('click', startCam);
-  els.stopBtn.addEventListener('click', stopCam);
-  els.changeBtn.addEventListener('click', changeCam);
-
-  // Botones nuevos
-  els.smartFreezeButton.addEventListener('click', smartFreezeDecode);
-  els.torchButton.addEventListener('click', toggleTorch);
-  els.fpsSel.addEventListener('change', ()=>{ targetFPS = Number(els.fpsSel.value)||12; });
-
-  // Clear original
-  els.clearButton.addEventListener('click', () => {
-    clearPreview();
-    els.previewImg.removeAttribute('src');
-    els.previewB64.value = '';
-    els.pRoi.style.display='none';
-  });
-
-  // Decode Image (original)
-  els.decodeButton.addEventListener('click', () => {
-    const prev = document.getElementById('preview');
-    if (prev.firstChild && prev.firstChild.nodeType == Node.ELEMENT_NODE) {
-      const img = prev.firstChild.cloneNode(true);
-      codeReader.decodeFromImage(img)
-        .then(result => { els.resultImg.textContent = result.text; })
-        .catch(err => { els.resultImg.textContent = err; });
-    }
-  });
-
-  // Extraer de Vista Previa
-  els.btnExtractPreview.addEventListener('click', extractFromPreview);
-
-  // Parsear Datos
-  els.btnParse.addEventListener('click', parseData);
-});
-
-function clearPreview(){
-  const prev = document.getElementById('preview');
-  while (prev.firstChild) prev.removeChild(prev.firstChild);
-}
-
-/* ========= Extraer de Vista Previa (Texto crudo) ========= */
-async function extractFromPreview(){
-  ensureReader();
-  const img = els.previewImg;
-  if(!img.src){ alert('No hay vista previa disponible'); return; }
-
-  try{
-    await ensureImageLoaded(img);
-
-    let dataUrlToDecode = img.src;
-    if(els.usePreviewROI.checked && els.pRoi.style.display !== 'none'){
-      // Recorte a ROI natural
-      const r = getRoiPct(els.pRoi);
-      const nx = Math.round((r.left/100)  * (img.naturalWidth  || img.width));
-      const ny = Math.round((r.top/100)   * (img.naturalHeight || img.height));
-      const nw = Math.round((r.width/100) * (img.naturalWidth  || img.width));
-      const nh = Math.round((r.height/100)* (img.naturalHeight || img.height));
-
-      const c = document.createElement('canvas');
-      const cx = c.getContext('2d', { willReadFrequently:true });
-      c.width = Math.max(1,nw); c.height = Math.max(1,nh);
-
-      const buffer = document.createElement('canvas');
-      const bctx = buffer.getContext('2d', { willReadFrequently:true });
-      buffer.width = img.naturalWidth || img.width;
-      buffer.height = img.naturalHeight || img.height;
-      bctx.drawImage(img, 0, 0, buffer.width, buffer.height);
-
-      // unsharp simple
-      cx.drawImage(buffer, nx, ny, nw, nh, 0, 0, nw, nh);
-      unsharp(cx, nw, nh);
-
-      dataUrlToDecode = c.toDataURL('image/png');
-      els.previewImg.src = dataUrlToDecode;
-      els.previewB64.value = dataUrlToDecode;
-    }
-
-    // Decodificar vía Image (evitamos decodeFromCanvas inexistente)
-    const tmp = new Image();
-    tmp.onload = ()=>{
-      codeReader.decodeFromImage(tmp)
-        .then(result => { els.rawText.value = result?.text || '(sin lectura)'; })
-        .catch(() => { els.rawText.value = '(sin lectura)'; });
-    };
-    tmp.src = dataUrlToDecode;
-
-  }catch{
-    els.rawText.value = '(sin lectura)';
-  }
-}
-async function ensureImageLoaded(imageEl){
-  if(imageEl.complete && imageEl.naturalWidth) return;
-  await new Promise((res,rej)=>{ imageEl.onload = ()=>res(); imageEl.onerror = e=>rej(e); });
-}
-
-/* ========= Freeze simple (original-like) ========= */
-function decodeFreezeOnce(){
-  frozen = true;
-  setTimeout(()=>{ frozen=false; }, 400);
-}
-document.getElementById('freezeButton').addEventListener('click', decodeFreezeOnce);
-
-/* ========= Freeze & Smart Decode (ROI + normalización + rotaciones) ========= */
-async function smartFreezeDecode(){
-  if(!els.video.videoWidth) return;
-  const { sx, sy, sw, sh } = roiToSourceRect();
-  const tryAngles = [0, 90, -90];
-  const tryHard = !!els.tryHarder.checked;
-
-  // preparar canvas ROI
-  const c = document.createElement('canvas');
-  const cx = c.getContext('2d', { willReadFrequently:true });
-  c.width = sw; c.height = sh;
-
-  // pasa 1: recorte + unsharp
-  cx.drawImage(els.video, sx, sy, sw, sh, 0, 0, sw, sh);
-  unsharp(cx, sw, sh);
-
-  // intentos con rotaciones discretas
-  for(const ang of tryAngles){
-    const durl = (ang===0) ? c.toDataURL('image/png') : rotateToDataURL(c, ang);
-    const txt = await decodeDataUrl(durl);
-    if(txt){
-      // si queremos dedupe: pedimos 2 consecutivos iguales; aquí devolvemos el primero válido
-      els.result.innerText = txt;
-      els.rawText.value = txt; // útil para parseo posterior
-      return;
-    }
-  }
-
-  // fallback: sin unsharp
-  cx.clearRect(0,0,sw,sh);
-  cx.drawImage(els.video, sx, sy, sw, sh, 0, 0, sw, sh);
-  for(const ang of tryAngles){
-    const durl = (ang===0) ? c.toDataURL('image/png') : rotateToDataURL(c, ang);
-    const txt = await decodeDataUrl(durl);
-    if(txt){ els.result.innerText = txt; els.rawText.value = txt; return; }
-  }
-
-  if(tryHard){
-    // pesada: escalar arriba un poco (1.25x) y reintentar 0/±90
-    const upW = Math.round(sw*1.25), upH = Math.round(sh*1.25);
-    const cc = document.createElement('canvas'); cc.width = upW; cc.height = upH;
-    const ccx = cc.getContext('2d', { willReadFrequently:true });
-    ccx.imageSmoothingEnabled = true;
-    ccx.drawImage(els.video, sx, sy, sw, sh, 0, 0, upW, upH);
-    unsharp(ccx, upW, upH);
-    for(const ang of tryAngles){
-      const durl = (ang===0) ? cc.toDataURL('image/png') : rotateToDataURL(cc, ang);
-      const txt = await decodeDataUrl(durl);
-      if(txt){ els.result.innerText = txt; els.rawText.value = txt; return; }
-    }
-  }
-
-  els.result.innerText = '(sin lectura en smart decode)';
-}
-function rotateToDataURL(srcCanvas, deg){
-  const rad = deg*Math.PI/180;
-  const sW = srcCanvas.width, sH = srcCanvas.height;
-  const dst = document.createElement('canvas');
-  if(Math.abs(deg)===90){ dst.width = sH; dst.height = sW; } else { dst.width = sW; dst.height = sH; }
-  const dx = dst.getContext('2d', { willReadFrequently:true });
-  dx.save();
-  dx.translate(dst.width/2, dst.height/2);
-  dx.rotate(rad);
-  dx.drawImage(srcCanvas, -sW/2, -sH/2);
-  dx.restore();
-  return dst.toDataURL('image/png');
-}
-function unsharp(ctx, w, h){
-  // kernel sharpen ligero
-  const src = ctx.getImageData(0,0,w,h);
-  const dst = ctx.createImageData(w,h);
-  const k = [0,-1,0,-1,5,-1,0,-1,0];
-  const d=src.data, o=dst.data;
-  const stride = w*4;
-  for(let y=1;y<h-1;y++){
-    for(let x=1;x<w-1;x++){
-      let r=0,g=0,b=0,a=0, ki=0;
-      for(let ky=-1;ky<=1;ky++){
-        for(let kx=-1;kx<=1;kx++){
-          const idx = ((y+ky)*w + (x+kx))*4;
-          const kv = k[ki++];
-          r += d[idx+0]*kv; g += d[idx+1]*kv; b += d[idx+2]*kv; a += d[idx+3]*(ki===5?1:0);
+      if(bigEnough && msg.stable){
+        if(!stableSince) stableSince = now;
+        if(now - stableSince > 250){
+          const text = await decodeSmartROI(msg);
+          if(text){
+            if(text === lastAutoText) confirmCount++; else { lastAutoText = text; confirmCount = 1; }
+            if(confirmCount >= 2){
+              resultDiv(text);
+              if(autoParse.checked){ rawText.value=text; parseData(); }
+              stableSince = nowMs() + 600;
+            }
+          }
         }
       }
-      const di = (y*w + x)*4;
+    } else {
+      autoBox.style.display='none';
+      pStable.textContent='Stable: no';
+      stableSince = 0;
+    }
+  };
+  w.postMessage({type:'frame', width:vw, height:vh, data:img.data}, [img.data.buffer]);
+}
+function iou(a,b){
+  const ax2=a.x+a.w, ay2=a.y+a.h, bx2=b.x+b.w, by2=b.y+b.h;
+  const ix = Math.max(0, Math.min(ax2,bx2)-Math.max(a.x,b.x));
+  const iy = Math.max(0, Math.min(ay2,by2)-Math.max(a.y,b.y));
+  const inter = ix*iy, uni = a.w*a.h + b.w*b.h - inter;
+  return uni>0 ? inter/uni : 0;
+}
+function drawAutoBox({x,y,w,h}){
+  const st = videoStage.getBoundingClientRect();
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const rs = Math.max(st.width/vw, st.height/vh);
+  const dispW = vw*rs, dispH = vh*rs;
+  const offX = (st.width - dispW)/2;
+  const offY = (st.height - dispH)/2;
+
+  autoBox.style.display='block';
+  autoBox.style.left   = ((x*rs + offX)/st.width*100)+'%';
+  autoBox.style.top    = ((y*rs + offY)/st.height*100)+'%';
+  autoBox.style.width  = ((w*rs)/st.width*100)+'%';
+  autoBox.style.height = ((h*rs)/st.height*100)+'%';
+}
+
+/* ===========================
+   Smart decode sobre ROI
+=========================== */
+const workCanvas=document.createElement('canvas'), workCtx=workCanvas.getContext('2d',{willReadFrequently:true});
+async function decodeSmartROI(roi){
+  const {x,y,w,h} = roi;
+  workCanvas.width = w; workCanvas.height = h;
+  workCtx.drawImage(video, x,y,w,h, 0,0,w,h);
+
+  // normalización: unsharp + umbral adaptativo
+  unsharp(workCtx, w, h);
+  adaptiveThreshold(workCtx, w, h);
+
+  // estrategia: WASM si está activo y listo; si no, JS compat
+  const angles = [0,90,-90];
+  if(useWasm.checked){
+    const ww = ensureWasmWorker();
+    // si aún no está listo, dejamos que el onmessage ajuste el estado
+    if(!wasmReady){
+      // intentamos inicialización silenciosa
+      ww.postMessage({type:'init'});
+    }
+    if(wasmReady){
+      for(const ang of angles){
+        const rgba = getRgbaFromCanvas(workCanvas, ang);
+        const text = await decodeWithWasm(ww, rgba.data, rgba.width, rgba.height, ang, false);
+        if(text) return text;
+      }
+      for(const ang of angles){
+        const rgba = getRgbaFromCanvasScaled(workCanvas, 1.25, ang);
+        const text = await decodeWithWasm(ww, rgba.data, rgba.width, rgba.height, ang, true);
+        if(text) return text;
+      }
+    }
+    // fallback implícito a JS
+  }
+
+  for(const ang of angles){
+    const durl = (ang===0) ? workCanvas.toDataURL('image/png') : rotateToDataURL(workCanvas, ang);
+    const t = await decodeDataUrlJS(durl);
+    if(t) return t;
+  }
+  const upW = Math.round(w*1.25), upH = Math.round(h*1.25);
+  const cc = document.createElement('canvas'); cc.width=upW; cc.height=upH;
+  const ccx = cc.getContext('2d', {willReadFrequently:true});
+  ccx.imageSmoothingEnabled=true;
+  ccx.drawImage(workCanvas, 0,0,w,h, 0,0,upW,upH);
+  unsharp(ccx, upW, upH);
+  adaptiveThreshold(ccx, upW, upH);
+  for(const ang of angles){
+    const durl = (ang===0) ? cc.toDataURL('image/png') : rotateToDataURL(cc, ang);
+    const t = await decodeDataUrlJS(durl);
+    if(t) return t;
+  }
+  return '';
+}
+
+/* ===========================
+   Normalización (canvas)
+=========================== */
+function unsharp(ctx, w, h){
+  const src = ctx.getImageData(0,0,w,h);
+  const dst = ctx.createImageData(w,h);
+  const d=src.data, o=dst.data;
+  const K=[0,-1,0,-1,5,-1,0,-1,0];
+  for(let y=1;y<h-1;y++){
+    for(let x=1;x<w-1;x++){
+      let r=0,g=0,b=0, ki=0;
+      for(let ky=-1;ky<=1;ky++){
+        for(let kx=-1;kx<=1;kx++){
+          const idx=((y+ky)*w+(x+kx))*4, kv=K[ki++];
+          r+=d[idx]*kv; g+=d[idx+1]*kv; b+=d[idx+2]*kv;
+        }
+      }
+      const di=(y*w+x)*4;
       o[di]=clamp255(r); o[di+1]=clamp255(g); o[di+2]=clamp255(b); o[di+3]=255;
     }
   }
   ctx.putImageData(dst,0,0);
 }
-function clamp255(v){ return v<0?0:(v>255?255:v|0); }
-function decodeDataUrl(durl){
-  return new Promise(res=>{
-    const im = new Image();
-    im.onload = ()=>{
-      codeReader.decodeFromImage(im)
-        .then(r=>res(r?.text||''))
-        .catch(()=>res(''));
-    };
-    im.onerror = ()=>res('');
-    im.src = durl;
+function adaptiveThreshold(ctx,w,h){
+  const img = ctx.getImageData(0,0,w,h);
+  const d = img.data;
+  const R=3;
+  const I = new Float32Array((w+1)*(h+1));
+  const idx=(x,y)=>y*(w+1)+x;
+  for(let y=1;y<=h;y++){
+    let row=0;
+    for(let x=1;x<=w;x++){
+      const p = ((y-1)*w+(x-1))*4;
+      const Y = 0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2];
+      row += Y;
+      I[idx(x,y)] = I[idx(x,y-1)] + row;
+    }
+  }
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const x0 = Math.max(0, x-R), y0=Math.max(0,y-R);
+      const x1 = Math.min(w-1, x+R), y1=Math.min(h-1,y+R);
+      const A = I[idx(x0, y0)], B = I[idx(x1+1,y0)], C = I[idx(x0,y1+1)], D = I[idx(x1+1,y1+1)];
+      const mean = (D - B - C + A) / ((x1-x0+1)*(y1-y0+1));
+      const p = (y*w+x)*4;
+      const Y = 0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2];
+      const val = (Y > mean*0.95) ? 255 : 0;
+      d[p]=d[p+1]=d[p+2]=val; d[p+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+}
+function rotateToDataURL(c,deg){
+  const rad=deg*Math.PI/180, sW=c.width,sH=c.height;
+  const dst=document.createElement('canvas');
+  if(Math.abs(deg)===90){ dst.width=sH; dst.height=sW; } else { dst.width=sW; dst.height=sH; }
+  const dx=dst.getContext('2d',{willReadFrequently:true});
+  dx.save(); dx.translate(dst.width/2,dst.height/2); dx.rotate(rad); dx.drawImage(c,-sW/2,-sH/2); dx.restore();
+  return dst.toDataURL('image/png');
+}
+function getRgbaFromCanvas(c,deg=0){
+  if(!deg){ const ctx=c.getContext('2d'), img=ctx.getImageData(0,0,c.width,c.height); return {data:img.data, width:c.width, height:c.height}; }
+  const url = rotateToDataURL(c,deg);
+  const tmp = document.createElement('canvas');
+  return dataUrlToRgba(url).then(({data,width,height})=>({data,width,height}));
+}
+function getRgbaFromCanvasScaled(c,scale=1.25,deg=0){
+  const sW=c.width, sH=c.height;
+  const dst=document.createElement('canvas'); dst.width=Math.round(sW*scale); dst.height=Math.round(sH*scale);
+  const ctx=dst.getContext('2d',{willReadFrequently:true});
+  ctx.imageSmoothingEnabled=true; ctx.drawImage(c,0,0,sW,sH, 0,0,dst.width,dst.height);
+  if(!deg){ const img=ctx.getImageData(0,0,dst.width,dst.height); return {data:img.data, width:dst.width, height:dst.height}; }
+  const url = rotateToDataURL(dst,deg);
+  return dataUrlToRgba(url).then(({data,width,height})=>({data,width,height}));
+}
+function dataUrlToRgba(durl){
+  return new Promise((res)=>{
+    const im=new Image(); im.onload=()=>{
+      const c=document.createElement('canvas'); c.width=im.naturalWidth||im.width; c.height=im.naturalHeight||im.height;
+      const cx=c.getContext('2d',{willReadFrequently:true}); cx.drawImage(im,0,0);
+      const img=c.getImageData(0,0,c.width,c.height); res({data:img.data, width:c.width, height:c.height});
+    }; im.src=durl;
   });
 }
 
-/* ========= Parseo (DUI SV → genérico) ========= */
+/* ===========================
+   JS decode helpers
+=========================== */
+function decodeDataUrlJS(durl){
+  ensureJsReader();
+  return new Promise(res=>{
+    const im=new Image();
+    im.onload=()=> jsReader.decodeFromImage(im).then(r=>res(r?.text||'')).catch(()=>res(''));
+    im.onerror=()=>res('');
+    im.src=durl;
+  });
+}
+
+/* ===========================
+   WASM decode helper
+=========================== */
+function decodeWithWasm(worker, data, width, height, rotate=0, tryHarder=false){
+  return new Promise((resolve)=>{
+    const handler=(e)=>{
+      const m=e.data||{};
+      if(m.type==='result'){ worker.removeEventListener('message',handler); resolve(m.text||''); }
+      else if(m.type==='none'){ worker.removeEventListener('message',handler); resolve(''); }
+      else if(m.type==='decode-error'){ console.warn('wasm decode error:', m.error); worker.removeEventListener('message',handler); resolve(''); }
+    };
+    worker.addEventListener('message', handler, {once:true});
+    // Importante: enviar copia (no Transferable porque ImageData.data puede estar compartido)
+    worker.postMessage({type:'decode', data: data.slice? data.slice() : new Uint8ClampedArray(data), width, height, rotate, formats:['PDF_417'], tryHarder});
+  });
+}
+
+/* ===========================
+   ROI usuario (cámara) mouse/touch
+=========================== */
+(function(){
+  const stage=videoStage, roi=els.roi; let drag=null, start={};
+  roi.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    const h=e.target.closest('.handle')?.dataset.h||'move';
+    const s=stage.getBoundingClientRect();
+    drag={mode:h, base:{x:e.clientX,y:e.clientY}, sw:s.width, sh:s.height};
+    start=getRoiPct(roi);
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return; e.preventDefault();
+    const dx=(e.clientX-drag.base.x)/drag.sw*100, dy=(e.clientY-drag.base.y)/drag.sh*100;
+    let L=start.left, T=start.top, W=start.width, H=start.height;
+    switch(drag.mode){
+      case'move': L=clamp(start.left+dx,0,100-W); T=clamp(start.top+dy,0,100-H); break;
+      case'nw': L=clamp(start.left+dx,0,start.left+start.width-5); T=clamp(start.top+dy,0,start.top+start.height-5); W=start.width-(L-start.left); H=start.height-(T-start.top); break;
+      case'ne': T=clamp(start.top+dy,0,start.top+start.height-5); W=clamp(start.width+dx,5,100-start.left); H=start.height-(T-start.top); break;
+      case'sw': L=clamp(start.left+dx,0,start.left+start.width-5); W=start.width-(L-start.left); H=clamp(start.height+dy,5,100-start.top); break;
+      case'se': W=clamp(start.width+dx,5,100-start.left); H=clamp(start.height+dy,5,100-start.top); break;
+    }
+    setRoiPct(roi,{left:L, top:T, width:W, height:H}); syncCamSliders();
+  });
+  window.addEventListener('mouseup',()=>drag=null);
+
+  // Touch + pinch-zoom
+  let tState=null;
+  const gt = e=>Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY}));
+  const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  roi.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    const t=gt(e), r0=getRoiPct(roi);
+    if(t.length===1){ tState={mode:'move', startTouch:t[0], start:r0}; }
+    else if(t.length>=2){ tState={mode:'pinch', d0:dist(t[0],t[1]), start:r0}; }
+  },{passive:false});
+  roi.addEventListener('touchmove',e=>{
+    if(!tState)return; e.preventDefault();
+    const t=gt(e);
+    if(t.length===1 && tState.mode==='move'){
+      const s=stage.getBoundingClientRect();
+      const dx=(t[0].x - tState.startTouch.x)/s.width*100;
+      const dy=(t[0].y - tState.startTouch.y)/s.height*100;
+      const W=tState.start.width, H=tState.start.height;
+      const L=clamp(tState.start.left+dx,0,100-W);
+      const T=clamp(tState.start.top+dy,0,100-H);
+      setRoiPct(roi,{left:L, top:T, width:W, height:H});
+    } else if(t.length>=2 && tState.mode==='pinch'){
+      const s=stage.getBoundingClientRect(), d1=dist(t[0],t[1]), scale=clamp(d1/(tState.d0||1),0.5,3);
+      const st=tState.start, cx=st.left+st.width/2, cy=st.top+st.height/2;
+      let W=clamp(st.width*scale,5,100), H=clamp(st.height*scale,5,100), L=cx-W/2, T=cy-H/2;
+      if(L<0)L=0; if(T<0)T=0; if(L+W>100)L=100-W; if(T+H>100)T=100-H;
+      setRoiPct(roi,{left:L, top:T, width:W, height:H});
+    }
+    syncCamSliders();
+  },{passive:false});
+  window.addEventListener('touchend',()=>tState=null,{passive:true});
+  window.addEventListener('touchcancel',()=>tState=null,{passive:true});
+})();
+roiWidth.addEventListener('input',()=>{
+  const r=getRoiPct(roi); const W=+roiWidth.value; const cx=r.left+r.width/2; let L=cx-W/2; if(L<0)L=0; if(L+W>100)L=100-W;
+  setRoiPct(roi,{left:L, top:r.top, width:W, height:r.height});
+});
+roiHeight.addEventListener('input',()=>{
+  const r=getRoiPct(roi); const H=+roiHeight.value; const cy=r.top+r.height/2; let T=cy-H/2; if(T<0)T=0; if(T+H>100)T=100-H;
+  setRoiPct(roi,{left:r.left, top:T, width:r.width, height:H});
+});
+btnUp.addEventListener('click',()=>{ const r=getRoiPct(roi); setRoiPct(roi,{top:Math.max(0,r.top-2)}); syncCamSliders(); });
+btnDown.addEventListener('click',()=>{ const r=getRoiPct(roi); setRoiPct(roi,{top:Math.min(100-r.height,r.top+2)}); syncCamSliders(); });
+btnLeft.addEventListener('click',()=>{ const r=getRoiPct(roi); setRoiPct(roi,{left:Math.max(0,r.left-2)}); syncCamSliders(); });
+btnRight.addEventListener('click',()=>{ const r=getRoiPct(roi); setRoiPct(roi,{left:Math.min(100-r.width,r.left+2)}); syncCamSliders(); });
+btnCenter.addEventListener('click',()=>{ const r=getRoiPct(roi); setRoiPct(roi,{left:(100-r.width)/2, top:(100-r.height)/2}); syncCamSliders(); });
+
+/* ===========================
+   Consejos en vivo
+=========================== */
+const tipsEl = els.tips;
+function updateTipsFromROI(){
+  if(!video.videoWidth) return;
+  const vw=video.videoWidth, vh=video.videoHeight;
+  const st=videoStage.getBoundingClientRect();
+  const rs=Math.max(st.width/vw, st.height/vh);
+  const r=getRoiPct(roi);
+  const pxW = Math.round((r.width/100)*st.width/rs);
+  const c = workCanvas, cx=workCtx;
+  const {sx,sy,sw,sh} = roiToSourceRect();
+  c.width = Math.max(1, Math.round(sw/4));
+  c.height = Math.max(1, Math.round(sh/4));
+  cx.drawImage(video, sx,sy,sw,sh, 0,0,c.width,c.height);
+  const {data}=cx.getImageData(0,0,c.width,c.height);
+  let sum=0,sum2=0,n=data.length/4;
+  for(let i=0;i<data.length;i+=4){
+    const Y = 0.2126*data[i]+0.7152*data[i+1]+0.0722*data[i+2];
+    sum+=Y; sum2+=Y*Y;
+  }
+  const mean=sum/n, varr=sum2/n - mean*mean;
+  const tips=[];
+  if(pxW<400) tips.push('Acércate');
+  if(mean>220) tips.push('Reduce reflejos');
+  if(mean<40) tips.push('Más luz/torch');
+  if(varr<150) tips.push('Inclina tarjeta');
+  tipsEl.textContent=tips.join(' • ');
+}
+function roiToSourceRect(){
+  const st=videoStage.getBoundingClientRect(), vw=video.videoWidth, vh=video.videoHeight;
+  const rs=Math.max(st.width/vw, st.height/vh);
+  const dispW=vw*rs, dispH=vh*rs, dx=(dispW-st.width)/2, dy=(dispH-st.height)/2;
+  const r=getRoiPct(roi);
+  const roiPx={ x: (r.left/100)*st.width - dx, y: (r.top/100)*st.height - dy, w: (r.width/100)*st.width, h: (r.height/100)*st.height };
+  const sx=Math.max(0, Math.round(roiPx.x/rs));
+  const sy=Math.max(0, Math.round(roiPx.y/rs));
+  const sw=Math.max(1, Math.round(roiPx.w/rs));
+  const sh=Math.max(1, Math.round(roiPx.h/rs));
+  return {sx,sy,sw,sh};
+}
+
+/* ===========================
+   Capturar a Vista Previa
+=========================== */
+btnCapture.addEventListener('click', async ()=>{
+  if(!video.videoWidth) return;
+  const {sx,sy,sw,sh} = roiToSourceRect();
+  workCanvas.width=sw; workCanvas.height=sh;
+  workCtx.drawImage(video, sx,sy,sw,sh, 0,0,sw,sh);
+  const dataUrl = workCanvas.toDataURL('image/png');
+  previewImg.src=dataUrl; previewB64.value=dataUrl;
+  pRoi.style.display='block'; setRoiPct(pRoi,{left:10,top:10,width:80,height:80}); syncPrevSliders();
+  if(autoExtractParse.checked){ await extractFromPreview(); parseData(); }
+});
+
+/* ===========================
+   PREVIEW — ROI mouse/touch
+=========================== */
+(function(){
+  const stage=pStage, roi=pRoi; let drag=null, start={};
+  roi.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    const h=e.target.closest('.handle')?.dataset.h||'move';
+    const s=stage.getBoundingClientRect();
+    drag={mode:h, base:{x:e.clientX,y:e.clientY}, sw:s.width, sh:s.height};
+    start=getRoiPct(roi);
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return; e.preventDefault();
+    const dx=(e.clientX-drag.base.x)/drag.sw*100, dy=(e.clientY-drag.base.y)/drag.sh*100;
+    let L=start.left, T=start.top, W=start.width, H=start.height;
+    switch(drag.mode){
+      case'move': L=clamp(start.left+dx,0,100-W); T=clamp(start.top+dy,0,100-H); break;
+      case'nw': L=clamp(start.left+dx,0,start.left+start.width-5); T=clamp(start.top+dy,0,start.top+start.height-5); W=start.width-(L-start.left); H=start.height-(T-start.top); break;
+      case'ne': T=clamp(start.top+dy,0,start.top+start.height-5); W=clamp(start.width+dx,5,100-start.left); H=start.height-(T-start.top); break;
+      case'sw': L=clamp(start.left+dx,0,start.left+start.width-5); W=start.width-(L-start.left); H=clamp(start.height+dy,5,100-start.top); break;
+      case'se': W=clamp(start.width+dx,5,100-start.left); H=clamp(start.height+dy,5,100-start.top); break;
+    }
+    setRoiPct(roi,{left:L, top:T, width:W, height:H}); syncPrevSliders();
+  });
+  window.addEventListener('mouseup',()=>drag=null);
+
+  let tState=null;
+  const gt=e=>Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY}));
+  const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  roi.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    const t=gt(e), r0=getRoiPct(roi);
+    if(t.length===1){ tState={mode:'move', startTouch:t[0], start:r0}; }
+    else if(t.length>=2){ tState={mode:'pinch', d0:dist(t[0],t[1]), start:r0}; }
+  },{passive:false});
+  roi.addEventListener('touchmove',e=>{
+    if(!tState)return; e.preventDefault();
+    const t=gt(e);
+    if(t.length===1 && tState.mode==='move'){
+      const s=stage.getBoundingClientRect();
+      const dx=(t[0].x - tState.startTouch.x)/s.width*100;
+      const dy=(t[0].y - tState.startTouch.y)/s.height*100;
+      const W=tState.start.width, H=tState.start.height;
+      const L=clamp(tState.start.left+dx,0,100-W);
+      const T=clamp(tState.start.top+dy,0,100-H);
+      setRoiPct(roi,{left:L, top:T, width:W, height:H});
+    }else if(t.length>=2 && tState.mode==='pinch'){
+      const d1=dist(t[0],t[1]), scale=clamp(d1/(tState.d0||1),0.5,3);
+      const st=tState.start, cx=st.left+st.width/2, cy=st.top+st.height/2;
+      let W=clamp(st.width*scale,5,100), H=clamp(st.height*scale,5,100), L=cx-W/2, T=cy-H/2;
+      if(L<0)L=0; if(T<0)T=0; if(L+W>100)L=100-W; if(T+H>100)T=100-H;
+      setRoiPct(roi,{left:L, top:T, width:W, height:H});
+    }
+    syncPrevSliders();
+  },{passive:false});
+  window.addEventListener('touchend',()=>tState=null,{passive:true});
+  window.addEventListener('touchcancel',()=>tState=null,{passive:true});
+})();
+pRoiWidth.addEventListener('input',()=>{
+  if(pRoi.style.display==='none')return;
+  const r=getRoiPct(pRoi), W=+pRoiWidth.value, cx=r.left+r.width/2; let L=cx-W/2; if(L<0)L=0; if(L+W>100)L=100-W;
+  setRoiPct(pRoi,{left:L, top:r.top, width:W, height:r.height});
+});
+pRoiHeight.addEventListener('input',()=>{
+  if(pRoi.style.display==='none')return;
+  const r=getRoiPct(pRoi), H=+pRoiHeight.value, cy=r.top+r.height/2; let T=cy-H/2; if(T<0)T=0; if(T+H>100)T=100-H;
+  setRoiPct(pRoi,{left:r.left, top:T, width:r.width, height:H});
+});
+pBtnUp.addEventListener('click',()=>{ const r=getRoiPct(pRoi); setRoiPct(pRoi,{top:Math.max(0,r.top-2)}); syncPrevSliders(); });
+pBtnDown.addEventListener('click',()=>{ const r=getRoiPct(pRoi); setRoiPct(pRoi,{top:Math.min(100-r.height,r.top+2)}); syncPrevSliders(); });
+pBtnLeft.addEventListener('click',()=>{ const r=getRoiPct(pRoi); setRoiPct(pRoi,{left:Math.max(0,r.left-2)}); syncPrevSliders(); });
+pBtnRight.addEventListener('click',()=>{ const r=getRoiPct(pRoi); setRoiPct(pRoi,{left:Math.min(100-r.width,r.left+2)}); syncPrevSliders(); });
+pBtnCenter.addEventListener('click',()=>{ const r=getRoiPct(pRoi); setRoiPct(pRoi,{left:(100-r.width)/2, top:(100-r.height)/2}); syncPrevSliders(); });
+
+/* ===========================
+   Limpieza/archivo/decodificación imagen
+=========================== */
+function clearPreview(){
+  previewImg.removeAttribute('src'); previewB64.value=''; pRoi.style.display='none';
+  resultImg.textContent=''; rawText.value='';
+}
+clearButton.addEventListener('click', clearPreview);
+
+myFile.addEventListener('change', ()=>{
+  const f=myFile.files?.[0]; if(!f) return;
+  clearPreview();
+  const url = URL.createObjectURL(f);
+  const image = document.createElement('img');
+  image.src = url; image.width=300;
+  image.onload = ()=>{
+    previewImg.src = image.src;
+    previewB64.value = image.src;
+    pRoi.style.display='block'; setRoiPct(pRoi,{left:10,top:10,width:80,height:80}); syncPrevSliders();
+  };
+  ensurePreviewDiv().appendChild(image);
+});
+function ensurePreviewDiv(){
+  let prev = document.getElementById('preview');
+  if(!prev){ prev = document.createElement('div'); prev.id='preview'; prev.style.marginTop='10px'; document.body.appendChild(prev); }
+  return prev;
+}
+decodeButton.addEventListener('click', async ()=>{
+  const prev = document.getElementById('preview');
+  if(!(prev?.firstChild && prev.firstChild.nodeType===Node.ELEMENT_NODE)) return;
+  const img = prev.firstChild.cloneNode(true);
+
+  if(useWasm.checked && wasmReady){
+    // leer RGBA y pasar al worker
+    const c=document.createElement('canvas');
+    await new Promise(r=>{ img.onload=r; img.onerror=r; img.src=img.src; });
+    c.width=img.naturalWidth||img.width; c.height=img.naturalHeight||img.height;
+    c.getContext('2d').drawImage(img,0,0);
+    const {data,width,height} = c.getContext('2d').getImageData(0,0,c.width,c.height);
+    const t = await decodeWithWasm(ensureWasmWorker(), data, width, height, 0, true);
+    resultImg.textContent = t || '(sin lectura)';
+    return;
+  }
+  // JS fallback
+  ensureJsReader().decodeFromImage(img).then(r=> resultImg.textContent=r.text).catch(e=> resultImg.textContent=String(e));
+});
+
+/* ===========================
+   Extraer de Vista Previa + Parse
+=========================== */
+btnExtractPreview.addEventListener('click', extractFromPreview);
+async function extractFromPreview(){
+  const img=previewImg; if(!img.src){ alert('No hay vista previa'); return; }
+  await ensureLoaded(img);
+  // recorte ROI de vista previa
+  let c=document.createElement('canvas');
+  if(usePreviewROI.checked && pRoi.style.display!=='none'){
+    const nx=Math.round((pct(pRoi.style.left)/100)*(img.naturalWidth||img.width));
+    const ny=Math.round((pct(pRoi.style.top)/100)*(img.naturalHeight||img.height));
+    const nw=Math.round((pct(pRoi.style.width)/100)*(img.naturalWidth||img.width));
+    const nh=Math.round((pct(pRoi.style.height)/100)*(img.naturalHeight||img.height));
+    c.width=nw; c.height=nh;
+    const cx=c.getContext('2d',{willReadFrequently:true});
+    cx.drawImage(img, nx,ny,nw,nh, 0,0,nw,nh);
+  }else{
+    c.width=img.naturalWidth||img.width; c.height=img.naturalHeight||img.height;
+    c.getContext('2d').drawImage(img,0,0);
+  }
+  // normalización
+  const ctx=c.getContext('2d'); unsharp(ctx,c.width,c.height); adaptiveThreshold(ctx,c.width,c.height);
+
+  if(useWasm.checked && wasmReady){
+    const {data,width,height} = ctx.getImageData(0,0,c.width,c.height);
+    const t = await decodeWithWasm(ensureWasmWorker(), data, width, height, 0, true);
+    rawText.value = t || '(sin lectura)';
+  } else {
+    const durl=c.toDataURL('image/png');
+    const txt = await decodeDataUrlJS(durl);
+    rawText.value = txt || '(sin lectura)';
+  }
+}
+btnParse.addEventListener('click', parseData);
+
+/* ===========================
+   Freeze & Smart Decode
+=========================== */
+smartFreezeButton.addEventListener('click', async ()=>{
+  const vw=video.videoWidth; if(!vw)return;
+  const {sx,sy,sw,sh}=roiToSourceRect();
+  const t = await decodeSmartROI({x:sx,y:sy,w:sw,h:sh});
+  resultDiv(t||'(sin lectura en smart decode)');
+  if(t && autoParse.checked){ rawText.value=t; parseData(); }
+});
+freezeButton.addEventListener('click', ()=>{/* compat placeholder */});
+
+/* ===========================
+   Torch y FPS
+=========================== */
+torchButton.addEventListener('click', async ()=>{
+  if(!streamObj) return;
+  const track = streamObj.getVideoTracks()[0];
+  try{ torchOn=!torchOn; await track.applyConstraints({advanced:[{torch:torchOn}]}); pTorch.textContent='Torch: '+(torchOn?'on':'off'); }
+  catch{ pTorch.textContent='Torch: n/a'; torchButton.disabled=true; }
+});
+fpsSel.addEventListener('change', ()=>{ targetFPS=Number(fpsSel.value)||12; });
+
+/* ===========================
+   Auto-detectar & Engine toggle
+=========================== */
+autoDetect.addEventListener('change', ()=>{
+  autoMode = autoDetect.checked;
+  pAuto.textContent = 'Auto: ' + (autoMode?'on':'off');
+  if(autoMode){ lastAutoText=''; confirmCount=0; stableSince=0; }
+});
+useWasm.addEventListener('change', ()=>{
+  if(useWasm.checked){
+    ensureWasmWorker();
+    if(wasmReady){ pEngine.textContent='Engine: WASM'; pEngine.classList.add('ok'); pEngine.classList.remove('err'); }
+    else { pEngine.textContent='Engine: WASM (init…)'; pEngine.classList.remove('ok'); }
+  }else{
+    pEngine.textContent='Engine: JS'; pEngine.classList.add('ok'); pEngine.classList.remove('err');
+  }
+});
+
+/* ===========================
+   Helpers
+=========================== */
+function resultDiv(text){ result.textContent = text||''; }
+async function ensureLoaded(img){ if(img.complete && img.naturalWidth) return; await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=e=>rej(e); }); }
+
+/* ===========================
+   Parseo (DUI SV + genérico)
+=========================== */
 function parseData(){
-  const text = (els.rawText.value || '').trim();
-  if(!text){ alert('No hay texto para parsear. Ejecuta primero “Extraer de Vista Previa”.'); return; }
-  const { rows: duiRows, score } = parseDUI_SV(text);
-  const rows = (score >= 2) ? duiRows : parseGeneric(text);
+  const text=(rawText.value||'').trim();
+  if(!text){ alert('No hay texto para parsear'); return; }
+  const {rows:duiRows, score}=parseDUI_SV(text);
+  const rows = (score>=2) ? duiRows : parseGeneric(text);
   renderTable(rows);
 }
 function normalizeSpaces(s){ return s.replace(/[ \t]+/g,' ').replace(/\u00A0/g,' ').trim(); }
-function matchOne(s, re){ const m = s.match(re); return m? m[0] : null; }
-function matchNearLabel(s, labelRe, valueRe, span){
-  const re = new RegExp(labelRe.source + `[\\s\\S]{0,${span}}` + valueRe.source);
-  const m = s.match(re); if(m){ const m2 = m[0].match(valueRe); return m2? m2[0] : null; } return null;
-}
+function matchOne(s,re){ const m=s.match(re); return m?m[0]:null; }
+function matchNearLabel(s,labelRe,valueRe,span){ const re=new RegExp(labelRe.source+`[\\s\\S]{0,${span}}`+valueRe.source); const m=s.match(re); if(m){ const m2=m[0].match(valueRe); return m2?m2[0]:null;} return null; }
 function normalizeDate(raw){
-  if(!raw) return null; const r = raw.replace(/[^\d]/g,'');
-  if(r.length===8){
-    if(/^19|20/.test(r)) return `${r.slice(0,4)}-${r.slice(4,6)}-${r.slice(6,8)}`;
-    return `${r.slice(4,8)}-${r.slice(2,4)}-${r.slice(0,2)}`;
-  }
-  const a = raw.replace(/[\.\s]/g,'').replace(/_/g,'-').replace(/\//g,'-');
-  const m = a.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
-  const m2 = a.match(/(\d{2})-(\d{2})-(\d{4})/); if(m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
+  if(!raw) return null; const r=raw.replace(/[^\d]/g,'');
+  if(r.length===8){ if(/^19|20/.test(r)) return `${r.slice(0,4)}-${r.slice(4,6)}-${r.slice(6,8)}`; return `${r.slice(4,8)}-${r.slice(2,4)}-${r.slice(0,2)}`; }
+  const a=raw.replace(/[\.\s]/g,'').replace(/_/g,'-').replace(/\//g,'-');
+  const m=a.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
+  const m2=a.match(/(\d{2})-(\d{2})-(\d{4})/); if(m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
   return raw;
 }
-function normSexo(s){ if(!s) return null; s=s.toUpperCase(); if(/^M/.test(s)) return 'M'; if(/^F/.test(s)) return 'F'; return s; }
+function normSexo(s){ if(!s)return null; s=s.toUpperCase(); if(/^M/.test(s))return'M'; if(/^F/.test(s))return'F'; return s; }
 function guessNationality(T){ if(/\bSALVADOR|SALVADORE/.test(T)) return 'SALVADOREÑA'; return null; }
 function pickNameLine(s){
   if(/\b(NOMBRE|NOMBRES|APELLIDO|APELLIDOS)\b/.test(s)) return s.replace(/\b(NOMBRE|NOMBRES|APELLIDOS?)\b\s*[:\-]?\s*/,'').trim();
   return s.replace(/[^A-ZÁÉÍÓÚÜÑ ]/g,' ').replace(/\s+/g,' ').trim();
 }
 function parseDUI_SV(text){
-  const rows = []; const add=(k,v)=>{ if(v){ rows.push([k, v.trim()]); } };
-  const T = normalizeSpaces(text.toUpperCase());
-  let dui = matchOne(T, /\b\d{8}-\d\b/) || matchOne(T, /\b\d{9}\b/);
-  if(dui && !dui.includes('-')) dui = dui.slice(0,8) + '-' + dui.slice(8);
-  add('DUI', dui);
-  let nit = matchOne(T, /\b\d{4}-\d{6}-\d{3}-\d\b/) || matchOne(T, /\b\d{14}\b/);
-  if(nit && /^\d{14}$/.test(nit)) nit = nit.replace(/^(\d{4})(\d{6})(\d{3})(\d)$/, '$1-$2-$3-$4');
-  add('NIT', nit);
-  const dateAny = /(\d{4}[\/\-]\d{2}[\/\-]\d{2})|(\d{2}[\/\-]\d{2}[\/\-]\d{4})|(\d{8})/;
-  const getDate = (labelRe)=>{ const near = matchNearLabel(T, labelRe, dateAny, 40); return near? normalizeDate(near):null; };
-  add('FECHA_NAC', getDate(/\b(NAC|NACIMIENTO|F\.? NAC\.?)\b/));
-  add('FECHA_EMI', getDate(/\b(EMI|EMISION|F\.? EMI\.?)\b/));
-  add('FECHA_EXP', getDate(/\b(EXP|EXPIR|VENC|F\.? EXP\.?)\b/));
-  const sexo = matchNearLabel(T, /\b(SEXO|SEX)\b/, /\b(M|F|MASCULINO|FEMENINO)\b/, 20);
-  add('SEXO', normSexo(sexo));
-  add('NACIONALIDAD', matchNearLabel(T, /\b(NAC\.?|NACIONALIDAD)\b/, /\b[SALVADORE(ÑA|NO)S?]|EL\s+SALVADOR|SV\b/, 40) || guessNationality(T));
-  add('DEPARTAMENTO', matchNearLabel(T, /\b(DEPARTAMENTO|DEPTO)\b/, /[A-ZÁÉÍÓÚÜÑ ]{3,}/, 40));
-  add('MUNICIPIO',   matchNearLabel(T, /\b(MUNICIPIO|MPO)\b/, /[A-ZÁÉÍÓÚÜÑ ]{3,}/, 40));
-  const nameLines = T.split(/\r?\n/).map(s=>s.trim()).filter(s=>s && !/\d/.test(s) && s.length>=3);
-  let apellidos=null, nombres=null, nombreCompleto=null;
-  if(nameLines.length>=2){ apellidos = pickNameLine(nameLines[0]); nombres = pickNameLine(nameLines[1]); }
-  else if(nameLines.length===1){ nombreCompleto = pickNameLine(nameLines[0]); }
-  if(!nombreCompleto && (nombres||apellidos)){ nombreCompleto = [nombres, apellidos].filter(Boolean).join(' '); }
-  add('APELLIDOS', apellidos); add('NOMBRES', nombres); add('NOMBRE_COMPLETO', nombreCompleto);
-  const score = (dui?1:0) + (nombreCompleto?1:0) + (rows.filter(([k,v])=>k.startsWith('FECHA_') && v).length?1:0);
-  return { rows, score };
+  const rows=[]; const add=(k,v)=>{ if(v){ rows.push([k,v.trim()]); } };
+  const T=normalizeSpaces(text.toUpperCase());
+  let dui=matchOne(T,/\b\d{8}-\d\b/)||matchOne(T,/\b\d{9}\b/);
+  if(dui && !dui.includes('-')) dui = dui.slice(0,8)+'-'+dui.slice(8);
+  add('DUI',dui);
+  let nit=matchOne(T,/\b\d{4}-\d{6}-\d{3}-\d\b/)||matchOne(T,/\b\d{14}\b/);
+  if(nit && /^\d{14}$/.test(nit)) nit = nit.replace(/^(\d{4})(\d{6})(\d{3})(\d)$/,'$1-$2-$3-$4');
+  add('NIT',nit);
+  const dateAny=/(\d{4}[\/-]\d{2}[\/-]\d{2})|(\d{2}[\/-]\d{2}[\/-]\d{4})|(\d{8})/;
+  const getDate=(labelRe)=>{ const near=matchNearLabel(T,labelRe,dateAny,40); return near?normalizeDate(near):null; };
+  add('FECHA_NAC', getDate(/\b(NAC|NACIMIENTO|F\.?\s*NAC\.?)\b/));
+  add('FECHA_EMI', getDate(/\b(EMI|EMISION|F\.?\s*EMI\.?)\b/));
+  add('FECHA_EXP', getDate(/\b(EXP|EXPIR|VENC|F\.?\s*EXP\.?)\b/));
+  const sexo=matchNearLabel(T,/\b(SEXO|SEX)\b/,/\b(M|F|MASCULINO|FEMENINO)\b/,20);
+  add('SEXO',normSexo(sexo));
+  add('NACIONALIDAD', matchNearLabel(T,/\b(NAC\.?|NACIONALIDAD)\b/,/\b[SALVADORE(ÑA|NO)S?]|EL\s+SALVADOR|SV\b/,40)||guessNationality(T));
+  add('DEPARTAMENTO', matchNearLabel(T,/\b(DEPARTAMENTO|DEPTO)\b/,/[A-ZÁÉÍÓÚÜÑ ]{3,}/,40));
+  add('MUNICIPIO',    matchNearLabel(T,/\b(MUNICIPIO|MPO)\b/,/[A-ZÁÉÍÓÚÜÑ ]{3,}/,40));
+  const nameLines=T.split(/\r?\n/).map(s=>s.trim()).filter(s=>s && !/\d/.test(s) && s.length>=3);
+  let apellidos=null,nombres=null,nombreCompleto=null;
+  if(nameLines.length>=2){ apellidos=pickNameLine(nameLines[0]); nombres=pickNameLine(nameLines[1]); }
+  else if(nameLines.length===1){ nombreCompleto=pickNameLine(nameLines[0]); }
+  if(!nombreCompleto && (nombres||apellidos)) nombreCompleto=[nombres,apellidos].filter(Boolean).join(' ');
+  add('APELLIDOS',apellidos); add('NOMBRES',nombres); add('NOMBRE_COMPLETO',nombreCompleto);
+  const score=(dui?1:0) + (nombreCompleto?1:0) + (rows.filter(([k,v])=>k.startsWith('FECHA_')&&v).length?1:0);
+  return {rows, score};
 }
 function parseGeneric(text){
-  const rows = []; const add=(k,v)=> rows.push([k, String(v||'').trim()]);
-  const kvRe = /^\s*([A-Za-zÁÉÍÓÚÑÜ0-9 ._\-\/]{2,30})\s*[:=]\s*(.+?)\s*$/gm; let m;
-  while((m = kvRe.exec(text))){ add(normalizeKey(m[1]), m[2]); }
-  const dateRe = /\b(?:(\d{4})[\/\-](\d{2})[\/\-](\d{2})|(\d{2})[\/\-](\d{2})[\/\-](\d{4})|(\d{8}))\b/g; const dates = new Set(); let d;
-  while((d = dateRe.exec(text))){
-    if(d[1]) dates.add(`${d[1]}-${d[2]}-${d[3]}`); else if(d[4]) dates.add(`${d[6]}-${d[5]}-${d[4]}`); else if(d[7]){ const s=d[7]; dates.add(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`); }
+  const rows=[]; const add=(k,v)=>rows.push([k,String(v||'').trim()]);
+  const kv=/^\s*([A-Za-zÁÉÍÓÚÑÜ0-9 ._\-\/]{2,30})\s*[:=]\s*(.+?)\s*$/gm; let m;
+  while((m=kv.exec(text))){ add(m[1].toUpperCase().replace(/\s+/g,' '), m[2]); }
+  const dateRe=/\b(?:(\d{4})[\/-](\d{2})[\/-](\d{2})|(\d{2})[\/-](\d{2})[\/-](\d{4})|(\d{8}))\b/g; const dates=new Set(); let d;
+  while((d=dateRe.exec(text))){
+    if(d[1]) dates.add(`${d[1]}-${d[2]}-${d[3]}`);
+    else if(d[4]) dates.add(`${d[6]}-${d[5]}-${d[4]}`);
+    else if(d[7]){ const s=d[7]; dates.add(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`); }
   }
   if(dates.size) add('FECHAS', Array.from(dates).join(', '));
-  const numRe = /\b\d{8,}\b/g; const nums = Array.from(new Set((text.match(numRe)||[]))); if(nums.length) add('NUMEROS_LARGOS', nums.join(', '));
-  const alnumRe = /\b[A-Z0-9]{6,}\b/g; const toks = Array.from(new Set((text.toUpperCase().match(alnumRe)||[]))); if(toks.length) add('TOKENS', toks.join(' '));
-  const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  if(lines.length){ const guessName = lines.find(s=>s.replace(/[^A-Za-zÁÉÍÓÚÜ ]/g,'').trim().split(/\s+/).length>=2 && s.length>=10); if(guessName) add('POSIBLE_NOMBRE', guessName); }
+  const numRe=/\b\d{8,}\b/g; const nums=Array.from(new Set((text.match(numRe)||[]))); if(nums.length) add('NUMEROS_LARGOS', nums.join(', '));
+  const alnumRe=/\b[A-Z0-9]{6,}\b/g; const toks=Array.from(new Set((text.toUpperCase().match(alnumRe)||[]))); if(toks.length) add('TOKENS', toks.join(' '));
+  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  if(lines.length){ const guess=lines.find(s=>s.replace(/[^A-Za-zÁÉÍÓÚÜ ]/g,'').trim().split(/\s+/).length>=2 && s.length>=10); if(guess) add('POSIBLE_NOMBRE', guess); }
   return rows;
 }
-function normalizeKey(k){ return k.replace(/\s+/g,' ').trim().toUpperCase(); }
 function renderTable(rows){
-  const tb = els.tblBody; tb.innerHTML = '';
-  if(!rows.length){
-    tb.innerHTML = '<tr><td colspan="2" style="opacity:.8">No se encontraron campos. Revisa el texto crudo.</td></tr>';
-    return;
-  }
+  tblBody.innerHTML='';
+  if(!rows.length){ tblBody.innerHTML='<tr><td colspan="2" style="opacity:.8">No se encontraron campos.</td></tr>'; return; }
   for(const [k,v] of rows){
-    const tr = document.createElement('tr');
-    const tdK = document.createElement('td'); tdK.textContent = k;
-    const tdV = document.createElement('td'); tdV.textContent = v;
-    tr.appendChild(tdK); tr.appendChild(tdV); tb.appendChild(tr);
+    const tr=document.createElement('tr');
+    const tdK=document.createElement('td'); tdK.textContent=k;
+    const tdV=document.createElement('td'); tdV.textContent=v;
+    tr.appendChild(tdK); tr.appendChild(tdV); tblBody.appendChild(tr);
   }
 }
 
-/* ========= Enlaces UI adicionales ========= */
-document.getElementById('freezeButton').addEventListener('click', decodeFreezeOnce);
-
-/* ========= Contenedor preview original ========= */
-const previewDiv = document.createElement('div');
-previewDiv.id = 'preview';
-previewDiv.style.marginTop = '10px';
-document.querySelector('.content').appendChild(previewDiv);
-
-/* ========= Extra: mapeo de errores comunes ========= */
-// Evita "Illegal invocation" usando funciones ligadas al contexto correcto (ya aplicado arriba)
+/* ===========================
+   Bootstrap
+=========================== */
+startButton.addEventListener('click', startCam);
+stopButton.addEventListener('click', stopCam);
+changeButton.addEventListener('click', ()=>{ stopCam(); startCam(); });
+setInterval(updateTipsFromROI, 350);
+pEngine.textContent='Engine: JS'; pEngine.classList.add('ok');
 </script>
 </body>
 </html>
-
