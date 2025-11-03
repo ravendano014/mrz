@@ -205,17 +205,22 @@
           workerReady = true;
           els.sLib.textContent = `Decoder: ${kind.toUpperCase()} ready`;
           els.sLib.className = 'pill ok';
+          els.diagNotes.textContent = `Using ${kind.toUpperCase()} decoder`;
         }else if(msg.type==='result'){
           handleDecode(msg.result);
         }else if(msg.type==='none'){
           // no-op
         }else if(msg.type==='error'){
+          console.error('Decoder error:', msg.error);
           els.lastStatus.textContent = `Error: ${msg.error}`;
           els.sLib.className = 'pill err';
-          // Auto-fallback to JS decoder if WASM fails to load due to CORS/redirects
+          
+          // Enhanced fallback logic
           if(kind === 'wasm') {
-            els.diagNotes.textContent = 'WASM failed (likely CORS/redirect). Falling back to @zxing/library JS decoder.';
-            createWorker('js');
+            els.diagNotes.textContent = 'WASM failed, falling back to JS decoder...';
+            setTimeout(() => createWorker('js'), 1000);
+          } else {
+            els.diagNotes.textContent = 'Both decoders failed. Check console for errors.';
           }
         }
       };
@@ -498,17 +503,36 @@
         // Load ZXing WASM via import
         (async()=>{
           try{
-            ZX = await import('https://cdn.jsdelivr.net/npm/@zxing/wasm@1.2.7/+esm');
+            // Try multiple CDN options
+            try {
+              ZX = await import('https://unpkg.com/@zxing/wasm@1.2.7/dist/umd/index.js');
+            } catch (e1) {
+              try {
+                ZX = await import('https://cdn.skypack.dev/@zxing/wasm@1.2.7');
+              } catch (e2) {
+                ZX = await import('https://esm.sh/@zxing/wasm@1.2.7');
+              }
+            }
             await ZX.load();
             ready = true;
             postMessage({type:'ready'});
-          }catch(e){ postMessage({type:'error', error: 'WASM load failed: '+(e?.message||e)}); }
+          }catch(e){ 
+            console.error('WASM load error:', e);
+            postMessage({type:'error', error: 'WASM load failed: '+(e?.message||e)}); 
+          }
         })();
 
         function decodePass(buf, w, h, opts){
           try{
             const reader = new ZX.BarcodeReader();
-            const res = reader.decode({ data: buf, width: w, height: h, tryHarder: !!opts.tryHarder, formats: [ZX.BarcodeFormat.PDF_417], maxNumberOfSymbols: 1 });
+            const res = reader.decode({ 
+              data: buf, 
+              width: w, 
+              height: h, 
+              tryHarder: !!opts.tryHarder, 
+              formats: [ZX.BarcodeFormat.PDF_417], 
+              maxNumberOfSymbols: 1 
+            });
             if(res && res.length){
               const r = res[0];
               return { text: r.text, points: r.position, backend:'wasm', tryHarder: !!opts.tryHarder };
@@ -577,5 +601,3 @@
   </script>
 </body>
 </html>
-
-    
