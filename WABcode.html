@@ -3,25 +3,28 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Detección de Códigos (video) · ZXing + OpenCV</title>
+<title>Detección de Códigos (Video) · ZXing + OpenCV</title>
 <style>
-  :root {
-    --bg:#0b1220; --card:#121a2b; --muted:#b9c2d0; --text:#e7ecf5; --accent:#6aa5ff; --ok:#00d28a; --warn:#ffcf6b; --err:#ff7a7a;
-    --border:#1e2a44;
+  :root { 
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+    --bg:#0b1220; --card:#121a2b; --muted:#b9c2d0; --text:#e7ecf5; --accent:#6aa5ff; --ok:#00d28a; --warn:#ffcf6b; --err:#ff7a7a; --border:#1e2a44;
   }
-  *{box-sizing:border-box}
-  body{margin:0;padding:24px;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
-  h1{font-size:1.4rem;margin:0 0 8px}
-  .app{max-width:1100px;margin:0 auto}
-  .grid{display:grid;gap:16px}
-  .cols{grid-template-columns: 1.1fr .9fr}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  body { margin: 0; padding: 24px; background: #0b1220; color: #e7ecf5; }
+  h1 { font-size: 1.5rem; margin: 0 0 8px; }
+  h2 { font-size: 1.1rem; margin: 0 0 8px; color:#cfe0ff }
+  p { margin: 6px 0 14px; color:#b9c2d0 }
+  .app { max-width: 1100px; margin: 0 auto; }
+  .card { background: #121a2b; border: 1px solid #1e2a44; border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  .grid { display: grid; gap: 16px; }
+  .cols { grid-template-columns: 1.1fr .9fr; }
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   label{font-size:.95rem;color:#cfe0ff}
   select,input,button{border-radius:12px;border:1px solid var(--border);background:#0e1627;color:var(--text);padding:10px 12px}
   button{cursor:pointer}
-  button.primary{background:#16335a;border-color:#224a82}
-  button.primary:hover{filter:brightness(1.15)}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .primary{background:#16335a;border-color:#224a82}
+  .primary:hover{filter:brightness(1.15)}
+  .ghost{background:#0e1627}
+  .badge{display:inline-block;font-size:.8rem;padding:4px 8px;border:1px solid var(--border);border-radius:999px;background:#0e1627}
   .hint{color:var(--muted);font-size:.9rem;margin-top:6px}
   .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
   .stack{display:flex;flex-direction:column;gap:10px}
@@ -32,7 +35,6 @@
   canvas.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
   .mini{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .mini canvas{width:100%;aspect-ratio:4/3;background:#0a0f1c;border:1px dashed #223250;border-radius:10px}
-  .badge{display:inline-block;font-size:.8rem;padding:4px 8px;border:1px solid var(--border);border-radius:999px;background:#0e1627}
   .formats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}
   .formats label{display:flex;align-items:center;gap:8px;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--muted)}
   .footer{margin-top:14px;color:#7f8aa3;font-size:.85rem}
@@ -41,14 +43,17 @@
 <body>
 <div class="app">
   <h1>Detección de códigos en tiempo real (Video) — ZXing + OpenCV</h1>
-  <p class="hint">Funciona con múltiples formatos (QR, Code 128, EAN-13, PDF417, etc.). Puedes activar el <b>preprocesado OpenCV</b> si hay poca iluminación o enfoque difícil.</p>
+  <p class="hint">Incluye: selección manual, <b>Cambiar cámara</b> (rota entre dispositivos), botones <b>Trasera/Frontal</b>, <b>linterna</b>, preprocesado <b>OpenCV</b>, overlay, FPS y filtros por formato.</p>
 
   <div class="grid cols">
-    <!-- Lado izquierdo: cámara y resultados -->
+    <!-- IZQUIERDA: Cámara + resultados -->
     <section class="card stack">
       <div class="row">
         <label for="deviceSelect">Cámara:</label>
         <select id="deviceSelect"></select>
+        <button id="btnSwitch" class="ghost" title="Cambiar cámara (rotar)">Cambiar cámara</button>
+        <button id="btnBack" class="ghost" title="Elegir cámara trasera por nombre">Trasera</button>
+        <button id="btnFront" class="ghost" title="Elegir cámara frontal por nombre">Frontal</button>
         <button id="btnStart" class="primary">Iniciar</button>
         <button id="btnStop">Detener</button>
         <button id="btnTorch" title="Linterna (si el dispositivo la soporta)">Linterna</button>
@@ -82,31 +87,29 @@
         <div>Texto</div><div id="text">—</div>
         <div>Tiempo decod.</div><div id="tdec">—</div>
       </div>
-      <div class="footer">Consejo: Si el lector tarda, prueba activar OpenCV, acercar la cámara, o seleccionar menos formatos.</div>
+      <div class="footer">Tip: si cuesta leer, activa OpenCV (CLAHE + Blur 1–3) y reduce formatos a los necesarios.</div>
     </section>
 
-    <!-- Lado derecho: opciones -->
+    <!-- DERECHA: Opciones -->
     <section class="card">
       <div class="stack">
         <div>
-          <label>Selecciona formatos a detectar (cuantos menos, más rápido):</label>
-          <div class="formats" id="formatList">
-            <!-- Se generan por JS -->
-          </div>
+          <h2>Formatos a detectar</h2>
+          <div class="formats" id="formatList"></div>
         </div>
 
         <div>
-          <label>Parámetros OpenCV (solo si está activado):</label>
+          <h2>Parámetros OpenCV</h2>
           <div class="row">
             <label>Blur (px) <input type="number" id="cvBlur" min="0" max="9" step="1" value="1" style="width:80px"></label>
             <label>Umbral adaptativo <input type="checkbox" id="cvThresh" checked></label>
             <label>CLAHE <input type="checkbox" id="cvClahe"></label>
           </div>
-          <p class="hint">OpenCV: gris → (opcional) CLAHE → blur → umbral/adaptativo. Se dibuja en el canvas “procesado”.</p>
+          <p class="hint">Pipeline: gris → (CLAHE) → blur → umbral (adaptativo/Otsu). Se decodifica desde el canvas procesado.</p>
         </div>
 
         <div>
-          <label>Historial (recientes):</label>
+          <h2>Historial</h2>
           <div id="log" style="font-family:ui-monospace,Consolas,monospace;font-size:.9rem;line-height:1.35;max-height:280px;overflow:auto;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:10px"></div>
         </div>
       </div>
@@ -115,18 +118,19 @@
 </div>
 
 <!-- ====== Librerías por CDN ====== -->
-<!-- ZXing (UMD) expone window.ZXing.* para códigos de barras (incluye PDF417) -->
 <script src="https://unpkg.com/@zxing/library@latest"></script>
-<!-- OpenCV.js (opcional) -->
 <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 
 <script>
 (function(){
-  // ------- Elementos UI -------
+  // ------- UI -------
   const deviceSelect = document.getElementById('deviceSelect');
   const btnStart = document.getElementById('btnStart');
   const btnStop = document.getElementById('btnStop');
   const btnTorch = document.getElementById('btnTorch');
+  const btnBack = document.getElementById('btnBack');
+  const btnFront = document.getElementById('btnFront');
+  const btnSwitch = document.getElementById('btnSwitch');
   const useOpenCV = document.getElementById('useopencv');
   const showOverlay = document.getElementById('showOverlay');
   const video = document.getElementById('video');
@@ -153,8 +157,10 @@
   let lastTime = performance.now();
   let frames = 0, fps = 0;
   let opencvReady = false;
+  let devicesCache = []; // videoinput devices
+  let deviceIndex = 0;   // índice actual para "Cambiar cámara"
 
-  // ------- Formatos disponibles -------
+  // ------- Formatos -------
   const formatItems = [
     ["QR_CODE","QR"],
     ["DATA_MATRIX","DataMatrix"],
@@ -171,7 +177,6 @@
     ["RSS_14","RSS-14"],
     ["RSS_EXPANDED","RSS Expanded"]
   ];
-
   const formatList = document.getElementById('formatList');
   formatItems.forEach(([key,label])=>{
     const id = "fmt_"+key;
@@ -179,17 +184,16 @@
     wrap.innerHTML = `<input type="checkbox" id="${id}" checked> ${label}`;
     formatList.appendChild(wrap);
   });
-
   function getSelectedFormats(){
     const formats = [];
     formatItems.forEach(([key])=>{
       const el = document.getElementById('fmt_'+key);
       if(el && el.checked) formats.push(ZXing.BarcodeFormat[key]);
     });
-    return formats.length ? formats : [ZXing.BarcodeFormat.QR_CODE]; // fallback
+    return formats.length ? formats : [ZXing.BarcodeFormat.QR_CODE];
   }
 
-  // ------- ZXing reader con hints -------
+  // ------- ZXing -------
   let codeReader = null;
   function rebuildReader(){
     const hints = new Map();
@@ -204,7 +208,6 @@
   if (window.cv && typeof window.cv['onRuntimeInitialized'] !== 'undefined') {
     window.cv['onRuntimeInitialized'] = onCVReady;
   } else {
-    // si llega después:
     document.addEventListener('opencvready', onCVReady, {once:true});
   }
 
@@ -216,13 +219,12 @@
   function setStatus(msg, cls="warn"){ statusEl.className = cls; statusEl.textContent = msg; }
   function setResult(res, t){
     if(!res){ fmtEl.textContent = "—"; textEl.textContent = "—"; tdecEl.textContent = "—"; return; }
-    fmtEl.textContent = res.getBarcodeFormat ? res.getBarcodeFormat().toString() : (res.format || "—");
-    textEl.textContent = res.getText ? res.getText() : (res.text || "—");
-    tdecEl.textContent = `${t.toFixed(1)} ms`;
-    log(`<span class="ok">✔</span> <b>${fmtEl.textContent}</b> → <code>${escapeHtml(textEl.textContent)}</code>`);
+    const fmt = res.getBarcodeFormat ? res.getBarcodeFormat().toString() : (res.format || "—");
+    const txt = res.getText ? res.getText() : (res.text || "—");
+    fmtEl.textContent = fmt; textEl.textContent = txt; tdecEl.textContent = `${t.toFixed(1)} ms`;
+    log(`<span class="ok">✔</span> <b>${fmt}</b> → <code>${escapeHtml(txt)}</code>`);
   }
-  function escapeHtml(s){ return s.replace(/[&<>]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
-
+  function escapeHtml(s){ return String(s).replace(/[&<>]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
   function drawOverlay(points){
     const ctx = overlay.getContext('2d');
     ctx.clearRect(0,0,overlay.width,overlay.height);
@@ -233,40 +235,70 @@
     for(let i=1;i<points.length;i++) ctx.lineTo(points[i].x, points[i].y);
     ctx.closePath(); ctx.stroke(); ctx.fill();
   }
+  function drawFPS(){
+    frames++;
+    const now = performance.now();
+    if (now - lastTime >= 1000) {
+      fps = frames; frames = 0; lastTime = now;
+      fpsEl.textContent = `FPS: ${fps}`;
+    }
+  }
+  function resizeCanvases(){
+    const w = video.videoWidth || 1280;
+    const h = video.videoHeight || 720;
+    [overlay,cRaw,cProc].forEach(c=>{ c.width = w; c.height = h; });
+  }
 
-  async function enumerateCameras(){
+  // ------- Cámaras -------
+  async function enumerateCameras(keepSelection=true){
+    const prev = deviceSelect.value;
     const devices = await navigator.mediaDevices.enumerateDevices();
-    const cams = devices.filter(d=>d.kind==='videoinput');
+    devicesCache = devices.filter(d=>d.kind==='videoinput');
+
     deviceSelect.innerHTML = '';
-    cams.forEach((d,i)=>{
+    devicesCache.forEach((d,i)=>{
       const opt = document.createElement('option');
       opt.value = d.deviceId;
       opt.textContent = d.label || `Cámara ${i+1}`;
       deviceSelect.appendChild(opt);
     });
+
+    // Restaurar selección si aplica
+    if (keepSelection && prev && devicesCache.some(d=>d.deviceId===prev)){
+      deviceSelect.value = prev;
+      deviceIndex = devicesCache.findIndex(d=>d.deviceId===prev);
+    } else {
+      deviceIndex = Math.max(0, Math.min(deviceIndex, devicesCache.length-1));
+      deviceSelect.value = devicesCache[deviceIndex]?.deviceId || '';
+    }
   }
 
-  async function start(){
+  function findByFacingName(prefer='back'){
+    const needle = prefer === 'back'
+      ? /(back|rear|trase|environment|trás|trasera)/i
+      : /(front|user|frente|frontal)/i;
+    let dev = devicesCache.find(d=> needle.test(d.label||''));
+    if (dev) return dev.deviceId;
+    if (prefer==='back') return devicesCache[devicesCache.length-1]?.deviceId || devicesCache[0]?.deviceId;
+    return devicesCache[0]?.deviceId || devicesCache[devicesCache.length-1]?.deviceId;
+  }
+
+  async function startWithDevice(deviceId, facing){
     try{
-      await enumerateCameras();
-      const devId = deviceSelect.value || undefined;
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {deviceId: devId ? {exact:devId}:undefined, width:{ideal:1280}, height:{ideal:720}, facingMode:"environment"}
-      });
+      const constraints = deviceId ? {
+        video: { deviceId: {exact: deviceId}, width:{ideal:1280}, height:{ideal:720} }
+      } : {
+        video: { facingMode: facing || "environment", width:{ideal:1280}, height:{ideal:720} }
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream; await video.play();
       track = stream.getVideoTracks()[0];
       resizeCanvases();
       setStatus("Detectando...", "ok");
       torchOn = false; btnTorch.classList.remove('primary');
-
-      // reconstruir reader por si cambiaron formatos
       rebuildReader();
-
-      if (useOpenCV.checked) {
-        loopWithOpenCV();
-      } else {
-        decodeWithZXingLive();
-      }
+      if (useOpenCV.checked) loopWithOpenCV();
+      else decodeWithZXingLive();
     }catch(err){
       console.error(err);
       setStatus("Error al iniciar cámara","err");
@@ -274,16 +306,17 @@
     }
   }
 
+  async function start(){
+    await enumerateCameras();
+    const devId = deviceSelect.value || undefined;
+    await startWithDevice(devId, "environment");
+  }
   function stop(){
     if (rafId) cancelAnimationFrame(rafId), rafId=null;
     if (codeReader) codeReader.reset();
-    if (stream){
-      stream.getTracks().forEach(t=>t.stop());
-      stream = null; track = null;
-    }
+    if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; }
     setStatus("Detenido");
   }
-
   async function toggleTorch(){
     try{
       if(!track) return;
@@ -295,69 +328,53 @@
     }catch(err){ log(`<span class="err">✖</span> Torch: ${err.message||err}`); }
   }
 
-  function resizeCanvases(){
-    const w = video.videoWidth || 1280;
-    const h = video.videoHeight || 720;
-    [overlay,cRaw,cProc].forEach(c=>{ c.width = w; c.height = h; });
+  async function switchCamera(){
+    if (!devicesCache.length){ await enumerateCameras(false); }
+    if (!devicesCache.length) return;
+    deviceIndex = (deviceIndex + 1) % devicesCache.length;
+    const nextId = devicesCache[deviceIndex].deviceId;
+    deviceSelect.value = nextId;
+    if(stream){ stop(); }
+    await startWithDevice(nextId, "environment");
   }
 
   // ------- Flujo 1: ZXing directo desde video -------
   function decodeWithZXingLive(){
     if (!codeReader) rebuildReader();
-    // Usamos decodeFromVideoDevice para máxima velocidad
-    codeReader.decodeFromVideoDevice(deviceSelect.value || undefined, video, (result, err, controls) => {
+    codeReader.decodeFromVideoDevice(deviceSelect.value || undefined, video, (result, err) => {
       paintRaw();
       drawFPS();
-
       if (result) {
-        const t0 = performance.now();
-        // result.resultPoints puede venir con puntos de interés
-        const pts = (result.resultPoints||[]).map(p=>{
-          // ZXing reporta en coords del video; ajustamos a canvas
-          return {x: p.getX ? p.getX() : p.x, y: p.getY ? p.getY() : p.y};
-        });
+        const pts = (result.resultPoints||[]).map(p=>({x:p.getX?p.getX():p.x, y:p.getY?p.getY():p.y}));
         drawOverlay(pts);
-        const t1 = performance.now();
-        setResult(result, t1 - t0);
+        setResult(result, 0);
       } else if (err && !(err instanceof ZXing.NotFoundException)) {
-        // NoFound ocurre MUY frecuente; solo mostramos errores reales
         setStatus("Buscando...", "warn");
       }
     });
   }
 
-  // ------- Flujo 2: Preprocesar con OpenCV y luego ZXing -------
+  // ------- Flujo 2: OpenCV + ZXing -------
   async function loopWithOpenCV(){
     if (!opencvReady) { setStatus("Cargando OpenCV...", "warn"); await waitForCV(); }
-    const ctxRaw = cRaw.getContext('2d');
     const ctxProc = cProc.getContext('2d');
-
     const step = async () => {
-      paintRaw(); // también actualiza FPS
+      paintRaw();
       if(!decoding){
         decoding = true;
         try{
-          // 1) Dibujar frame en canvas procesado
           ctxProc.drawImage(video, 0, 0, cProc.width, cProc.height);
           await cvProcess(cProc, {blur:+cvBlur.value||0, thresh:cvThresh.checked, clahe:cvClahe.checked});
-
           const t0 = performance.now();
-          // 2) Pedimos a ZXing que decode desde canvas procesado
           const result = await codeReader.decodeFromCanvas(cProc);
           const t1 = performance.now();
-
-          // Puntos: no siempre están disponibles
           drawOverlay(result?.resultPoints?.map(p=>({x:p.x??p.getX(), y:p.y??p.getY()})) || null);
           setResult(result, t1 - t0);
         } catch(e){
-          // NotFoundException: no mostrar como error
-          if (!(e instanceof ZXing.NotFoundException)) {
-            log(`<span class="err">✖</span> ${e.message||e}`);
-          }
-        } finally {
-          decoding = false;
-        }
+          if (!(e instanceof ZXing.NotFoundException)) log(`<span class="err">✖</span> ${e.message||e}`);
+        } finally { decoding = false; }
       }
+      drawFPS();
       rafId = requestAnimationFrame(step);
     };
     step();
@@ -366,15 +383,6 @@
   function paintRaw(){
     const ctx = cRaw.getContext('2d');
     ctx.drawImage(video, 0, 0, cRaw.width, cRaw.height);
-  }
-
-  function drawFPS(){
-    frames++;
-    const now = performance.now();
-    if (now - lastTime >= 1000) {
-      fps = frames; frames = 0; lastTime = now;
-      fpsEl.textContent = `FPS: ${fps}`;
-    }
   }
 
   async function waitForCV(){
@@ -390,56 +398,65 @@
     let dst = new cv.Mat();
     try{
       cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
-
       if (clahe) {
         const cla = new cv.CLAHE(2.0, new cv.Size(8,8));
         cla.apply(dst, dst);
         cla.delete();
       }
-
       if (blur>0) {
         const k = blur%2===1 ? blur : blur+1;
         if (k>1) cv.GaussianBlur(dst, dst, new cv.Size(k,k), 0, 0, cv.BORDER_DEFAULT);
       }
-
-      if (thresh) {
-        cv.adaptiveThreshold(dst, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 10);
-      } else {
-        cv.threshold(dst, dst, 0, 255, cv.THRESH_BINARY|cv.THRESH_OTSU);
-      }
-
+      if (thresh) cv.adaptiveThreshold(dst, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 10);
+      else cv.threshold(dst, dst, 0, 255, cv.THRESH_BINARY|cv.THRESH_OTSU);
       cv.cvtColor(dst, src, cv.COLOR_GRAY2RGBA);
       cv.imshow(canvas, src);
-    } finally {
-      src.delete(); dst.delete();
-    }
+    } finally { src.delete(); dst.delete(); }
   }
 
   // ------- Eventos -------
   btnStart.addEventListener('click', start);
   btnStop.addEventListener('click', stop);
   btnTorch.addEventListener('click', toggleTorch);
-  useOpenCV.addEventListener('change', ()=>{
-    if(stream){
-      // Reiniciar el flujo para aplicar el modo
-      stop(); start();
-    }
-  });
+  btnSwitch.addEventListener('click', switchCamera);
   showOverlay.addEventListener('change', ()=> drawOverlay(null));
-  formatList.addEventListener('change', ()=>{
-    // Si está corriendo, reiniciar con nuevos hints
-    if (stream){
-      stop(); start();
-    }
+  formatList.addEventListener('change', ()=>{ if (stream){ stop(); start(); } });
+  useOpenCV.addEventListener('change', ()=>{ if(stream){ stop(); start(); } });
+
+  // Selector de dispositivo manual
+  deviceSelect.addEventListener('change', async ()=>{
+    if (!deviceSelect.value) return;
+    deviceIndex = devicesCache.findIndex(d=>d.deviceId===deviceSelect.value);
+    if (deviceIndex < 0) deviceIndex = 0;
+    if (stream){ stop(); }
+    await startWithDevice(deviceSelect.value, "environment");
+  });
+
+  // Botones rápidos Frontal/Trasera por nombre
+  btnBack.addEventListener('click', async ()=>{
+    await enumerateCameras();
+    const devId = findByFacingName('back');
+    if (devId){ deviceSelect.value = devId; deviceIndex = devicesCache.findIndex(d=>d.deviceId===devId);
+      if(stream){ stop(); } await startWithDevice(devId, "environment"); }
+  });
+  btnFront.addEventListener('click', async ()=>{
+    await enumerateCameras();
+    const devId = findByFacingName('front');
+    if (devId){ deviceSelect.value = devId; deviceIndex = devicesCache.findIndex(d=>d.deviceId===devId);
+      if(stream){ stop(); } await startWithDevice(devId, "user"); }
   });
 
   // Enumerar cámaras al cargar
-  navigator.mediaDevices?.getUserMedia
-    ? enumerateCameras().catch(()=>{})
-    : setStatus("Tu navegador no soporta getUserMedia","err");
+  if (navigator.mediaDevices?.getUserMedia) {
+    enumerateCameras(false).catch(()=>{});
+  } else {
+    setStatus("Tu navegador no soporta getUserMedia","err");
+  }
 
   window.addEventListener('beforeunload', stop);
 })();
 </script>
 </body>
 </html>
+
+
