@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Detección de Códigos (video) · ZXing + OpenCV</title>
+<style>
+  :root {
+    --bg:#0b1220; --card:#121a2b; --muted:#b9c2d0; --text:#e7ecf5; --accent:#6aa5ff; --ok:#00d28a; --warn:#ffcf6b; --err:#ff7a7a;
+    --border:#1e2a44;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
+  h1{font-size:1.4rem;margin:0 0 8px}
+  .app{max-width:1100px;margin:0 auto}
+  .grid{display:grid;gap:16px}
+  .cols{grid-template-columns: 1.1fr .9fr}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  label{font-size:.95rem;color:#cfe0ff}
+  select,input,button{border-radius:12px;border:1px solid var(--border);background:#0e1627;color:var(--text);padding:10px 12px}
+  button{cursor:pointer}
+  button.primary{background:#16335a;border-color:#224a82}
+  button.primary:hover{filter:brightness(1.15)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .hint{color:var(--muted);font-size:.9rem;margin-top:6px}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+  .stack{display:flex;flex-direction:column;gap:10px}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:6px 10px;font-size:.95rem}
+  .kv div:nth-child(odd){color:#cfe0ff}
+  .video-wrap{position:relative;aspect-ratio:16/9;background:#0a0f1c;border-radius:12px;overflow:hidden;border:1px solid var(--border)}
+  video,canvas.preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  canvas.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .mini{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .mini canvas{width:100%;aspect-ratio:4/3;background:#0a0f1c;border:1px dashed #223250;border-radius:10px}
+  .badge{display:inline-block;font-size:.8rem;padding:4px 8px;border:1px solid var(--border);border-radius:999px;background:#0e1627}
+  .formats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}
+  .formats label{display:flex;align-items:center;gap:8px;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--muted)}
+  .footer{margin-top:14px;color:#7f8aa3;font-size:.85rem}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Detección de códigos en tiempo real (Video) — ZXing + OpenCV</h1>
+  <p class="hint">Funciona con múltiples formatos (QR, Code 128, EAN-13, PDF417, etc.). Puedes activar el <b>preprocesado OpenCV</b> si hay poca iluminación o enfoque difícil.</p>
+
+  <div class="grid cols">
+    <!-- Lado izquierdo: cámara y resultados -->
+    <section class="card stack">
+      <div class="row">
+        <label for="deviceSelect">Cámara:</label>
+        <select id="deviceSelect"></select>
+        <button id="btnStart" class="primary">Iniciar</button>
+        <button id="btnStop">Detener</button>
+        <button id="btnTorch" title="Linterna (si el dispositivo la soporta)">Linterna</button>
+        <span id="fps" class="badge">FPS: —</span>
+      </div>
+
+      <div class="row">
+        <label><input type="checkbox" id="useopencv"> Preprocesar con OpenCV</label>
+        <label><input type="checkbox" id="showOverlay" checked> Mostrar overlay</label>
+      </div>
+
+      <div class="video-wrap">
+        <video id="video" playsinline></video>
+        <canvas id="overlay" class="overlay"></canvas>
+      </div>
+
+      <div class="mini">
+        <div>
+          <label>Frame original</label>
+          <canvas id="canvasRaw"></canvas>
+        </div>
+        <div>
+          <label>Frame procesado (OpenCV)</label>
+          <canvas id="canvasProc"></canvas>
+        </div>
+      </div>
+
+      <div class="kv">
+        <div>Estado</div><div id="status" class="warn">Sin iniciar</div>
+        <div>Formato</div><div id="fmt">—</div>
+        <div>Texto</div><div id="text">—</div>
+        <div>Tiempo decod.</div><div id="tdec">—</div>
+      </div>
+      <div class="footer">Consejo: Si el lector tarda, prueba activar OpenCV, acercar la cámara, o seleccionar menos formatos.</div>
+    </section>
+
+    <!-- Lado derecho: opciones -->
+    <section class="card">
+      <div class="stack">
+        <div>
+          <label>Selecciona formatos a detectar (cuantos menos, más rápido):</label>
+          <div class="formats" id="formatList">
+            <!-- Se generan por JS -->
+          </div>
+        </div>
+
+        <div>
+          <label>Parámetros OpenCV (solo si está activado):</label>
+          <div class="row">
+            <label>Blur (px) <input type="number" id="cvBlur" min="0" max="9" step="1" value="1" style="width:80px"></label>
+            <label>Umbral adaptativo <input type="checkbox" id="cvThresh" checked></label>
+            <label>CLAHE <input type="checkbox" id="cvClahe"></label>
+          </div>
+          <p class="hint">OpenCV: gris → (opcional) CLAHE → blur → umbral/adaptativo. Se dibuja en el canvas “procesado”.</p>
+        </div>
+
+        <div>
+          <label>Historial (recientes):</label>
+          <div id="log" style="font-family:ui-monospace,Consolas,monospace;font-size:.9rem;line-height:1.35;max-height:280px;overflow:auto;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:10px"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ====== Librerías por CDN ====== -->
+<!-- ZXing (UMD) expone window.ZXing.* para códigos de barras (incluye PDF417) -->
+<script src="https://unpkg.com/@zxing/library@latest"></script>
+<!-- OpenCV.js (opcional) -->
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
+<script>
+(function(){
+  // ------- Elementos UI -------
+  const deviceSelect = document.getElementById('deviceSelect');
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  const btnTorch = document.getElementById('btnTorch');
+  const useOpenCV = document.getElementById('useopencv');
+  const showOverlay = document.getElementById('showOverlay');
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const cRaw = document.getElementById('canvasRaw');
+  const cProc = document.getElementById('canvasProc');
+  const statusEl = document.getElementById('status');
+  const fmtEl = document.getElementById('fmt');
+  const textEl = document.getElementById('text');
+  const tdecEl = document.getElementById('tdec');
+  const logEl = document.getElementById('log');
+  const fpsEl = document.getElementById('fps');
+
+  const cvBlur = document.getElementById('cvBlur');
+  const cvThresh = document.getElementById('cvThresh');
+  const cvClahe = document.getElementById('cvClahe');
+
+  // ------- Estado -------
+  let stream = null;
+  let track = null;
+  let torchOn = false;
+  let rafId = null;
+  let decoding = false;
+  let lastTime = performance.now();
+  let frames = 0, fps = 0;
+  let opencvReady = false;
+
+  // ------- Formatos disponibles -------
+  const formatItems = [
+    ["QR_CODE","QR"],
+    ["DATA_MATRIX","DataMatrix"],
+    ["AZTEC","Aztec"],
+    ["PDF_417","PDF417"],
+    ["CODE_128","Code 128"],
+    ["CODE_39","Code 39"],
+    ["CODABAR","Codabar"],
+    ["EAN_13","EAN-13"],
+    ["EAN_8","EAN-8"],
+    ["UPC_A","UPC-A"],
+    ["UPC_E","UPC-E"],
+    ["ITF","ITF"],
+    ["RSS_14","RSS-14"],
+    ["RSS_EXPANDED","RSS Expanded"]
+  ];
+
+  const formatList = document.getElementById('formatList');
+  formatItems.forEach(([key,label])=>{
+    const id = "fmt_"+key;
+    const wrap = document.createElement('label');
+    wrap.innerHTML = `<input type="checkbox" id="${id}" checked> ${label}`;
+    formatList.appendChild(wrap);
+  });
+
+  function getSelectedFormats(){
+    const formats = [];
+    formatItems.forEach(([key])=>{
+      const el = document.getElementById('fmt_'+key);
+      if(el && el.checked) formats.push(ZXing.BarcodeFormat[key]);
+    });
+    return formats.length ? formats : [ZXing.BarcodeFormat.QR_CODE]; // fallback
+  }
+
+  // ------- ZXing reader con hints -------
+  let codeReader = null;
+  function rebuildReader(){
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, getSelectedFormats());
+    codeReader = new ZXing.BrowserMultiFormatReader(hints, 500);
+  }
+  rebuildReader();
+
+  // ------- OpenCV runtime -------
+  window.cv = window.cv || {};
+  const onCVReady = () => { opencvReady = true; console.log("OpenCV listo"); };
+  if (window.cv && typeof window.cv['onRuntimeInitialized'] !== 'undefined') {
+    window.cv['onRuntimeInitialized'] = onCVReady;
+  } else {
+    // si llega después:
+    document.addEventListener('opencvready', onCVReady, {once:true});
+  }
+
+  // ------- Utilidades -------
+  function log(msg){
+    const time = new Date().toLocaleTimeString();
+    logEl.insertAdjacentHTML('afterbegin', `<div>[${time}] ${msg}</div>`);
+  }
+  function setStatus(msg, cls="warn"){ statusEl.className = cls; statusEl.textContent = msg; }
+  function setResult(res, t){
+    if(!res){ fmtEl.textContent = "—"; textEl.textContent = "—"; tdecEl.textContent = "—"; return; }
+    fmtEl.textContent = res.getBarcodeFormat ? res.getBarcodeFormat().toString() : (res.format || "—");
+    textEl.textContent = res.getText ? res.getText() : (res.text || "—");
+    tdecEl.textContent = `${t.toFixed(1)} ms`;
+    log(`<span class="ok">✔</span> <b>${fmtEl.textContent}</b> → <code>${escapeHtml(textEl.textContent)}</code>`);
+  }
+  function escapeHtml(s){ return s.replace(/[&<>]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+  function drawOverlay(points){
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    if(!showOverlay.checked || !points || !points.length) return;
+    ctx.lineWidth = 3; ctx.strokeStyle = '#00d28a'; ctx.fillStyle = 'rgba(0,210,138,.12)';
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for(let i=1;i<points.length;i++) ctx.lineTo(points[i].x, points[i].y);
+    ctx.closePath(); ctx.stroke(); ctx.fill();
+  }
+
+  async function enumerateCameras(){
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(d=>d.kind==='videoinput');
+    deviceSelect.innerHTML = '';
+    cams.forEach((d,i)=>{
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Cámara ${i+1}`;
+      deviceSelect.appendChild(opt);
+    });
+  }
+
+  async function start(){
+    try{
+      await enumerateCameras();
+      const devId = deviceSelect.value || undefined;
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {deviceId: devId ? {exact:devId}:undefined, width:{ideal:1280}, height:{ideal:720}, facingMode:"environment"}
+      });
+      video.srcObject = stream; await video.play();
+      track = stream.getVideoTracks()[0];
+      resizeCanvases();
+      setStatus("Detectando...", "ok");
+      torchOn = false; btnTorch.classList.remove('primary');
+
+      // reconstruir reader por si cambiaron formatos
+      rebuildReader();
+
+      if (useOpenCV.checked) {
+        loopWithOpenCV();
+      } else {
+        decodeWithZXingLive();
+      }
+    }catch(err){
+      console.error(err);
+      setStatus("Error al iniciar cámara","err");
+      log(`<span class="err">✖</span> ${err.message||err}`);
+    }
+  }
+
+  function stop(){
+    if (rafId) cancelAnimationFrame(rafId), rafId=null;
+    if (codeReader) codeReader.reset();
+    if (stream){
+      stream.getTracks().forEach(t=>t.stop());
+      stream = null; track = null;
+    }
+    setStatus("Detenido");
+  }
+
+  async function toggleTorch(){
+    try{
+      if(!track) return;
+      const caps = track.getCapabilities?.();
+      if(!caps || !caps.torch){ setStatus("La linterna no es compatible","warn"); return; }
+      torchOn = !torchOn;
+      await track.applyConstraints({advanced:[{torch: torchOn}]});
+      btnTorch.classList.toggle('primary', torchOn);
+    }catch(err){ log(`<span class="err">✖</span> Torch: ${err.message||err}`); }
+  }
+
+  function resizeCanvases(){
+    const w = video.videoWidth || 1280;
+    const h = video.videoHeight || 720;
+    [overlay,cRaw,cProc].forEach(c=>{ c.width = w; c.height = h; });
+  }
+
+  // ------- Flujo 1: ZXing directo desde video -------
+  function decodeWithZXingLive(){
+    if (!codeReader) rebuildReader();
+    // Usamos decodeFromVideoDevice para máxima velocidad
+    codeReader.decodeFromVideoDevice(deviceSelect.value || undefined, video, (result, err, controls) => {
+      paintRaw();
+      drawFPS();
+
+      if (result) {
+        const t0 = performance.now();
+        // result.resultPoints puede venir con puntos de interés
+        const pts = (result.resultPoints||[]).map(p=>{
+          // ZXing reporta en coords del video; ajustamos a canvas
+          return {x: p.getX ? p.getX() : p.x, y: p.getY ? p.getY() : p.y};
+        });
+        drawOverlay(pts);
+        const t1 = performance.now();
+        setResult(result, t1 - t0);
+      } else if (err && !(err instanceof ZXing.NotFoundException)) {
+        // NoFound ocurre MUY frecuente; solo mostramos errores reales
+        setStatus("Buscando...", "warn");
+      }
+    });
+  }
+
+  // ------- Flujo 2: Preprocesar con OpenCV y luego ZXing -------
+  async function loopWithOpenCV(){
+    if (!opencvReady) { setStatus("Cargando OpenCV...", "warn"); await waitForCV(); }
+    const ctxRaw = cRaw.getContext('2d');
+    const ctxProc = cProc.getContext('2d');
+
+    const step = async () => {
+      paintRaw(); // también actualiza FPS
+      if(!decoding){
+        decoding = true;
+        try{
+          // 1) Dibujar frame en canvas procesado
+          ctxProc.drawImage(video, 0, 0, cProc.width, cProc.height);
+          await cvProcess(cProc, {blur:+cvBlur.value||0, thresh:cvThresh.checked, clahe:cvClahe.checked});
+
+          const t0 = performance.now();
+          // 2) Pedimos a ZXing que decode desde canvas procesado
+          const result = await codeReader.decodeFromCanvas(cProc);
+          const t1 = performance.now();
+
+          // Puntos: no siempre están disponibles
+          drawOverlay(result?.resultPoints?.map(p=>({x:p.x??p.getX(), y:p.y??p.getY()})) || null);
+          setResult(result, t1 - t0);
+        } catch(e){
+          // NotFoundException: no mostrar como error
+          if (!(e instanceof ZXing.NotFoundException)) {
+            log(`<span class="err">✖</span> ${e.message||e}`);
+          }
+        } finally {
+          decoding = false;
+        }
+      }
+      rafId = requestAnimationFrame(step);
+    };
+    step();
+  }
+
+  function paintRaw(){
+    const ctx = cRaw.getContext('2d');
+    ctx.drawImage(video, 0, 0, cRaw.width, cRaw.height);
+  }
+
+  function drawFPS(){
+    frames++;
+    const now = performance.now();
+    if (now - lastTime >= 1000) {
+      fps = frames; frames = 0; lastTime = now;
+      fpsEl.textContent = `FPS: ${fps}`;
+    }
+  }
+
+  async function waitForCV(){
+    return new Promise(res=>{
+      const chk = ()=>{ if (opencvReady && window.cv && cv.Mat) res(); else setTimeout(chk, 60); };
+      chk();
+    });
+  }
+
+  async function cvProcess(canvas, opts){
+    const {blur=1, thresh=true, clahe=false} = opts;
+    const src = cv.imread(canvas);
+    let dst = new cv.Mat();
+    try{
+      cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
+
+      if (clahe) {
+        const cla = new cv.CLAHE(2.0, new cv.Size(8,8));
+        cla.apply(dst, dst);
+        cla.delete();
+      }
+
+      if (blur>0) {
+        const k = blur%2===1 ? blur : blur+1;
+        if (k>1) cv.GaussianBlur(dst, dst, new cv.Size(k,k), 0, 0, cv.BORDER_DEFAULT);
+      }
+
+      if (thresh) {
+        cv.adaptiveThreshold(dst, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 10);
+      } else {
+        cv.threshold(dst, dst, 0, 255, cv.THRESH_BINARY|cv.THRESH_OTSU);
+      }
+
+      cv.cvtColor(dst, src, cv.COLOR_GRAY2RGBA);
+      cv.imshow(canvas, src);
+    } finally {
+      src.delete(); dst.delete();
+    }
+  }
+
+  // ------- Eventos -------
+  btnStart.addEventListener('click', start);
+  btnStop.addEventListener('click', stop);
+  btnTorch.addEventListener('click', toggleTorch);
+  useOpenCV.addEventListener('change', ()=>{
+    if(stream){
+      // Reiniciar el flujo para aplicar el modo
+      stop(); start();
+    }
+  });
+  showOverlay.addEventListener('change', ()=> drawOverlay(null));
+  formatList.addEventListener('change', ()=>{
+    // Si está corriendo, reiniciar con nuevos hints
+    if (stream){
+      stop(); start();
+    }
+  });
+
+  // Enumerar cámaras al cargar
+  navigator.mediaDevices?.getUserMedia
+    ? enumerateCameras().catch(()=>{})
+    : setStatus("Tu navegador no soporta getUserMedia","err");
+
+  window.addEventListener('beforeunload', stop);
+})();
+</script>
+</body>
+</html>
