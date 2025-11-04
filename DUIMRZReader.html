@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Auto MRZ · Detector de Documento + OCR</title>
+
+<!-- Dependencias -->
+<script src="https://cdn.jsdelivr.net/npm/inferencejs@1.1.3"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+<!-- OCR para MRZ -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#101821; --muted:#131b25; --text:#e6eef7; --sub:#9fb3c8;
+    --accent:#5ac8fa; --ok:#34d399; --warn:#fbbf24; --err:#f87171; --border:#1f2a3a;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .app{max-width:1100px;margin:auto;padding:14px;display:grid;gap:12px}
+  .bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px}
+  .bar h2{margin:0;color:var(--sub);font-size:1rem}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#0f1720}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .info{color:var(--sub)}
+  .spacer{flex:1 1 auto}
+  .stage{position:relative; background:#000; border:1px solid var(--border); border-radius:12px; overflow:hidden; min-height:360px}
+  .layer{position:absolute; inset:0}
+  video, img{width:100%;height:100%;object-fit:contain;background:#000}
+  canvas{touch-action:none}
+  button,input[type=file]{appearance:none;border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--text);padding:8px 12px;cursor:pointer}
+  button.primary{background:linear-gradient(180deg,#132435,#0f1c2a);border-color:#223247}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px}
+  .card h3{margin:0 0 .5rem;color:var(--sub)}
+  textarea{width:100%;height:180px;background:#0a121a;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px;resize:vertical}
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;vertical-align:top}
+  th{color:var(--sub)}
+  .muted{color:#7f8ea2}
+  @media (max-width: 980px){ .cards{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- BARRA DE ESTADO (flujo) -->
+  <div class="bar" id="statusBar">
+    <h2>Estado</h2>
+    <span id="stepBadge" class="badge info">Inicializando…</span>
+    <div class="spacer"></div>
+    <button id="btnNuevo" disabled>Detectar Nuevo MRZ</button>
+  </div>
+
+  <!-- CONTROLES DE CÁMARA -->
+  <div class="bar">
+    <h2>Cámara</h2>
+    <button id="btnStart" class="primary">Habilitar cámara</button>
+    <button id="btnStop" disabled>Detener</button>
+    <div class="spacer"></div>
+    <span class="badge" id="fpsBadge">FPS: —</span>
+  </div>
+
+  <!-- ESCENARIO -->
+  <div class="stage" id="stage">
+    <video id="video" class="layer" autoplay muted playsinline></video>
+    <img id="preview" class="layer" style="display:none" alt="Vista previa"/>
+    <canvas id="overlay" class="layer"></canvas>
+  </div>
+
+  <!-- RESULTADOS -->
+  <div class="cards">
+    <div class="card">
+      <h3>Texto crudo (MRZ)</h3>
+      <textarea id="raw" placeholder="Aquí se mostrará la MRZ reconocida…"></textarea>
+    </div>
+    <div class="card">
+      <h3>Datos parseados</h3>
+      <div id="parsed">Esperando resultado…</div>
+    </div>
+  </div>
+
+  <!-- HISTORIAL -->
+  <div class="card">
+    <h3>Historial de resultados</h3>
+    <div class="muted" style="margin-bottom:6px">Se conserva cada lectura exitosa.</div>
+    <div id="historyWrap">
+      <table>
+        <thead><tr><th>#</th><th>Fecha/Hora</th><th>Resumen</th><th>Texto</th></tr></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/** =========================
+ *  ESTADO GENERAL
+ *  ========================= */
+const state = {
+  engine: null,
+  docWorkerId: null,   // detector de documento
+  stream: null,
+  running: false,
+  activeBitmap: null,
+  natural: {w:0,h:0},
+  detections: [],
+  stableBox: null,
+  stableHits: 0,
+  lastFpsTs: 0,
+  frames: 0,
+  history: [],
+  tesseractWorker: null
+};
+
+/** =========================
+ *  UTILIDADES UI
+ *  ========================= */
+const $badge = document.getElementById('stepBadge');
+function setStep(text, cls='info'){
+  $badge.classList.remove('info','ok','warn','err');
+  $badge.classList.add(cls);
+  $badge.textContent = text;
+}
+
+function setButtonsOnRun(on){
+  document.getElementById('btnStart').disabled = on;
+  document.getElementById('btnStop').disabled  = !on;
+}
+
+function drawOverlay(){
+  const overlay = document.getElementById('overlay');
+  const ctx = overlay.getContext('2d');
+  const view = overlay.getBoundingClientRect();
+  overlay.width = Math.round(view.width * devicePixelRatio);
+  overlay.height= Math.round(view.height* devicePixelRatio);
+  overlay.style.width = view.width + 'px';
+  overlay.style.height= view.height+ 'px';
+
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+
+  // Guías de encuadre (tercios + márgenes)
+  const w=view.width, h=view.height;
+  ctx.strokeStyle='#223247'; ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(w/3,0); ctx.lineTo(w/3,h);
+  ctx.moveTo(2*w/3,0); ctx.lineTo(2*w/3,h);
+  ctx.moveTo(0,h/3); ctx.lineTo(w,h/3);
+  ctx.moveTo(0,2*h/3); ctx.lineTo(w,2*h/3);
+  ctx.stroke();
+
+  // Dibujar detección documental (si existe)
+  for(const p of state.detections){
+    const r = bboxToOverlayRect(p.bbox, view);
+    ctx.strokeStyle = '#5ac8fa';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = 'rgba(90,200,250,.1)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#cfe9fb';
+    ctx.font = '12px ui-monospace';
+    ctx.fillText(`${(p.class||'doc')} ${(p.confidence||0).toFixed(2)}`, r.x+6, r.y+14);
+  }
+}
+
+function bboxToOverlayRect(bbox, view){
+  const vw = view.width, vh = view.height;
+  const natW = state.natural.w||1, natH = state.natural.h||1;
+  const scale = Math.min(vw/natW, vh/natH);
+  const offX = (vw - natW*scale)/2, offY = (vh - natH*scale)/2;
+  const x = offX + (bbox.x - bbox.width/2) * scale;
+  const y = offY + (bbox.y - bbox.height/2) * scale;
+  const w = bbox.width * scale;
+  const h = bbox.height * scale;
+  return {x,y,w,h};
+}
+
+function mapOverlayRectToNatural(r, view){
+  const vw = view.width, vh = view.height;
+  const natW = state.natural.w, natH = state.natural.h;
+  const scale = Math.min(vw/natW, vh/natH);
+  const contentW = natW*scale, contentH = natH*scale;
+  const offX = (vw - contentW)/2, offY = (vh - contentH)/2;
+
+  const ox = r.x, oy = r.y, ow = r.w, oh = r.h;
+  const nx = Math.round((ox - offX)/scale);
+  const ny = Math.round((oy - offY)/scale);
+  const nw = Math.round(ow/scale);
+  const nh = Math.round(oh/scale);
+
+  const x = Math.max(0, Math.min(natW, nx));
+  const y = Math.max(0, Math.min(natH, ny));
+  const w = Math.max(1, Math.min(natW - x, nw));
+  const h = Math.max(1, Math.min(natH - y, nh));
+  return {x,y,w,h};
+}
+
+/** =========================
+ *  INICIALIZACIÓN (MODELOS)
+ *  ========================= */
+async function initModels(){
+  try{
+    setStep('Importante y crítico: cargando motor…','info');
+    state.engine = new inferencejs.InferenceEngine();
+
+    // Detector de Documento (para encuadre/recorte)
+    setStep('Cargando Detector de Documento (react-project-wdxr6)…','info');
+    state.docWorkerId = await state.engine.startWorker(
+      'react-project-wdxr6', '1',
+      'rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2' // token demo
+    );
+
+    // Tesseract worker (OCR MRZ)
+    setStep('Inicializando OCR para MRZ (Tesseract.js)…','info');
+    state.tesseractWorker = await Tesseract.createWorker('eng', 1, {
+      // optimizaciones: limitar alfabeto MRZ y modo de segmentación
+      // Se establecen vía parámetros al reconocer
+    });
+
+    setStep('Modelos listos. Posteriormente habilita la cámara…','ok');
+  }catch(e){
+    console.error(e);
+    setStep('Error cargando modelos','err');
+    throw e;
+  }
+}
+
+/** =========================
+ *  CÁMARA + BUCLE
+ *  ========================= */
+async function startCamera(){
+  try{
+    setStep('Habilitando cámara…','info');
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { exact: 'environment' },
+        width: { ideal: 1920 }, height: { ideal: 1080 },
+        frameRate: { ideal: 30, max: 30 }
+      },
+      audio: false
+    });
+  }catch(_){
+    // fallback si no hay cámara trasera exact
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }, audio: false
+    });
+  }
+
+  const video = document.getElementById('video');
+  video.srcObject = state.stream;
+  await video.play();
+  state.running = true;
+  setButtonsOnRun(true);
+
+  // Mostrar video, ocultar vista previa
+  document.getElementById('preview').style.display='none';
+  video.style.display='block';
+
+  // Preparar medidas
+  const w = video.videoWidth, h = video.videoHeight;
+  state.natural = {w, h};
+  drawOverlay();
+
+  setStep('Detecta/identifica el documento (encuadra dentro del marco)…','info');
+  requestAnimationFrame(loop);
+}
+
+function stopCamera(){
+  state.running=false;
+  if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; }
+  setButtonsOnRun(false);
+}
+
+/** Detección DOC + estabilidad + captura + MRZ */
+async function loop(ts){
+  if(!state.running) return;
+
+  // FPS
+  state.frames++;
+  if(ts - state.lastFpsTs > 1000){
+    const fps = Math.round(state.frames * 1000 / (ts - state.lastFpsTs));
+    document.getElementById('fpsBadge').textContent = 'FPS: ' + fps;
+    state.frames=0; state.lastFpsTs=ts;
+  }
+
+  const video = document.getElementById('video');
+  if(!video.videoWidth){ requestAnimationFrame(loop); return; }
+
+  // Actualizar bitmap base (para futuros recortes)
+  const bmp = await createImageBitmap(video);
+  state.activeBitmap = bmp;
+  state.natural = {w:bmp.width,h:bmp.height};
+
+  // Inferencia de documento
+  try{
+    const preds = await state.engine.infer(state.docWorkerId, new inferencejs.CVImage(video));
+    state.detections = preds || [];
+    drawOverlay();
+
+    const best = _.maxBy(state.detections, p => p.confidence || 0);
+    if(best && (best.confidence||0) >= 0.68){
+      // Estabilidad simple en posición/tamaño
+      if(boxStable(best.bbox, state.stableBox, state.natural)){
+        state.stableHits++;
+      }else{
+        state.stableBox = _.cloneDeep(best.bbox);
+        state.stableHits = 1;
+      }
+
+      if(state.stableHits >= 3){
+        // CAPTURAR VISTA PREVIA (paso siguiente)
+        state.stableHits = 0;
+        await captureFromDetection(best);
+        return; // la siguiente etapa continúa en captureFromDetection
+      }
+    }
+  }catch(e){
+    console.warn('infer doc', e);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+function boxStable(b1, b2, nat){
+  if(!b1 || !b2) return false;
+  const epsPos = 0.03, epsSize=0.06;
+  return Math.abs(b1.x-b2.x) <= nat.w*epsPos &&
+         Math.abs(b1.y-b2.y) <= nat.h*epsPos &&
+         Math.abs(b1.width -b2.width ) <= nat.w*epsSize &&
+         Math.abs(b1.height-b2.height) <= nat.h*epsSize;
+}
+
+async function captureFromDetection(det){
+  setStep('Captura la vista previa…','info');
+
+  const {w:W,h:H} = state.natural;
+  const {x,y,width,height} = det.bbox;
+  const x0 = Math.max(0, Math.round(x - width/2));
+  const y0 = Math.max(0, Math.round(y - height/2));
+  const ww = Math.min(W - x0, Math.round(width));
+  const hh = Math.min(H - y0, Math.round(height));
+
+  // Recorte del documento detectado
+  const off = newOffscreen(ww, hh);
+  const g = off.getContext('2d');
+  g.drawImage(state.activeBitmap, x0,y0,ww,hh, 0,0,ww,hh);
+
+  // Mostrar vista previa (pausar cámara durante OCR)
+  const blob = await canvasToBlob(off);
+  const url = URL.createObjectURL(blob);
+  const $prev = document.getElementById('preview');
+  await new Promise(res=>{ $prev.onload = res; $prev.src = url; });
+  URL.revokeObjectURL(url);
+
+  document.getElementById('video').style.display='none';
+  $prev.style.display='block';
+  stopCamera();
+
+  // Guardar bitmap de la preview
+  const bmp = await createImageBitmap($prev);
+  state.activeBitmap = bmp;
+  state.natural = {w:bmp.width,h:bmp.height};
+
+  // Siguiente paso: localizar MRZ (heurística) y OCR
+  setStep('Detecta la MRZ (franja inferior)…','info');
+  await detectAndOcrMRZ(off);
+}
+
+/** =========================
+ *  MRZ: localizar (heurística) + OCR + parseo
+ *  ========================= */
+async function detectAndOcrMRZ(docCanvas){
+  try{
+    // Heurística: MRZ normalmente es franja inferior del documento (30–40% altura)
+    // Tomamos el 38% inferior y centramos horizontalmente con 6% de margen
+    const W = docCanvas.width, H = docCanvas.height;
+    const mrzH = Math.round(H * 0.38);
+    const mrzY = H - mrzH;
+    const mrzX = Math.round(W * 0.06);
+    const mrzW = Math.max(1, Math.round(W * 0.88));
+
+    const roi = newOffscreen(mrzW, mrzH);
+    roi.getContext('2d').drawImage(docCanvas, mrzX, mrzY, mrzW, mrzH, 0,0,mrzW,mrzH);
+
+    setStep('Extrae el texto crudo…','info');
+    const raw = await ocrMRZ(roi);
+    if(!raw || !raw.trim()){
+      setStep('No se pudo leer la MRZ. Ajusta enfoque/iluminación y reintenta.','warn');
+      return;
+    }
+    const mrzText = normalizeMrzText(raw);
+    document.getElementById('raw').value = mrzText;
+
+    setStep('Parsea datos a la tabla…','info');
+    const parsed = parseMRZ(mrzText);
+    renderParsed(parsed);
+
+    // Guardar historial
+    pushHistory(mrzText, parsed);
+
+    // Paso final
+    setStep('Listo ✅ Datos mostrados. Activa “Detectar Nuevo MRZ” para repetir desde el paso 2.','ok');
+    document.getElementById('btnNuevo').disabled = false;
+  }catch(e){
+    console.error(e);
+    setStep('Error en el flujo de MRZ','err');
+  }
+}
+
+/** OCR con Tesseract optimizado para MRZ */
+async function ocrMRZ(offscreenCanvas){
+  const blob = await canvasToBlob(offscreenCanvas, 'image/png', 0.95);
+  const url = URL.createObjectURL(blob);
+  try{
+    const { data:{ text } } = await state.tesseractWorker.recognize(url, {
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
+      preserve_interword_spaces: '1',
+      user_defined_dpi: '300',
+      // PSM 6: bloque uniforme de texto; MRZ funciona bien
+      tessedit_pageseg_mode: '6'
+    });
+    return text || '';
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Normaliza saltos/espacios típicos de MRZ */
+function normalizeMrzText(t){
+  return t
+    .toUpperCase()
+    .replace(/[^\nA-Z0-9<]/g,'')         // limpiar ruido
+    .split('\n')
+    .map(s=>s.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** =========================
+ *  PARSEO DE MRZ (TD1/TD2/TD3) con checksums
+ *  ========================= */
+function parseMRZ(text){
+  const lines = text.split(/\r?\n/).map(l=>l.replace(/\s+/g,'')).filter(Boolean);
+  const out = {};
+
+  // Detectar formato por longitud/num líneas
+  // TD3: 2 líneas x 44; TD2: 2 x 36; TD1: 3 x 30
+  const L = lines.length;
+  if(L>=2 && lines[0].length>=40 && lines[1].length>=40){ // TD3
+    const l1 = pad(lines[0],44).slice(0,44);
+    const l2 = pad(lines[1],44).slice(0,44);
+    Object.assign(out, parseTD3(l1,l2));
+  }else if(L>=2 && lines[0].length>=30 && lines[1].length>=30){ // TD2 (aprox)
+    const l1 = pad(lines[0],36).slice(0,36);
+    const l2 = pad(lines[1],36).slice(0,36);
+    Object.assign(out, parseTD2(l1,l2));
+  }else if(L>=3 && lines[0].length>=28 && lines[1].length>=28 && lines[2].length>=28){ // TD1
+    const l1 = pad(lines[0],30).slice(0,30);
+    const l2 = pad(lines[1],30).slice(0,30);
+    const l3 = pad(lines[2],30).slice(0,30);
+    Object.assign(out, parseTD1(l1,l2,l3));
+  }else{
+    out['MRZ'] = lines.join('\n');
+    out['Aviso'] = 'No se identificó un formato MRZ estándar (TD1/TD2/TD3).';
+  }
+  return out;
+}
+
+function pad(s,n){ return (s||'').padEnd(n,'<'); }
+
+/** Conversión de fecha YYMMDD a AAAA-MM-DD (elige siglo por heurística simple) */
+function parseDateYYMMDD(s){
+  if(!/^\d{6}$/.test(s)) return '';
+  const yy = parseInt(s.slice(0,2),10);
+  const mm = s.slice(2,4);
+  const dd = s.slice(4,6);
+  const year = yy > 50 ? (1900+yy) : (2000+yy); // heurística
+  return `${year}-${mm}-${dd}`;
+}
+
+function mrzValueChar(c){
+  if(c>='0'&&c<='9') return c.charCodeAt(0)-48;
+  if(c>='A'&&c<='Z') return c.charCodeAt(0)-55; // A=10
+  if(c==='<') return 0;
+  return 0;
+}
+function mrzChecksum(str){
+  const weights=[7,3,1];
+  let sum=0;
+  for(let i=0;i<str.length;i++){
+    sum += mrzValueChar(str[i]) * weights[i%3];
+  }
+  return (sum%10).toString();
+}
+function flagCheck(label, ok){ return `${label}: ${ok?'✔':'✖'}`; }
+
+function parseNames(nameField){
+  // NOMBRES<<APELLIDOS<<OTROS -> primary surname(s) y given names
+  const parts = nameField.split('<<');
+  const surname = (parts[0]||'').replace(/<+/g,' ').trim();
+  const given = (parts.slice(1).join('<<')||'').replace(/<+/g,' ').trim();
+  return { Apellidos: surname||'—', Nombres: given||'—' };
+}
+
+/* TD3 – Pasaporte (2x44) */
+function parseTD3(l1,l2){
+  const out = { Formato: 'TD3 (Pasaporte, 2×44)' };
+  // L1: 0 Tipo(1) + Emisor(3) + Nombre(39)
+  const tipo = l1.slice(0,2).replace(/</g,'').trim();
+  const emisor = l1.slice(2,5).replace(/</g,'').trim();
+  const nombreField = l1.slice(5,44);
+  Object.assign(out, { Tipo: tipo||'—', Emisor: emisor||'—' }, parseNames(nombreField));
+
+  // L2: Documento(9)+Ck + Nacionalidad(3) + Nac(6)+Ck + Sexo(1) + Exp(6)+Ck + Opc(14)+Ck + Final(1)
+  const docNum = l2.slice(0,9);
+  const docCk = l2.slice(9,10);
+  const nac = l2.slice(10,13).replace(/</g,'');
+  const dob = l2.slice(13,19);
+  const dobCk = l2.slice(19,20);
+  const sex = l2.slice(20,21).replace(/</g,'');
+  const exp = l2.slice(21,27);
+  const expCk = l2.slice(27,28);
+  const opt = l2.slice(28,42);
+  const optCk = l2.slice(42,43);
+  const finalCk = l2.slice(43,44);
+
+  out['N° Documento'] = docNum.replace(/</g,'');
+  out['Chk Documento'] = flagCheck('Doc', mrzChecksum(docNum)===docCk);
+  out['Nacionalidad'] = nac || '—';
+  out['Nacimiento'] = parseDateYYMMDD(dob);
+  out['Chk Nacimiento'] = flagCheck('DOB', mrzChecksum(dob)===dobCk);
+  out['Sexo'] = sex || '—';
+  out['Expiración'] = parseDateYYMMDD(exp);
+  out['Chk Expiración'] = flagCheck('EXP', mrzChecksum(exp)===expCk);
+  out['Dato opcional'] = opt.replace(/<+/g,' ').trim() || '—';
+  out['Chk Opcional'] = flagCheck('OPT', mrzChecksum(opt)===optCk);
+
+  // Chequeo compuesto (TD3 final)
+  const composed = docNum + docCk + dob + dobCk + exp + expCk + opt + optCk;
+  out['Chk Compuesto'] = flagCheck('ALL', mrzChecksum(composed)===finalCk);
+
+  return out;
+}
+
+/* TD2 – ID (2x36) */
+function parseTD2(l1,l2){
+  const out = { Formato: 'TD2 (ID, 2×36)' };
+  const tipo = l1.slice(0,1);
+  const emisor = l1.slice(2,5).replace(/</g,'');
+  const nombreField = l1.slice(5,36);
+  Object.assign(out, { Tipo: tipo||'—', Emisor: emisor||'—' }, parseNames(nombreField));
+
+  const docNum = l2.slice(0,9);
+  const docCk = l2.slice(9,10);
+  const nac = l2.slice(10,13).replace(/</g,'');
+  const dob = l2.slice(13,19);
+  const dobCk = l2.slice(19,20);
+  const sex = l2.slice(20,21).replace(/</g,'');
+  const exp = l2.slice(21,27);
+  const expCk = l2.slice(27,28);
+  const opt = l2.slice(28,35);
+  const finalCk = l2.slice(35,36);
+
+  out['N° Documento'] = docNum.replace(/</g,'');
+  out['Chk Documento'] = flagCheck('Doc', mrzChecksum(docNum)===docCk);
+  out['Nacionalidad'] = nac || '—';
+  out['Nacimiento'] = parseDateYYMMDD(dob);
+  out['Chk Nacimiento'] = flagCheck('DOB', mrzChecksum(dob)===dobCk);
+  out['Sexo'] = sex || '—';
+  out['Expiración'] = parseDateYYMMDD(exp);
+  out['Chk Expiración'] = flagCheck('EXP', mrzChecksum(exp)===expCk);
+  out['Dato opcional'] = opt.replace(/<+/g,' ').trim() || '—';
+
+  // Chequeo compuesto (TD2): docNum+docCk+dob+dobCk+exp+expCk+opt
+  const composed = docNum + docCk + dob + dobCk + exp + expCk + opt;
+  out['Chk Compuesto'] = flagCheck('ALL', mrzChecksum(composed)===finalCk);
+
+  return out;
+}
+
+/* TD1 – ID (3x30) */
+function parseTD1(l1,l2,l3){
+  const out = { Formato: 'TD1 (ID, 3×30)' };
+  const tipo = l1.slice(0,1);
+  const emisor = l1.slice(2,5).replace(/</g,'');
+  const docNum = l1.slice(5,14);
+  const docCk = l1.slice(14,15);
+  const optA = l1.slice(15,30);
+
+  out['Tipo'] = tipo||'—';
+  out['Emisor'] = emisor||'—';
+  out['N° Documento'] = docNum.replace(/</g,'');
+  out['Chk Documento'] = flagCheck('Doc', mrzChecksum(docNum)===docCk);
+  out['Dato opcional A'] = optA.replace(/<+/g,' ').trim() || '—';
+
+  const dob = l2.slice(0,6);
+  const dobCk = l2.slice(6,7);
+  const sex = l2.slice(7,8).replace(/</g,'');
+  const exp = l2.slice(8,14);
+  const expCk = l2.slice(14,15);
+  const nac = l2.slice(15,18).replace(/</g,'');
+  const optB = l2.slice(18,29);
+  const compCk = l2.slice(29,30);
+
+  out['Nacimiento'] = parseDateYYMMDD(dob);
+  out['Chk Nacimiento'] = flagCheck('DOB', mrzChecksum(dob)===dobCk);
+  out['Sexo'] = sex || '—';
+  out['Expiración'] = parseDateYYMMDD(exp);
+  out['Chk Expiración'] = flagCheck('EXP', mrzChecksum(exp)===expCk);
+  out['Nacionalidad'] = nac || '—';
+  out['Dato opcional B'] = optB.replace(/<+/g,' ').trim() || '—';
+
+  // L3: nombres
+  Object.assign(out, parseNames(l3));
+
+  // Chequeo compuesto (TD1)
+  const composed = docNum + docCk + dob + dobCk + exp + expCk + optA + optB;
+  out['Chk Compuesto'] = flagCheck('ALL', mrzChecksum(composed)===compCk);
+
+  return out;
+}
+
+/** =========================
+ *  RENDER / HISTORIAL
+ *  ========================= */
+function renderParsed(obj){
+  const el = document.getElementById('parsed');
+  let html = '<table><thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody>';
+  for (const [k,v] of Object.entries(obj)){
+    const val = (v==null || v==='') ? '<span class="muted">—</span>' : escapeHtml(String(v));
+    html += `<tr><td><strong>${escapeHtml(k)}</strong></td><td>${val}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function pushHistory(raw, parsed){
+  const body = document.getElementById('historyBody');
+  state.history.push({ts:new Date(), raw, parsed});
+  const i = state.history.length;
+  const summary = parsed['N° Documento'] ? `Doc: ${escapeHtml(parsed['N° Documento'])}` :
+                  parsed['Apellidos'] ? `${escapeHtml(parsed['Apellidos'])}, ${escapeHtml(parsed['Nombres']||'')}` :
+                  Object.keys(parsed)[0] ? `${escapeHtml(Object.keys(parsed)[0])}: ${escapeHtml(String(parsed[Object.keys(parsed)[0]])).slice(0,40)}…` :
+                  '(sin campos)';
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${i}</td><td>${state.history[i-1].ts.toLocaleString()}</td><td>${summary}</td><td><pre style="white-space:pre-wrap;margin:0">${escapeHtml(raw).slice(0,240)}${raw.length>240?'…':''}</pre></td>`;
+  body.prepend(tr);
+}
+
+/** =========================
+ *  “DETECTAR NUEVO MRZ”
+ *  ========================= */
+function resetCycleToStep2(){
+  document.getElementById('raw').value = '';
+  document.getElementById('parsed').innerHTML = 'Esperando resultado…';
+  state.detections = [];
+  state.stableBox = null; state.stableHits = 0;
+  drawOverlay();
+
+  document.getElementById('preview').style.display='none';
+  document.getElementById('video').style.display='block';
+
+  document.getElementById('btnNuevo').disabled = true;
+
+  setStep('Posteriormente habilita la cámara…','info');
+  startCamera();
+}
+
+/** =========================
+ *  HELPERS
+ *  ========================= */
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function newOffscreen(w,h){
+  if('OffscreenCanvas' in window) return new OffscreenCanvas(w,h);
+  const c = document.createElement('canvas'); c.width=w; c.height=h; return c;
+}
+function canvasToBlob(canvas, type='image/png', quality=0.92){
+  if(canvas.convertToBlob) return canvas.convertToBlob({type, quality});
+  return new Promise(res=>canvas.toBlob(res, type, quality));
+}
+
+/** =========================
+ *  WIRE-UP
+ *  ========================= */
+window.addEventListener('resize', drawOverlay);
+
+document.getElementById('btnStart').addEventListener('click', startCamera);
+document.getElementById('btnStop').addEventListener('click', ()=>{
+  stopCamera();
+  setStep('Cámara detenida. Pulsa “Habilitar cámara” para continuar.','warn');
+});
+document.getElementById('btnNuevo').addEventListener('click', resetCycleToStep2);
+
+// Inicializa modelos y deja todo listo
+(async ()=>{
+  await initModels();
+  try{ await startCamera(); }catch{ /* si falla, usa el botón */ }
+})();
+</script>
+</body>
+</html>
