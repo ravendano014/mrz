@@ -1,315 +1,647 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF417 — Cámara / Imagen / Texto</title>
-  <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
-    body { margin: 0; padding: 24px; background: #0b1220; color: #e7ecf5; }
-    h1 { font-size: 1.5rem; margin: 0 0 8px; }
-    h2 { font-size: 1.2rem; margin: 0 0 12px; color: #cfe0ff; }
-    p { margin: 6px 0 14px; color:#b9c2d0 }
-    .app { max-width: 1100px; margin: 0 auto; }
-    .card { background: #121a2b; border: 1px solid #1e2a44; border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
-    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-    @media (min-width: 1000px){ .grid { grid-template-columns: 440px 1fr; } }
-    .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center }
-    button { appearance: none; border: 0; background: #2a6df5; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
-    button.secondary { background: #2b3b60 }
-    button.success { background: #0a6; }
-    textarea { width: 100%; min-height: 130px; resize: vertical; border-radius: 12px; padding: 10px; border:1px solid #1e2a44; background:#0f1726; color:#e7ecf5 }
-    pre { background:#0f1726; border:1px solid #1e2a44; padding:12px; border-radius:12px; overflow:auto }
-    .hidden { display: none; }
-    .hint { font-size: .85rem; color:#9fb0cb }
-    .kv { display:grid; grid-template-columns: 180px 1fr; gap:6px 10px; }
-    .kv b{color:#cfe0ff}
-    .tabs { display:flex; gap:8px; margin: 8px 0 12px; flex-wrap: wrap; }
-    .tab-btn { background:#2b3b60; border:1px solid #2b3b60; padding:8px 12px; border-radius:999px; cursor:pointer; }
-    .tab-btn.active { background:#2a6df5; }
-    /* Video + overlay */
-    #video { width: 100%; height: 320px; border-radius: 12px; border: 1px solid #1e2a44; background: #0b1120; position: relative; }
-    .scanner-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
-    .scanner-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 50%; border: 3px solid #0f6; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center }
-    .scanner-frame::before { content: "Coloque el código PDF417 dentro de este marco"; position: absolute; top: -30px; color: #0f6; font-size: 14px; text-align: center; width: 100%; }
-    img { max-width: 100%; height: auto; border-radius: 12px; border:1px solid #1e2a44; background:#0b1120 }
-    .result-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    .result-table th, .result-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #1e2a44; }
-    .result-table th { background:#0f1726; color:#cfe0ff; font-weight:600 }
-    .result-summary { background: #0f1726; border: 1px solid #1e2a44; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
-    .check-ok { color:#0f6 }
-    .check-fail { color:#f06 }
-    .json-pre { background:#0f1726; border:1px solid #1e2a44; border-radius: 12px; padding: 12px; max-height: 280px; overflow-y: auto; font-size: 0.85rem; }
-    .beep-option { display:flex; align-items:center; gap:8px; }
-    input[type=file]{ display:none }
-    label.inline { display:inline-flex; align-items:center; gap:8px; background:#0f1726; border:1px dashed #2b3b60; padding:10px 12px; border-radius:12px; cursor:pointer }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PDF417 – Cámara + Captura a Vista Previa + ROI</title>
+
+<!-- ZXing (UMD) para detección/autodetección de PDF417 -->
+<script src="https://unpkg.com/@zxing/library@latest"></script>
+
+<style>
+  :root{
+    --bg:#0b1220; --panel:#121a2b; --panel-2:#0f1726; --text:#e7ecf5; --muted:#b9c2d0;
+    --accent:#3b82f6; --accent-2:#22d3ee; --border:#1e2a44; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans";}
+  .app{max-width:1200px;margin:0 auto;padding:20px}
+  h1{font-size:1.25rem;margin:0 0 12px}
+  p{color:var(--muted);margin:4px 0 12px}
+  .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .card > .hd{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
+  .card > .bd{padding:12px 14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row > *{flex:0 0 auto}
+  button,select,input[type="file"]{background:var(--panel-2);color:var(--text);border:1px solid var(--border);padding:8px 10px;border-radius:10px}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));border-color:transparent}
+  button.good{background:linear-gradient(90deg,#16a34a,#22c55e);border-color:transparent}
+  button.warn{background:linear-gradient(90deg,#d97706,#f59e0b);border-color:transparent}
+  button.bad{background:linear-gradient(90deg,#dc2626,#ef4444);border-color:transparent}
+  .tag{font-size:.78rem;color:var(--muted)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:8px 12px}
+  .kv b{color:#cfe0ff}
+  .stack{display:grid;gap:10px}
+  .slider{display:grid;grid-template-columns:100px 1fr 60px;align-items:center;gap:10px}
+  .section-label{font-size:.85rem;color:#cfe0ff;margin-top:4px}
+  .media-wrap{position:relative;display:grid;gap:10px}
+  video,canvas{width:100%;max-height:58vh;background:#000;border-radius:12px;border:1px solid var(--border)}
+  .overlay{
+    position:absolute;inset:0;pointer-events:none;border-radius:12px;
+    background:repeating-linear-gradient(45deg,transparent 0 8px,rgba(59,130,246,.06) 8px 16px);
+  }
+  /* ROI rectangle */
+  .roi{
+    position:absolute;border:2px solid var(--good);box-shadow:0 0 0 9999px rgba(0,0,0,.15) inset;
+    pointer-events:none;border-radius:8px;
+  }
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chips .chip{font-size:.8rem;padding:6px 8px;border-radius:999px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted)}
+  .out{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px}
+  .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+  .thumbs img{width:100%;border-radius:10px;border:1px solid var(--border)}
+  .hr{height:1px;background:var(--border);margin:10px -14px}
+</style>
 </head>
+
 <body>
-  <div class="app">
-    <h1>PDF417 — Escanear (Cámara/Imagen) y Decodificar Texto</h1>
-    <p class="hint">App unificada: combina escaneo con ZXing y decodificación por cadena (DUI con "||" y AAMVA/USDL).</p>
+<div class="app">
+  <h1>PDF417 – Captura a Vista Previa, ROI y extracción (cámara / imagen)</h1>
+  <p class="tag">Incluye: torch/linterna, zoom, enfoque continuo, autodetección (ZXing), sliders de alto/ancho, mover ROI, extraer imagen completa o solo ROI.</p>
 
-    <div class="grid">
-      <!-- Columna izquierda: entradas -->
-      <div>
-        <div class="card">
-          <div class="tabs">
-            <button class="tab-btn active" data-tab="tab-camera">Cámara</button>
-            <button class="tab-btn" data-tab="tab-image">Imagen</button>
-            <button class="tab-btn" data-tab="tab-text">Texto</button>
-          </div>
+  <div class="grid">
+    <!-- LEFT: CAMERA / IMAGE AREA -->
+    <div class="card">
+      <div class="hd"><b>Cámara / Imagen</b>
+        <span class="tag" id="status">Listo</span>
+      </div>
+      <div class="bd stack">
+        <div class="row">
+          <button id="btnStart" class="primary">Iniciar cámara</button>
+          <button id="btnStop" class="bad">Detener</button>
+          <select id="selCamera"></select>
+          <button id="btnSwitch">Cambiar cámara</button>
+          <label class="tag"><input type="checkbox" id="chkAutodetect"> Autodetectar PDF417</label>
+        </div>
 
-          <!-- Cámara -->
-          <section id="tab-camera">
-            <h2>1) Escanear desde cámara</h2>
-            <div class="row" style="margin-bottom:8px">
-              <button id="startButton">Iniciar Cámara</button>
-              <button id="resetButton" class="secondary">Detener Cámara</button>
-              <div class="beep-option">
-                <input type="checkbox" id="beepCheckbox" checked />
-                <label for="beepCheckbox">Beep al detectar</label>
-              </div>
-            </div>
-            <div id="sourceSelectPanel" class="row hidden">
-              <label for="sourceSelect">Seleccionar cámara:</label>
-              <select id="sourceSelect"></select>
-            </div>
-            <div style="position: relative;">
-              <video id="video" muted playsinline></video>
-              <div class="scanner-overlay"><div class="scanner-frame"></div></div>
-            </div>
-          </section>
+        <div class="row">
+          <button id="btnTorch" class="warn">Torch/Linterna</button>
+          <label class="tag">
+            Zoom:
+            <input id="rangeZoom" type="range" min="1" max="1" step="0.01" value="1" style="vertical-align:middle;width:200px">
+            <span id="zoomVal" class="tag">1x</span>
+          </label>
+          <label class="tag"><input type="checkbox" id="chkAF" checked> Auto enfoque continuo</label>
+        </div>
 
-          <!-- Imagen -->
-          <section id="tab-image" class="hidden">
-            <h2>2) Cargar imagen</h2>
-            <div class="row" style="margin-bottom:8px">
-              <input type="file" id="fileInput" accept="image/*" />
-              <label class="inline" for="fileInput">Seleccionar imagen</label>
-              <button id="processImageButton" class="success" disabled>Procesar imagen</button>
-            </div>
-            <img id="imagePreview" alt="Vista previa" class="hidden" />
-          </section>
+        <div class="media-wrap">
+          <video id="video" playsinline muted></video>
+          <canvas id="preview" style="display:none"></canvas>
+          <div class="overlay"></div>
+          <div id="roi" class="roi"></div>
+        </div>
 
-          <!-- Texto -->
-          <section id="tab-text" class="hidden">
-            <h2>3) Decodificar desde texto</h2>
-            <p class="hint">Pegue el contenido crudo leído del PDF417. Si contiene "||" se aplicará el decodificador DUI; si parece AAMVA/USDL (códigos DCS, DAC, etc.), se aplicará el parser AAMVA.</p>
-            <textarea id="inputText" placeholder="Pegue aquí la cadena del PDF417..."></textarea>
-            <div class="row" style="margin-top:8px">
-              <button id="decodeTextBtn">Decodificar</button>
-              <button id="clearTextBtn" class="secondary">Limpiar</button>
-              <button id="exportJsonBtn" class="secondary">Exportar JSON</button>
-              <button id="loadExampleBtn" class="secondary">Ejemplo DUI</button>
-            </div>
-          </section>
+        <div class="chips" id="caps"></div>
+
+        <div class="row">
+          <button id="btnCapture" class="good">Captura → Vista Previa</button>
+          <input type="file" id="fileImg" accept="image/*">
+          <button id="btnClearImg">Quitar imagen</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="kv">
+          <b>Fuente activa:</b><span id="sourceLabel">Cámara</span>
+          <b>Tamaño frame:</b><span id="frameSize">–</span>
+          <b>Tamaño ROI:</b><span id="roiSize">–</span>
+          <b>Detección:</b><span id="detInfo">–</span>
         </div>
       </div>
+    </div>
 
-      <!-- Columna derecha: resultados -->
-      <div>
-        <div class="card">
-          <h2>Resultados</h2>
-          <div class="result-summary">
-            <div class="kv">
-              <b>Estado:</b> <span id="status">Esperando…</span>
-              <b>Formato detectado:</b> <span id="fmt">—</span>
-            </div>
-          </div>
+    <!-- RIGHT: ROI + EXTRACT -->
+    <div class="card">
+      <div class="hd"><b>ROI y Extracción</b></div>
+      <div class="bd stack">
+        <div class="slider">
+          <label>ROI Ancho</label>
+          <input id="roiW" type="range" min="50" max="1000" value="300">
+          <span id="roiWv">300</span>
+        </div>
+        <div class="slider">
+          <label>ROI Alto</label>
+          <input id="roiH" type="range" min="40" max="800" value="120">
+          <span id="roiHv">120</span>
+        </div>
+        <div class="row">
+          <button id="mvUp">↑</button>
+          <button id="mvDown">↓</button>
+          <button id="mvLeft">←</button>
+          <button id="mvRight">→</button>
+          <button id="mvCenter">Centrar</button>
+          <button id="mvReset">Reset ROI</button>
+        </div>
 
-          <div id="tableWrap" class="hidden">
-            <h3>Datos extraídos</h3>
-            <table class="result-table">
-              <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-              <tbody id="dataTableBody"></tbody>
-            </table>
-          </div>
+        <div class="row">
+          <button id="btnExtractROI" class="primary">Extraer ROI</button>
+          <button id="btnExtractFull">Extraer Imagen Completa</button>
+          <a id="dlLink" download="extract.png" class="tag">Descargar última extracción</a>
+        </div>
 
-          <div style="margin-top:12px">
-            <h3>JSON</h3>
-            <pre id="jsonOut" class="json-pre"></pre>
-          </div>
-
-          <div style="margin-top:12px">
-            <h3>Texto crudo</h3>
-            <pre id="rawOut" class="json-pre"></pre>
-          </div>
+        <div class="out">
+          <div class="section-label">Resultados</div>
+          <div id="results" class="thumbs"></div>
         </div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- ZXing para PDF417 (cámara/imagen) -->
-  <script src="https://unpkg.com/@zxing/library@latest"></script>
-  <script>
-    // --- Utilidades UI ---
-    function $(sel){ return document.querySelector(sel); }
-    function $all(sel){ return Array.from(document.querySelectorAll(sel)); }
-    function setStatus(msg, type){
-      const el = $('#status'); el.textContent = msg; el.className = '';
-      if(type==='success') el.classList.add('check-ok');
-      if(type==='error') el.classList.add('check-fail');
-    }
-    function setFormat(fmt){ $('#fmt').textContent = fmt || '—'; }
-    function showTable(show){ $('#tableWrap').classList.toggle('hidden', !show); }
-    function fillTable(obj){
-      const tb = $('#dataTableBody'); tb.innerHTML = '';
-      Object.entries(obj || {}).forEach(([k,v])=>{
-        const tr = document.createElement('tr');
-        const td1 = document.createElement('td'); td1.textContent = k;
-        const td2 = document.createElement('td'); td2.textContent = (v==null||v==='')? 'N/A' : String(v);
-        tr.append(td1, td2); tb.appendChild(tr);
-      });
-    }
-    function beepIfEnabled(){ const c = $('#beepCheckbox'); if(!c || !c.checked) return; try{ const ac = new (window.AudioContext||window.webkitAudioContext)(); const osc = ac.createOscillator(); const g = ac.createGain(); osc.connect(g); g.connect(ac.destination); osc.frequency.value = 800; osc.type='sine'; g.gain.setValueAtTime(0.3, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.01, ac.currentTime+0.5); osc.start(); osc.stop(ac.currentTime+0.5);}catch(e){} }
+<script>
+/* ============================================================
+   Estado y elementos
+============================================================ */
+const el = id => document.getElementById(id);
+const video = el('video');
+const preview = el('preview');
+const roiBox = el('roi');
+const statusEl = el('status');
+const frameSizeEl = el('frameSize');
+const roiSizeEl = el('roiSize');
+const detInfoEl = el('detInfo');
+const sourceLabelEl = el('sourceLabel');
+const capsEl = el('caps');
 
-    // --- Parsers (USDL/AAMVA y DUI con "||") ---
-    const parseUSDL = function(str){
-      const CodeToKey = { DCA:"jurisdictionVehicleClass", DCB:"jurisdictionRestrictionCodes", DCD:"jurisdictionEndorsementCodes", DBA:"dateOfExpiry", DCS:"lastName", DAC:"firstName", DAD:"middleName", DBD:"dateOfIssue", DBB:"dateOfBirth", DBC:"sex", DAY:"eyeColor", DAU:"height", DAG:"addressStreet", DAI:"addressCity", DAJ:"addressState", DAK:"addressPostalCode", DAQ:"documentNumber", DCF:"documentDiscriminator", DCG:"issuer", DDE:"lastNameTruncated", DDF:"firstNameTruncated", DDG:"middleNameTruncated", DAZ:"hairColor", DAH:"addressStreet2", DCI:"placeOfBirth", DCJ:"auditInformation", DCK:"inventoryControlNumber", DBN:"otherLastName", DBG:"otherFirstName", DBS:"otherSuffixName", DCU:"nameSuffix", DCE:"weightRange", DCL:"race", DCM:"standardVehicleClassification", DCN:"standardEndorsementCode", DCO:"standardRestrictionCode", DCP:"jurisdictionVehicleClassificationDescription", DCQ:"jurisdictionEndorsementCodeDescription", DCR:"jurisdictionRestrictionCodeDescription", DDA:"complianceType", DDB:"dateCardRevised", DDC:"dateOfExpiryHazmatEndorsement", DDD:"limitedDurationDocumentIndicator", DAW:"weightLb", DAX:"weightKg", DDH:"dateAge18", DDI:"dateAge19", DDJ:"dateAge21", DDK:"organDonor", DDL:"veteran" };
-      const lines = str.trim().split(/\r?\n/).map(l=>l.replace(/[^\t\n\r\x20-\x7E]/g,'').trim());
-      const props = {}; let started=false;
-      for(let i=0;i<lines.length;i++){
-        const line = lines[i];
-        if(!started){ if(line.indexOf('ANSI ')===0) { started=true; } continue; }
-        const code = line.slice(0,3); const valueRaw = line.slice(3);
-        const key = CodeToKey[code]; if(!key) continue;
-        let value = valueRaw;
-        if(code==='DBC') value = (value==='1')? 'M' : 'F';
-        if(/^date/.test(key) && /^(\d{8})$/.test(value)) { const mm=value.slice(0,2), dd=value.slice(2,4), yy=value.slice(4); value = `${yy}-${mm}-${dd}`; }
-        props[key] = value;
+const btnStart = el('btnStart');
+const btnStop = el('btnStop');
+const btnSwitch = el('btnSwitch');
+const selCamera = el('selCamera');
+const btnTorch = el('btnTorch');
+const chkAF = el('chkAF');
+const rangeZoom = el('rangeZoom');
+const zoomVal = el('zoomVal');
+
+const chkAutodetect = el('chkAutodetect');
+const btnCapture = el('btnCapture');
+const fileImg = el('fileImg');
+const btnClearImg = el('btnClearImg');
+
+const roiW = el('roiW');
+const roiH = el('roiH');
+const roiWv = el('roiWv');
+const roiHv = el('roiHv');
+
+const mvUp = el('mvUp'), mvDown = el('mvDown'), mvLeft = el('mvLeft'), mvRight = el('mvRight');
+const mvCenter = el('mvCenter'), mvReset = el('mvReset');
+const btnExtractROI = el('btnExtractROI'), btnExtractFull = el('btnExtractFull');
+const results = el('results'), dlLink = el('dlLink');
+
+/* Canvas auxiliar para capturas */
+const snapCanvas = document.createElement('canvas');
+const snapCtx = snapCanvas.getContext('2d',{willReadFrequently:true});
+
+/* ZXing lector (para autodetección) */
+const codeReader = new ZXing.BrowserMultiFormatReader();
+
+/* Estado de cámara y ROI */
+let stream = null, currentDeviceId = null, deviceIds = [];
+let usingImage = false; // false = cámara, true = imagen cargada
+let imgBitmap = null;   // ImageBitmap de imagen cargada
+
+/* ROI model (en coordenadas CSS relativas al contenedor del media) */
+let roi = { x: 0.5, y: 0.5, w: 300, h: 120 }; // x,y = centro relativo (0..1), w,h px
+let mediaRect = { w: 0, h: 0, left: 0, top: 0 };
+
+function setStatus(s){ statusEl.textContent = s; }
+function clamp(n,min,max){ return Math.min(Math.max(n,min),max); }
+
+/* ============================================================
+   Inicialización: listar cámaras
+============================================================ */
+async function listCameras(){
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  deviceIds = devices.filter(d=>d.kind==='videoinput').map(d=>({id:d.deviceId,label:d.label||'Cámara'}));
+  selCamera.innerHTML = '';
+  deviceIds.forEach((d,i)=>{
+    const opt = document.createElement('option');
+    opt.value = d.id; opt.textContent = d.label || `Cámara ${i+1}`;
+    selCamera.appendChild(opt);
+  });
+  if (currentDeviceId){
+    const idx = deviceIds.findIndex(d=>d.id===currentDeviceId);
+    if (idx>=0) selCamera.selectedIndex = idx;
+  }
+}
+
+/* ============================================================
+   Iniciar/Detener cámara
+============================================================ */
+async function startCamera(deviceId=null){
+  stopCamera();
+  setStatus('Solicitando cámara…');
+  const idealW = 1280, idealH = 720;
+  const constraints = {
+    audio:false,
+    video:{
+      deviceId: deviceId ? {exact:deviceId} : undefined,
+      facingMode: deviceId? undefined : {ideal:'environment'},
+      width:{ideal:idealW}, height:{ideal:idealH},
+      frameRate:{ideal:30},
+      advanced:[
+        { focusMode: 'continuous' },
+        { exposureMode: 'continuous' },
+        { whiteBalanceMode: 'continuous' }
+      ]
+    }
+  };
+  try{
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    await video.play();
+    currentDeviceId = stream.getVideoTracks()[0].getSettings().deviceId || deviceId || null;
+    await listCameras();
+    usingImage = false;
+    sourceLabelEl.textContent = 'Cámara';
+    setStatus('Cámara iniciada');
+    updateCapsUI();
+    updateMediaRect();
+    centerROI();
+    if (chkAutodetect.checked) startAutodetect();
+  }catch(err){
+    console.error(err);
+    setStatus('Error al iniciar cámara');
+  }
+}
+
+function stopCamera(){
+  if (autodetectTimer) stopAutodetect();
+  if (stream){
+    stream.getTracks().forEach(t=>t.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+}
+
+/* ============================================================
+   Capacidades: torch, zoom, etc.
+============================================================ */
+let torchOn = false;
+async function updateCapsUI(){
+  capsEl.innerHTML = '';
+  const chip = (t)=>{ const s=document.createElement('div'); s.className='chip'; s.textContent=t; return s; };
+
+  if (!stream){ capsEl.appendChild(chip('sin cámara')); return; }
+  const track = stream.getVideoTracks()[0];
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  const setts = track.getSettings ? track.getSettings() : {};
+
+  // Torch
+  if ('torch' in caps){
+    btnTorch.disabled = false;
+    capsEl.appendChild(chip('torch'));
+  }else{
+    btnTorch.disabled = true;
+  }
+  // Zoom
+  if (caps.zoom){
+    rangeZoom.min = caps.zoom.min || 1;
+    rangeZoom.max = caps.zoom.max || 1;
+    rangeZoom.step = caps.zoom.step || 0.01;
+    rangeZoom.value = setts.zoom || caps.zoom.min || 1;
+    zoomVal.textContent = (Number(rangeZoom.value)).toFixed(2)+'x';
+    rangeZoom.disabled = false;
+    capsEl.appendChild(chip(`zoom ${rangeZoom.min}–${rangeZoom.max}`));
+  }else{
+    rangeZoom.disabled = true; zoomVal.textContent='–';
+  }
+  // Autofocus
+  if (caps.focusMode){
+    capsEl.appendChild(chip('AF continuo'));
+  }
+  // Exposure / WB
+  if (caps.exposureMode) capsEl.appendChild(chip('exposición'));
+  if (caps.whiteBalanceMode) capsEl.appendChild(chip('WB'));
+}
+
+async function applyZoom(v){
+  if (!stream) return;
+  const track = stream.getVideoTracks()[0];
+  const caps = track.getCapabilities?.() || {};
+  if (!caps.zoom) return;
+  try{
+    await track.applyConstraints({advanced:[{zoom: Number(v)}]});
+  }catch(e){ console.warn('zoom no aplicado', e); }
+}
+
+async function toggleTorch(){
+  if (!stream) return;
+  const track = stream.getVideoTracks()[0];
+  const caps = track.getCapabilities?.() || {};
+  if (!('torch' in caps)) return;
+  torchOn = !torchOn;
+  try{
+    await track.applyConstraints({advanced:[{torch: torchOn}]});
+    setStatus(torchOn?'Torch: ON':'Torch: OFF');
+  }catch(e){ console.warn('torch fallo', e); }
+}
+
+/* ============================================================
+   Tamaños, ROI y overlay
+============================================================ */
+function updateMediaRect(){
+  const rect = video.offsetParent ? video.getBoundingClientRect() : preview.getBoundingClientRect();
+  mediaRect = { w: rect.width, h: rect.height, left: rect.left, top: rect.top };
+  // Actualiza tamaño máximo de sliders según media
+  roiW.max = Math.floor(mediaRect.w);
+  roiH.max = Math.floor(mediaRect.h);
+  // Redibuja ROI
+  drawROI();
+  frameSizeEl.textContent = `${Math.round(mediaRect.w)}×${Math.round(mediaRect.h)} px`;
+}
+function centerROI(){
+  roi.x = 0.5; roi.y = 0.5;
+  if (!roi.w) roi.w = Math.min( Math.round(mediaRect.w*0.6), 600);
+  if (!roi.h) roi.h = Math.round(roi.w/3);
+  drawROI();
+}
+function resetROI(){
+  roi.w = Math.min( Math.round(mediaRect.w*0.6), 600);
+  roi.h = Math.round(roi.w/3);
+  centerROI();
+}
+function moveROI(dx,dy){
+  // dx,dy en px relativos al lienzo mostrado
+  const nx = (roi.x*mediaRect.w + dx)/mediaRect.w;
+  const ny = (roi.y*mediaRect.h + dy)/mediaRect.h;
+  roi.x = clamp(nx, 0.0, 1.0);
+  roi.y = clamp(ny, 0.0, 1.0);
+  drawROI();
+}
+function drawROI(){
+  if (!mediaRect.w || !mediaRect.h) updateMediaRect();
+  const left = roi.x*mediaRect.w - roi.w/2;
+  const top  = roi.y*mediaRect.h - roi.h/2;
+  const l = clamp(left, 0, mediaRect.w - roi.w);
+  const t = clamp(top,  0, mediaRect.h - roi.h);
+  roiBox.style.left = l + 'px';
+  roiBox.style.top  = t + 'px';
+  roiBox.style.width  = roi.w + 'px';
+  roiBox.style.height = roi.h + 'px';
+  roiWv.textContent = Math.round(roi.w);
+  roiHv.textContent = Math.round(roi.h);
+  roiSizeEl.textContent = `${Math.round(roi.w)}×${Math.round(roi.h)} px`;
+}
+
+/* ============================================================
+   Captura → Vista previa  (desde video) / Cargar imagen
+============================================================ */
+async function captureToPreview(){
+  if (!video.videoWidth || !video.videoHeight){ setStatus('Esperando video…'); return; }
+  // Copiamos frame del video a canvas "preview"
+  const w = video.videoWidth, h = video.videoHeight;
+  preview.width = w; preview.height = h;
+  const ctx = preview.getContext('2d');
+  ctx.drawImage(video, 0, 0, w, h);
+  preview.style.display = 'block';
+  video.style.display = 'none';
+  usingImage = true; // trabajaremos sobre canvas
+  sourceLabelEl.textContent = 'Vista previa (desde cámara)';
+  setStatus('Frame capturado a vista previa');
+  updateMediaRect();
+  // Si autodetect está activo, hacer una detección sobre este frame estático
+  if (chkAutodetect.checked){
+    await autodetectOnCanvas(preview);
+  }
+}
+
+fileImg.addEventListener('change', async (e)=>{
+  const f = e.target.files?.[0];
+  if (!f) return;
+  const bmp = await createImageBitmap(f);
+  imgBitmap = bmp;
+  preview.width = bmp.width; preview.height = bmp.height;
+  const ctx = preview.getContext('2d');
+  ctx.drawImage(bmp, 0, 0);
+  preview.style.display = 'block';
+  video.style.display = 'none';
+  usingImage = true;
+  sourceLabelEl.textContent = `Imagen (${f.name})`;
+  setStatus('Imagen cargada');
+  updateMediaRect();
+  if (chkAutodetect.checked){
+    await autodetectOnCanvas(preview);
+  }
+});
+
+btnClearImg.addEventListener('click', ()=>{
+  if (usingImage){
+    const ctx = preview.getContext('2d');
+    ctx.clearRect(0,0,preview.width,preview.height);
+    preview.style.display = 'none';
+    video.style.display = stream? 'block':'none';
+    usingImage = false;
+    sourceLabelEl.textContent = stream ? 'Cámara' : '—';
+    setStatus('Imagen quitada');
+    updateMediaRect();
+  }
+});
+
+/* ============================================================
+   Extracción: Full / ROI
+============================================================ */
+function extractFromCanvas(srcCanvas, cropRect=null){
+  // srcCanvas = preview (cuando hay imagen/preview) o un canvas tomado del video
+  let outW, outH;
+  if (cropRect){
+    outW = Math.max(1, Math.round(cropRect.w));
+    outH = Math.max(1, Math.round(cropRect.h));
+  }else{
+    outW = srcCanvas.width; outH = srcCanvas.height;
+  }
+  const out = document.createElement('canvas');
+  out.width = outW; out.height = outH;
+  const octx = out.getContext('2d');
+  if (cropRect){
+    octx.drawImage(srcCanvas, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, outW, outH);
+  }else{
+    octx.drawImage(srcCanvas, 0, 0);
+  }
+  const url = out.toDataURL('image/png');
+  const img = new Image();
+  img.src = url;
+  img.title = cropRect ? `ROI ${outW}×${outH}` : `Full ${outW}×${outH}`;
+  results.prepend(img);
+  dlLink.href = url;
+  return url;
+}
+
+function cssRoiToImageRect(){
+  // Convierte ROI en pantalla (CSS) a coordenadas del bitmap de origen
+  // Si estamos en preview (canvas), mapeamos el roi relativo al tamaño mostrado
+  // y lo llevamos al tamaño real del canvas.
+  const box = roiBox.getBoundingClientRect();
+  const media = (usingImage ? preview : video).getBoundingClientRect();
+
+  const rx = (box.left - media.left) / media.width;
+  const ry = (box.top  - media.top ) / media.height;
+  const rw = box.width  / media.width;
+  const rh = box.height / media.height;
+
+  const srcW = usingImage ? preview.width : video.videoWidth;
+  const srcH = usingImage ? preview.height: video.videoHeight;
+
+  return {
+    x: Math.round(rx*srcW),
+    y: Math.round(ry*srcH),
+    w: Math.round(rw*srcW),
+    h: Math.round(rh*srcH)
+  };
+}
+
+async function extractROI(){
+  // Asegurar que tenemos una fuente en canvas (si es video en vivo, primero copiamos a snapCanvas)
+  let srcCanvas = preview;
+  if (!usingImage){
+    if (!video.videoWidth || !video.videoHeight){ setStatus('Video no listo'); return; }
+    snapCanvas.width = video.videoWidth; snapCanvas.height = video.videoHeight;
+    snapCtx.drawImage(video, 0, 0);
+    srcCanvas = snapCanvas;
+  }
+  const r = cssRoiToImageRect();
+  extractFromCanvas(srcCanvas, r);
+  setStatus('ROI extraído');
+}
+async function extractFull(){
+  let srcCanvas = preview;
+  if (!usingImage){
+    if (!video.videoWidth || !video.videoHeight){ setStatus('Video no listo'); return; }
+    snapCanvas.width = video.videoWidth; snapCanvas.height = video.videoHeight;
+    snapCtx.drawImage(video, 0, 0);
+    srcCanvas = snapCanvas;
+  }
+  extractFromCanvas(srcCanvas, null);
+  setStatus('Imagen completa extraída');
+}
+
+/* ============================================================
+   Autodetección (beta) con ZXing
+============================================================ */
+let autodetectTimer = null;
+function startAutodetect(){
+  if (autodetectTimer) clearInterval(autodetectTimer);
+  if (!stream){ return; }
+  // Disparo cada 1.2s para no saturar
+  autodetectTimer = setInterval(async ()=>{
+    try{
+      const result = await codeReader.decodeOnceFromVideoDevice(currentDeviceId || undefined, 'video');
+      if (result){
+        detInfoEl.textContent = `${result.getBarcodeFormat?.() || 'PDF417?'}: ${truncate(result.getText?.()||'', 24)}`;
+        // Si hay puntos, estimamos un ROI cómodo alrededor
+        const pts = result.resultPoints || result.getResultPoints?.() || [];
+        if (pts.length >= 2){
+          // Convertimos a rectángulo en coords del frame (videoWidth/Height)
+          const xs = pts.map(p=>p.getX? p.getX(): (p.x ?? 0));
+          const ys = pts.map(p=>p.getY? p.getY(): (p.y ?? 0));
+          const minX = Math.max(0, Math.min(...xs));
+          const maxX = Math.min(video.videoWidth, Math.max(...xs));
+          const minY = Math.max(0, Math.min(...ys));
+          const maxY = Math.min(video.videoHeight, Math.max(...ys));
+          const rectW = Math.max(80, (maxX-minX)*1.4);
+          const rectH = Math.max(40, (maxY-minY)*1.6);
+          // Pasamos a coords CSS (relativas a mediaRect)
+          const cx = ((minX+maxX)/2)/video.videoWidth;
+          const cy = ((minY+maxY)/2)/video.videoHeight;
+          roi.w = (rectW/video.videoWidth)*mediaRect.w;
+          roi.h = (rectH/video.videoHeight)*mediaRect.h;
+          roi.x = cx; roi.y = cy;
+          drawROI();
+          setStatus('ROI ajustado por autodetección');
+        }
       }
-      return Object.keys(props).length? props : null;
-    };
-
-    function parseDUI(text){
-      // Basado en el decodificador por "||"; se mapea a nombres amigables.
-      const parts = String(text||'').split('||');
-      if(parts.length<3) return null;
-      const fieldNames = [
-        "Número de DUI","Primer Apellido","Segundo Apellido y Nombres","Número de Emisión","Firma Digital",
-        "Lugar de Nacimiento","Municipio","Profesión u Oficio", "Sexo","Fecha de Nacimiento",
-        "Fecha de Emisión","Código de Zona","Categoría","Estdo Familiar","Nacionalidad","Segunda Firma Digital","Código de Verificación"
-      ];
-      const out = {};
-      for(let i=0;i<fieldNames.length;i++) out[fieldNames[i]] = (i<parts.length? parts[i] : 'No disponible');
-      return out;
+    }catch(e){
+      // Ignorar si no detecta; mantener silencio
     }
-
-    function smartParse(raw){
-      const txt = String(raw||'');
-      if(txt.includes('||')) return { kind:'DUI', data: parseDUI(txt) };
-      const usd = parseUSDL(txt); if(usd) return { kind:'AAMVA', data: usd };
-      return { kind:'raw', data: { raw: txt } };
+  }, 1200);
+}
+function stopAutodetect(){
+  if (autodetectTimer){ clearInterval(autodetectTimer); autodetectTimer = null; }
+}
+async function autodetectOnCanvas(canvas){
+  try{
+    const tmpURL = canvas.toDataURL('image/png');
+    const img = await fetch(tmpURL).then(r=>r.blob()).then(createImageBitmap);
+    // ZXing no tiene detectFromImage nativo en todos los navegadores; usamos decodeFromImageUrl como atajo
+    const reader = new ZXing.BrowserMultiFormatReader();
+    const res = await reader.decodeFromImageUrl(tmpURL);
+    if (res){
+      detInfoEl.textContent = `${res.getBarcodeFormat?.() || 'PDF417?'}: ${truncate(res.getText?.()||'', 24)}`;
+      setStatus('Detección realizada sobre vista previa/imagen');
     }
+  }catch(e){
+    // sin detección
+  }
+}
+function truncate(s,n){ return (s && s.length>n)? s.slice(0,n)+'…' : (s||''); }
 
-    function renderResult(parsed, raw){
-      setFormat(parsed.kind);
-      fillTable(parsed.data||{}); showTable(!!parsed && !!parsed.data);
-      $('#jsonOut').textContent = JSON.stringify(parsed.data||{}, null, 2);
-      $('#rawOut').textContent = String(raw||'');
-    }
+/* ============================================================
+   Eventos UI
+============================================================ */
+btnStart.addEventListener('click', ()=>startCamera(selCamera.value || null));
+btnStop.addEventListener('click', ()=>{ stopCamera(); setStatus('Cámara detenida'); });
+btnSwitch.addEventListener('click', async ()=>{
+  if (!deviceIds.length) await listCameras();
+  if (!deviceIds.length) return;
+  const idx = selCamera.selectedIndex;
+  const next = (idx+1) % deviceIds.length;
+  selCamera.selectedIndex = next;
+  startCamera(deviceIds[next].id);
+});
+selCamera.addEventListener('change', ()=>startCamera(selCamera.value||null));
 
-    // --- Tabs ---
-    const tabBtns = $all('.tab-btn');
-    tabBtns.forEach(btn=>btn.addEventListener('click', ()=>{
-      tabBtns.forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-      ['tab-camera','tab-image','tab-text'].forEach(id=> document.getElementById(id).classList.add('hidden'));
-      document.getElementById(btn.dataset.tab).classList.remove('hidden');
-    }));
+btnTorch.addEventListener('click', toggleTorch);
+rangeZoom.addEventListener('input', (e)=>{
+  zoomVal.textContent = Number(e.target.value).toFixed(2)+'x';
+  applyZoom(e.target.value);
+});
+chkAF.addEventListener('change', async (e)=>{
+  if (!stream) return;
+  const track = stream.getVideoTracks()[0];
+  try{
+    await track.applyConstraints({advanced:[{focusMode: e.target.checked ? 'continuous' : 'manual'}]});
+    setStatus(e.target.checked?'AF continuo':'AF manual');
+  }catch(err){ console.warn('focusMode no aplicado', err); }
+});
 
-    // --- Cámara (ZXing) ---
-    let codeReader, selectedDeviceId, isScanning=false;
-    (async ()=>{
-      try{
-        codeReader = new ZXing.BrowserMultiFormatReader();
-        const devices = await codeReader.getVideoInputDevices();
-        const sourceSelect = document.getElementById('sourceSelect');
-        if(devices && devices.length){ selectedDeviceId = devices[0].deviceId; }
-        if(devices.length>1){
-          devices.forEach(d=>{ const opt=document.createElement('option'); opt.value=d.deviceId; opt.text=d.label||d.deviceId; sourceSelect.appendChild(opt); });
-          sourceSelect.addEventListener('change', ()=>{ selectedDeviceId = sourceSelect.value; });
-          document.getElementById('sourceSelectPanel').classList.remove('hidden');
-        }
-        setupEvents();
-      }catch(err){ setStatus('Error: '+err.message,'error'); }
-    })();
+chkAutodetect.addEventListener('change', ()=>{
+  if (chkAutodetect.checked) {
+    usingImage ? autodetectOnCanvas(preview) : startAutodetect();
+  } else {
+    stopAutodetect();
+    detInfoEl.textContent = '—';
+  }
+});
 
-    function setupEvents(){
-      document.getElementById('startButton').addEventListener('click', startCamera);
-      document.getElementById('resetButton').addEventListener('click', resetCamera);
-      document.getElementById('fileInput').addEventListener('change', handleImageSelection);
-      document.getElementById('processImageButton').addEventListener('click', processImage);
-      document.getElementById('decodeTextBtn').addEventListener('click', decodeFromTextarea);
-      document.getElementById('clearTextBtn').addEventListener('click', ()=>{ $('#inputText').value=''; setStatus('Texto limpiado'); setFormat('—'); showTable(false); $('#jsonOut').textContent=''; $('#rawOut').textContent=''; });
-      document.getElementById('exportJsonBtn').addEventListener('click', exportJSON);
-      document.getElementById('loadExampleBtn').addEventListener('click', ()=>{ $('#inputText').value = EXAMPLE_DUI; setStatus('Ejemplo cargado'); });
-    }
+btnCapture.addEventListener('click', captureToPreview);
 
-    function startCamera(){
-      if(isScanning){ setStatus('La cámara ya está en funcionamiento'); return; }
-      isScanning = true; setStatus('Escaneando…'); setFormat('—');
-      codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err)=>{
-        if(result){
-          const fmt = result.format; setFormat(fmt===10? 'PDF417' : String(fmt));
-          const parsed = smartParse(result.text);
-          renderResult(parsed, result.text);
-          setStatus('Código detectado', 'success');
-          beepIfEnabled();
-        }
-        if(err && !(err instanceof ZXing.NotFoundException)){
-          setStatus('Error: '+err.message, 'error');
-        }
-      });
-    }
+window.addEventListener('resize', updateMediaRect);
+video.addEventListener('loadedmetadata', updateMediaRect);
 
-    function resetCamera(){
-      try{ codeReader && codeReader.reset(); }catch(e){}
-      isScanning=false; setStatus('Cámara detenida'); setFormat('—');
-    }
+/* ROI sliders */
+roiW.addEventListener('input', e=>{ roi.w = Number(e.target.value); drawROI(); });
+roiH.addEventListener('input', e=>{ roi.h = Number(e.target.value); drawROI(); });
 
-    // --- Imagen ---
-    let selectedImageFile=null;
-    function handleImageSelection(e){
-      const f = e.target.files && e.target.files[0];
-      if(!f){ $('#imagePreview').classList.add('hidden'); $('#processImageButton').disabled=true; return; }
-      selectedImageFile=f; const reader=new FileReader();
-      reader.onload = ev => { const img=$('#imagePreview'); img.src = ev.target.result; img.classList.remove('hidden'); $('#processImageButton').disabled=false; setStatus('Imagen cargada'); };
-      reader.readAsDataURL(f);
-    }
+/* ROI mover */
+mvUp.addEventListener('click', ()=>moveROI(0,-20));
+mvDown.addEventListener('click', ()=>moveROI(0,20));
+mvLeft.addEventListener('click', ()=>moveROI(-20,0));
+mvRight.addEventListener('click', ()=>moveROI(20,0));
+mvCenter.addEventListener('click', ()=>centerROI());
+mvReset.addEventListener('click', ()=>resetROI());
 
-    function processImage(){
-      if(!selectedImageFile){ setStatus('Seleccione una imagen primero','error'); return; }
-      setStatus('Procesando imagen…');
-      const img=$('#imagePreview');
-      codeReader.decodeFromImageElement(img).then(result=>{
-        const parsed = smartParse(result.text);
-        renderResult(parsed, result.text);
-        setFormat(result.format===10? 'PDF417' : String(result.format));
-        setStatus('Código detectado', 'success');
-        beepIfEnabled();
-      }).catch(err=>{ setStatus('Error al procesar la imagen: '+err.message,'error'); showTable(false); $('#jsonOut').textContent=''; $('#rawOut').textContent=''; });
-    }
+/* Extracción */
+btnExtractROI.addEventListener('click', extractROI);
+btnExtractFull.addEventListener('click', extractFull);
 
-    // --- Texto ---
-    const EXAMPLE_DUI = "01234567||AVENDANO MARTELL||RONALD OSWALDO||2||Qo8CBuyBtQIq/4MoAl1kghUCcYBDRgLWYoDlAuupQdgC9Z2DBANBZIIlA0apgrMDUGdCNANl10IqA3TOQmcDdNeC0QO22UCtA7u2QiADu8xBaQQWykDaBCHAgscEd1qAhASGwINvBLlhgnYFH16BxAVMXYFFBaNj||SAN SALVADOR||SAN SALVADOR||NO SABE||M||07/02/1998||16/03/2024||101012500||||SO||7||Qr0C/7hBAwOSKYIvA5cugzID1LmBVAP4JEODBAzGgSIEMJ1BxAR3G4BwBJUbg4MEvmiBJwTDHoPpBMhZguYE3RWCAQTiE4OsBRR3QjkFHw5C+gUkBoFfBUwUgfwFsglBHAW3DIMtBg2CQi8GLACCvQYsAEGwBkD8||72C3D403";
-
-    function decodeFromTextarea(){
-      const raw = $('#inputText').value.trim();
-      if(!raw){ setStatus('Ingrese texto para decodificar','error'); return; }
-      const parsed = smartParse(raw); renderResult(parsed, raw); setStatus('Texto decodificado', 'success');
-    }
-
-    function exportJSON(){
-      const txt = $('#jsonOut').textContent.trim();
-      if(!txt){ setStatus('No hay datos para exportar','error'); return; }
-      const blob = new Blob([txt], {type:'application/json'});
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'datos_decodificados.json';
-      document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 100);
-      setStatus('JSON exportado');
-    }
-  </script>
+/* Inicial */
+(async function init(){
+  await listCameras();
+  updateMediaRect();
+  resetROI();
+  setStatus('Listo');
+})();
+</script>
 </body>
 </html>
-
-
