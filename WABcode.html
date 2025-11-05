@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Detección de Códigos (Video) · ZXing + OpenCV</title>
+<title>Detección de Códigos (Video) · ZXing + OpenCV + BarcodeDetector</title>
 <style>
   :root { 
     font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
@@ -38,12 +38,17 @@
   .formats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}
   .formats label{display:flex;align-items:center;gap:8px;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--muted)}
   .footer{margin-top:14px;color:#7f8aa3;font-size:.85rem}
+  .capture-thumb{width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer}
+  .capture-thumb:hover{filter:brightness(1.2)}
+  .history-item{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border);font-size:.9rem}
+  .history-item:last-child{border-bottom:none}
+  .history-content{flex:1}
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>Detección de códigos en tiempo real (Video) — ZXing + OpenCV</h1>
-  <p class="hint">Incluye: selección manual, <b>Cambiar cámara</b> (rota entre dispositivos), botones <b>Trasera/Frontal</b>, <b>linterna</b>, preprocesado <b>OpenCV</b>, overlay, FPS y filtros por formato.</p>
+  <h1>Detección de códigos en tiempo real (Video) — ZXing + OpenCV + BarcodeDetector</h1>
+  <p class="hint">Incluye: selección manual, <b>Cambiar cámara</b> (rota entre dispositivos), botones <b>Trasera/Frontal</b>, <b>linterna</b>, preprocesado <b>OpenCV</b>, overlay, FPS, filtros por formato, capturas y sonido.</p>
 
   <div class="grid cols">
     <!-- IZQUIERDA: Cámara + resultados -->
@@ -63,6 +68,16 @@
       <div class="row">
         <label><input type="checkbox" id="useopencv"> Preprocesar con OpenCV</label>
         <label><input type="checkbox" id="showOverlay" checked> Mostrar overlay</label>
+        <label><input type="checkbox" id="enableBeep" checked> Sonido al detectar</label>
+      </div>
+
+      <div class="row">
+        <label for="engineSelect">Motor detección:</label>
+        <select id="engineSelect">
+          <option value="zxing">ZXing (JavaScript)</option>
+          <option value="barcodeDetector">BarcodeDetector API</option>
+          <option value="html5qrcode">HTML5 QR Code</option>
+        </select>
       </div>
 
       <div class="video-wrap">
@@ -109,7 +124,7 @@
         </div>
 
         <div>
-          <h2>Historial</h2>
+          <h2>Historial con capturas</h2>
           <div id="log" style="font-family:ui-monospace,Consolas,monospace;font-size:.9rem;line-height:1.35;max-height:280px;overflow:auto;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:10px"></div>
         </div>
       </div>
@@ -120,6 +135,7 @@
 <!-- ====== Librerías por CDN ====== -->
 <script src="https://unpkg.com/@zxing/library@latest"></script>
 <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
 
 <script>
 (function(){
@@ -133,6 +149,8 @@
   const btnSwitch = document.getElementById('btnSwitch');
   const useOpenCV = document.getElementById('useopencv');
   const showOverlay = document.getElementById('showOverlay');
+  const enableBeep = document.getElementById('enableBeep');
+  const engineSelect = document.getElementById('engineSelect');
   const video = document.getElementById('video');
   const overlay = document.getElementById('overlay');
   const cRaw = document.getElementById('canvasRaw');
@@ -159,6 +177,13 @@
   let opencvReady = false;
   let devicesCache = []; // videoinput devices
   let deviceIndex = 0;   // índice actual para "Cambiar cámara"
+  let barcodeDetector = null;
+  let html5QrCode = null;
+  let lastDetection = null; // Para evitar detecciones duplicadas
+
+  // ------- Audio para beep -------
+  const beepAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
+  beepAudio.volume = 0.3;
 
   // ------- Formatos -------
   const formatItems = [
@@ -202,6 +227,52 @@
   }
   rebuildReader();
 
+  // ------- BarcodeDetector API -------
+  function initBarcodeDetector(){
+    if ('BarcodeDetector' in window) {
+      barcodeDetector = new BarcodeDetector({
+        formats: getBarcodeDetectorFormats()
+      });
+      return true;
+    }
+    return false;
+  }
+
+  function getBarcodeDetectorFormats(){
+    const formatMap = {
+      "QR_CODE": "qr_code",
+      "DATA_MATRIX": "data_matrix",
+      "AZTEC": "aztec",
+      "PDF_417": "pdf417",
+      "CODE_128": "code_128",
+      "CODE_39": "code_39",
+      "CODABAR": "codabar",
+      "EAN_13": "ean_13",
+      "EAN_8": "ean_8",
+      "UPC_A": "upc_a",
+      "UPC_E": "upc_e",
+      "ITF": "itf"
+    };
+    
+    const formats = [];
+    formatItems.forEach(([key]) => {
+      const el = document.getElementById('fmt_'+key);
+      if(el && el.checked && formatMap[key]) {
+        formats.push(formatMap[key]);
+      }
+    });
+    return formats.length ? formats : ['qr_code'];
+  }
+
+  // ------- HTML5 QR Code -------
+  function initHtml5QrCode(){
+    if (window.Html5Qrcode) {
+      html5QrCode = new Html5Qrcode("video");
+      return true;
+    }
+    return false;
+  }
+
   // ------- OpenCV runtime -------
   window.cv = window.cv || {};
   const onCVReady = () => { opencvReady = true; console.log("OpenCV listo"); };
@@ -212,19 +283,64 @@
   }
 
   // ------- Utilidades -------
-  function log(msg){
+  function log(msg, captureDataUrl = null){
     const time = new Date().toLocaleTimeString();
-    logEl.insertAdjacentHTML('afterbegin', `<div>[${time}] ${msg}</div>`);
+    const logItem = document.createElement('div');
+    logItem.className = 'history-item';
+    
+    if (captureDataUrl) {
+      const img = document.createElement('img');
+      img.className = 'capture-thumb';
+      img.src = captureDataUrl;
+      img.title = 'Hacer clic para ver en tamaño completo';
+      img.addEventListener('click', () => {
+        const win = window.open('', '_blank');
+        win.document.write(`<img src="${captureDataUrl}" style="max-width:100%;height:auto;">`);
+      });
+      logItem.appendChild(img);
+    }
+    
+    const content = document.createElement('div');
+    content.className = 'history-content';
+    content.innerHTML = `[${time}] ${msg}`;
+    logItem.appendChild(content);
+    
+    logEl.insertBefore(logItem, logEl.firstChild);
+    
+    // Limitar el historial a 20 elementos
+    if (logEl.children.length > 20) {
+      logEl.removeChild(logEl.lastChild);
+    }
   }
+  
   function setStatus(msg, cls="warn"){ statusEl.className = cls; statusEl.textContent = msg; }
-  function setResult(res, t){
+  
+  function setResult(res, t, captureDataUrl = null){
     if(!res){ fmtEl.textContent = "—"; textEl.textContent = "—"; tdecEl.textContent = "—"; return; }
+    
     const fmt = res.getBarcodeFormat ? res.getBarcodeFormat().toString() : (res.format || "—");
     const txt = res.getText ? res.getText() : (res.text || "—");
-    fmtEl.textContent = fmt; textEl.textContent = txt; tdecEl.textContent = `${t.toFixed(1)} ms`;
-    log(`<span class="ok">✔</span> <b>${fmt}</b> → <code>${escapeHtml(txt)}</code>`);
+    
+    // Evitar duplicados consecutivos
+    const currentDetection = `${fmt}:${txt}`;
+    if (currentDetection === lastDetection) return;
+    lastDetection = currentDetection;
+    
+    fmtEl.textContent = fmt; 
+    textEl.textContent = txt; 
+    tdecEl.textContent = `${t.toFixed(1)} ms`;
+    
+    // Reproducir sonido si está habilitado
+    if (enableBeep.checked) {
+      beepAudio.play().catch(e => console.log("No se pudo reproducir sonido:", e));
+    }
+    
+    // Registrar con captura
+    log(`<span class="ok">✔</span> <b>${fmt}</b> → <code>${escapeHtml(txt)}</code>`, captureDataUrl);
   }
+  
   function escapeHtml(s){ return String(s).replace(/[&<>]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+  
   function drawOverlay(points){
     const ctx = overlay.getContext('2d');
     ctx.clearRect(0,0,overlay.width,overlay.height);
@@ -235,6 +351,7 @@
     for(let i=1;i<points.length;i++) ctx.lineTo(points[i].x, points[i].y);
     ctx.closePath(); ctx.stroke(); ctx.fill();
   }
+  
   function drawFPS(){
     frames++;
     const now = performance.now();
@@ -243,10 +360,20 @@
       fpsEl.textContent = `FPS: ${fps}`;
     }
   }
+  
   function resizeCanvases(){
     const w = video.videoWidth || 1280;
     const h = video.videoHeight || 720;
     [overlay,cRaw,cProc].forEach(c=>{ c.width = w; c.height = h; });
+  }
+  
+  function createCapture(){
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.7);
   }
 
   // ------- Cámaras -------
@@ -286,10 +413,17 @@
   async function startWithDevice(deviceId, facing){
     try{
       const constraints = deviceId ? {
-        video: { deviceId: {exact: deviceId}, width:{ideal:1280}, height:{ideal:720} }
+        video: { deviceId: {exact: deviceId}, width:{ideal:1280}, height:{ideal:720}, frameRate: { ideal: 30 } }
       } : {
-        video: { facingMode: facing || "environment", width:{ideal:1280}, height:{ideal:720} }
+        video: { facingMode: facing || "environment", width:{ideal:1280}, height:{ideal:720}, frameRate: { ideal: 30 } }
       };
+      
+      // Optimización: usar resolución más baja para mejor rendimiento en dispositivos móviles
+      if (window.innerWidth < 768) {
+        constraints.video.width = {ideal: 640};
+        constraints.video.height = {ideal: 480};
+      }
+      
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream; await video.play();
       track = stream.getVideoTracks()[0];
@@ -297,8 +431,21 @@
       setStatus("Detectando...", "ok");
       torchOn = false; btnTorch.classList.remove('primary');
       rebuildReader();
-      if (useOpenCV.checked) loopWithOpenCV();
-      else decodeWithZXingLive();
+      
+      // Inicializar motores de detección
+      initBarcodeDetector();
+      initHtml5QrCode();
+      
+      // Seleccionar método de detección según el motor elegido
+      const engine = engineSelect.value;
+      if (engine === 'barcodeDetector' && barcodeDetector) {
+        loopWithBarcodeDetector();
+      } else if (engine === 'html5qrcode' && html5QrCode) {
+        startHtml5QrCode();
+      } else {
+        if (useOpenCV.checked) loopWithOpenCV();
+        else decodeWithZXingLive();
+      }
     }catch(err){
       console.error(err);
       setStatus("Error al iniciar cámara","err");
@@ -311,12 +458,18 @@
     const devId = deviceSelect.value || undefined;
     await startWithDevice(devId, "environment");
   }
+  
   function stop(){
     if (rafId) cancelAnimationFrame(rafId), rafId=null;
     if (codeReader) codeReader.reset();
+    if (html5QrCode) {
+      html5QrCode.stop().catch(() => {});
+      html5QrCode.clear();
+    }
     if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; }
     setStatus("Detenido");
   }
+  
   async function toggleTorch(){
     try{
       if(!track) return;
@@ -347,7 +500,8 @@
       if (result) {
         const pts = (result.resultPoints||[]).map(p=>({x:p.getX?p.getX():p.x, y:p.getY?p.getY():p.y}));
         drawOverlay(pts);
-        setResult(result, 0);
+        const captureDataUrl = createCapture();
+        setResult(result, 0, captureDataUrl);
       } else if (err && !(err instanceof ZXing.NotFoundException)) {
         setStatus("Buscando...", "warn");
       }
@@ -369,7 +523,8 @@
           const result = await codeReader.decodeFromCanvas(cProc);
           const t1 = performance.now();
           drawOverlay(result?.resultPoints?.map(p=>({x:p.x??p.getX(), y:p.y??p.getY()})) || null);
-          setResult(result, t1 - t0);
+          const captureDataUrl = createCapture();
+          setResult(result, t1 - t0, captureDataUrl);
         } catch(e){
           if (!(e instanceof ZXing.NotFoundException)) log(`<span class="err">✖</span> ${e.message||e}`);
         } finally { decoding = false; }
@@ -378,6 +533,88 @@
       rafId = requestAnimationFrame(step);
     };
     step();
+  }
+
+  // ------- Flujo 3: BarcodeDetector API -------
+  async function loopWithBarcodeDetector(){
+    if (!barcodeDetector) {
+      setStatus("BarcodeDetector no disponible", "err");
+      return;
+    }
+    
+    const step = async () => {
+      paintRaw();
+      if(!decoding){
+        decoding = true;
+        try{
+          const t0 = performance.now();
+          const barcodes = await barcodeDetector.detect(video);
+          const t1 = performance.now();
+          
+          if (barcodes && barcodes.length > 0) {
+            const barcode = barcodes[0];
+            const result = {
+              format: barcode.format,
+              text: barcode.rawValue,
+              resultPoints: barcode.cornerPoints
+            };
+            drawOverlay(barcode.cornerPoints);
+            const captureDataUrl = createCapture();
+            setResult(result, t1 - t0, captureDataUrl);
+          } else {
+            setStatus("Buscando...", "warn");
+          }
+        } catch(e){
+          console.error("BarcodeDetector error:", e);
+        } finally { decoding = false; }
+      }
+      drawFPS();
+      rafId = requestAnimationFrame(step);
+    };
+    step();
+  }
+
+  // ------- Flujo 4: HTML5 QR Code -------
+  function startHtml5QrCode(){
+    if (!html5QrCode) {
+      setStatus("HTML5 QR Code no disponible", "err");
+      return;
+    }
+    
+    const config = {
+      fps: 10,
+      qrbox: { width: 250, height: 250 },
+      aspectRatio: 16/9,
+      disableFlip: false
+    };
+    
+    html5QrCode.start(
+      { deviceId: deviceSelect.value || undefined },
+      config,
+      onHtml5QrCodeSuccess,
+      onHtml5QrCodeFailure
+    ).catch(err => {
+      console.error("HTML5 QR Code error:", err);
+      setStatus("Error HTML5 QR Code", "err");
+    });
+  }
+  
+  function onHtml5QrCodeSuccess(decodedText, decodedResult) {
+    const result = {
+      format: decodedResult.result.format.formatName,
+      text: decodedText
+    };
+    const captureDataUrl = createCapture();
+    setResult(result, 0, captureDataUrl);
+    drawFPS();
+  }
+  
+  function onHtml5QrCodeFailure(error) {
+    // No hacer nada para errores normales de no encontrar código
+    if (error && !error.startsWith("No QR code")) {
+      console.log("HTML5 QR Code error:", error);
+    }
+    drawFPS();
   }
 
   function paintRaw(){
@@ -420,8 +657,17 @@
   btnTorch.addEventListener('click', toggleTorch);
   btnSwitch.addEventListener('click', switchCamera);
   showOverlay.addEventListener('change', ()=> drawOverlay(null));
-  formatList.addEventListener('change', ()=>{ if (stream){ stop(); start(); } });
+  formatList.addEventListener('change', ()=>{ 
+    rebuildReader();
+    if (barcodeDetector) {
+      barcodeDetector = new BarcodeDetector({
+        formats: getBarcodeDetectorFormats()
+      });
+    }
+    if (stream){ stop(); start(); } 
+  });
   useOpenCV.addEventListener('change', ()=>{ if(stream){ stop(); start(); } });
+  engineSelect.addEventListener('change', ()=>{ if(stream){ stop(); start(); } });
 
   // Selector de dispositivo manual
   deviceSelect.addEventListener('change', async ()=>{
@@ -458,5 +704,3 @@
 </script>
 </body>
 </html>
-
-
