@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>OCR y Detector de Códigos de Barras con ROI</title>
+<title>OCR y Detector de Códigos de Barras con ROI + Autodetección & Historial</title>
 <style>
   :root{
     color-scheme: dark;
@@ -14,8 +14,8 @@
   header{padding:16px 20px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#0d121a,#0b0f14)}
   h1{font-size:18px; margin:0 0 4px}
   p.subtitle{margin:0; color:var(--muted); font-size:13px}
-  .container{max-width:1100px; margin:18px auto; padding:0 16px; display:grid; gap:16px}
-  .grid{display:grid; grid-template-columns:1.1fr 1fr; gap:16px}
+  .container{max-width:1200px; margin:18px auto; padding:0 16px; display:grid; gap:16px}
+  .grid{display:grid; grid-template-columns:1.15fr 1fr; gap:16px}
   .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px}
   .title{font-size:14px; color:#b9c4d0; margin-bottom:10px; letter-spacing:.2px}
   .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
@@ -28,33 +28,34 @@
   button.good{background:var(--good); color:#00160c; border-color:#1fa466}
   button.bad{background:var(--bad); color:#240005; border-color:#d34a53}
   input[type="file"]{display:none}
-  select, input[type="text"]{
+  select, input[type="text"], input[type="number"]{
     background:#0f1622; color:#e6edf3; border:1px solid var(--border); border-radius:10px; padding:9px 10px; font-weight:600
   }
   .media{display:grid; gap:8px}
   .viewport{
-    display:inline-block; position:relative; width:100%; max-height:360px; aspect-ratio:4/3;
+    display:inline-block; position:relative; width:100%; max-height:380px; aspect-ratio:4/3;
     background:#0a0a0a; border:1px solid var(--border); border-radius:12px; overflow:hidden;
   }
   video, img.preview, canvas{position:absolute; inset:0; width:100%; height:100%; object-fit:contain}
   .status{font-size:13px; color:var(--muted); margin-top:6px; min-height:18px}
   pre.json{margin:0; padding:12px; background:#0f141c; border:1px dashed var(--border); border-radius:10px; overflow:auto; max-height:260px}
   table{width:100%; border-collapse:collapse; font-size:14px}
-  th,td{border-bottom:1px solid var(--border); padding:10px 8px; text-align:left}
+  th,td{border-bottom:1px solid var(--border); padding:10px 8px; text-align:left; vertical-align:top}
   th{color:#b9c4d0; font-weight:600}
   .badge{display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:#0f1622}
   .ok{color:var(--good)} .warn{color:var(--bad)}
   .hint{font-size:12px; color:#708090}
-  /* Línea guía opcional */
   @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
   .roi-guide { animation: blink 1s step-end infinite; }
   #roiPreview { max-height: 120px; width: 100%; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--border); background:#0f141c }
+  .historyThumb{width:120px; height:80px; object-fit:cover; border-radius:8px; border:1px solid var(--border)}
+  .nowrap{white-space:nowrap}
 </style>
 </head>
 <body>
 <header>
   <h1>OCR y Detector de Códigos de Barras con ROI</h1>
-  <p class="subtitle">Dibuja un recuadro ROI con el mouse o los dedos. Captura & extrae usando ese ROI.</p>
+  <p class="subtitle">Autodetección con cámara, OCR alternativo de dígitos, y registro de historial con capturas.</p>
 </header>
 
 <div class="container">
@@ -74,11 +75,8 @@
       <div class="row" style="margin-top:10px">
         <button id="startCam" class="primary">Iniciar cámara</button>
         <button id="stopCam" class="bad" disabled>Detener cámara</button>
-        
         <button id="extractFromLiveCam" class="good" disabled>Extraer desde Cámara</button>
-
         <button id="captureROI" disabled>Capturar ROI desde cámara</button>
-
         <label class="buttonlike">
           Subir imagen
           <input id="fileInput" type="file" accept="image/*" />
@@ -102,6 +100,9 @@
       <div class="row" style="margin-top:8px">
         <label><input id="beepChk" type="checkbox"> Sonido al detectar</label>
         <label><input id="detailsChk" type="checkbox" checked> Mostrar detalles (BB/Puntos)</label>
+        <label><input id="autoDetectChk" type="checkbox"> Autodetectar (cámara)</label>
+        <label title="Ejecuta OCR periódico solo para extraer dígitos si no hay código"><input id="ocrDigitsAltChk" type="checkbox"> OCR dígitos alternativo</label>
+        <label class="badge">Intervalo (ms): <input id="intervalMs" type="number" value="900" min="300" step="100" style="width:90px"></label>
       </div>
 
       <div class="row" style="margin-top:8px">
@@ -128,6 +129,28 @@
       </table>
     </section>
   </div>
+
+  <section class="card">
+    <div class="title">Historial de detecciones (con captura)</div>
+    <div class="row" style="margin-bottom:8px">
+      <button id="exportCsv" class="good">Exportar historial (CSV)</button>
+      <button id="clearHistory" class="bad">Limpiar historial</button>
+      <span class="hint">* Exporta solo fecha, hora y datos extraídos.</span>
+    </div>
+    <table id="historyTable">
+      <thead>
+        <tr>
+          <th class="nowrap">Fecha</th>
+          <th class="nowrap">Hora</th>
+          <th>Tipo</th>
+          <th>Datos</th>
+          <th>Formato</th>
+          <th>Captura</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -152,8 +175,9 @@
   const barcodesFound = el.barcodesFound;
   const autoDetectROIButton = el.autoDetectROI;
   const captureROIButton = el.captureROI; 
-  // El botón 'Capturar & Extraer' fue renombrado a 'Extraer desde Cámara' con ID 'extractFromLiveCam'
   const extractFromLiveCamButton = el.extractFromLiveCam;
+
+  const historyTableBody = document.querySelector('#historyTable tbody');
 
   const ctxOverlay = canvasOverlay.getContext('2d');
   const ctxGuide = canvasGuide.getContext('2d');
@@ -164,7 +188,9 @@
   let supportedFormats = [];
   let stream = null;
   let lastImageEl = null;
-  let videoRequestId = null;
+  let videoLoopRAF = null;
+  let autoTimer = null;
+  let lastAutoRun = 0;
 
   let audioCtx = null;
   let lastBeepAt = 0;
@@ -175,6 +201,11 @@
   let dragMode = null;
   let dragStart = null;
   const MIN_W = 20, MIN_H = 20;
+
+  // Historial y control de duplicados
+  const history = [];
+  const recentSet = new Map(); // clave -> timestamp último
+  const DEDUP_MS = 2500;
 
   // ---------- utils ----------
   function setStatus(msg){ status.textContent = msg; }
@@ -187,6 +218,59 @@
   el.langSelect.addEventListener('change', currentLang);
   el.langCustom.addEventListener('input', currentLang);
 
+  function nowParts(){
+    // America/El_Salvador (UTC-6) fixed offset formatting
+    const d = new Date();
+    const pad = n=> String(n).padStart(2,'0');
+    const yyyy=d.getFullYear(), mm=pad(d.getMonth()+1), dd=pad(d.getDate());
+    const hh=pad(d.getHours()), mi=pad(d.getMinutes()), ss=pad(d.getSeconds());
+    return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${mi}:${ss}` };
+  }
+
+  function toDataURLFromCanvas(c){
+    try { return c.toDataURL('image/jpeg', 0.85); } catch { return ''; }
+  }
+  function snapshotCanvasFromVideo(v){
+    const vw = v.videoWidth, vh = v.videoHeight;
+    const c = document.createElement('canvas'); c.width = vw; c.height = vh;
+    const ctx = c.getContext('2d'); ctx.drawImage(v, 0, 0, vw, vh); return c;
+  }
+
+  function addHistoryEntry({ type, value, format=null, captureCanvas=null }){
+    const {date, time} = nowParts();
+    const imgB64 = captureCanvas ? toDataURLFromCanvas(captureCanvas) : '';
+    const row = { date, time, type, value, format, imageB64: imgB64 };
+    history.unshift(row); // más reciente primero
+    renderHistoryRow(row);
+  }
+
+  function renderHistoryRow(row){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="nowrap">${row.date}</td>
+      <td class="nowrap">${row.time}</td>
+      <td>${row.type}</td>
+      <td>${(row.value || '').toString()}</td>
+      <td>${row.format || '—'}</td>
+      <td>${row.imageB64 ? `<img class="historyThumb" src="${row.imageB64}" alt="captura"/>` : '—'}</td>
+    `;
+    historyTableBody.insertBefore(tr, historyTableBody.firstChild);
+  }
+
+  function exportHistoryCSV(){
+    // Solo fecha, hora, y datos
+    const lines = ['fecha,hora,datos'];
+    history.slice().reverse().forEach(h=>{
+      const safe = (''+ (h.value ?? '')).replaceAll('"', '""');
+      lines.push(`${h.date},${h.time},"${safe}"`);
+    });
+    const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `historial_codigos_${Date.now()}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
   // Ajusta tamaños de canvases a tamaño visible
   function syncCanvasSizes(){
     const W = canvasOverlay.clientWidth;
@@ -197,7 +281,6 @@
     drawOverlay();
   }
 
-  // Línea guía (opcional)
   function drawGuide() {
     const W = canvasGuide.width, H = canvasGuide.height;
     ctxGuide.clearRect(0, 0, W, H);
@@ -210,13 +293,11 @@
     ctxGuide.stroke();
   }
 
-  // Dibuja máscara, rectángulo ROI y agarraderas
   function drawOverlay(){
     const W = canvasOverlay.width, H = canvasOverlay.height;
     ctxOverlay.clearRect(0,0,W,H);
 
     if (!roi) {
-      // Un mensaje sutil
       ctxOverlay.fillStyle = 'rgba(0,0,0,0.25)';
       ctxOverlay.fillRect(0,0,W,H);
       ctxOverlay.fillStyle = '#b9c4d0';
@@ -225,24 +306,20 @@
       return;
     }
 
-    // Máscara fuera del ROI
     ctxOverlay.fillStyle = 'rgba(0,0,0,0.45)';
-    ctxOverlay.fillRect(0,0,W,roi.y); // arriba
-    ctxOverlay.fillRect(0,roi.y,roi.x,roi.h); // izquierda
-    ctxOverlay.fillRect(roi.x+roi.w,roi.y,W-(roi.x+roi.w),roi.h); // derecha
-    ctxOverlay.fillRect(0,roi.y+roi.h,W,H-(roi.y+roi.h)); // abajo
+    ctxOverlay.fillRect(0,0,W,roi.y);
+    ctxOverlay.fillRect(0,roi.y,roi.x,roi.h);
+    ctxOverlay.fillRect(roi.x+roi.w,roi.y,W-(roi.x+roi.w),roi.h);
+    ctxOverlay.fillRect(0,roi.y+roi.h,W,H-(roi.y+roi.h));
 
-    // Borde ROI
     ctxOverlay.lineWidth = 2;
     ctxOverlay.strokeStyle = '#3ba0ff';
     ctxOverlay.setLineDash([6,4]);
     ctxOverlay.strokeRect(roi.x, roi.y, roi.w, roi.h);
     ctxOverlay.setLineDash([]);
 
-    // Agarraderas
     ctxOverlay.fillStyle = '#3ba0ff';
-    const handles = getHandlePoints(roi);
-    for (const p of handles) ctxOverlay.fillRect(p.x-HANDLE/2, p.y-HANDLE/2, HANDLE, HANDLE);
+    for (const p of getHandlePoints(roi)) ctxOverlay.fillRect(p.x-HANDLE/2, p.y-HANDLE/2, HANDLE, HANDLE);
   }
 
   function getHandlePoints(r){
@@ -262,7 +339,6 @@
     for(const h of getHandlePoints(roi)){
       if (Math.abs(x-h.x) <= HANDLE && Math.abs(y-h.y) <= HANDLE) return h.name;
     }
-    // dentro del ROI para mover
     if (x>=roi.x && x<=roi.x+roi.w && y>=roi.y && y<=roi.y+roi.h) return 'move';
     return null;
   }
@@ -282,12 +358,8 @@
     const W = canvasOverlay.width, H = canvasOverlay.height;
     if (r.w < MIN_W) r.w = MIN_W;
     if (r.h < MIN_H) r.h = MIN_H;
-    
-    // Ajustar límites de X
     if (r.x < 0) r.x = 0;
     if (r.x + r.w > W) r.x = W - r.w;
-    
-    // Ajustar límites de Y
     if (r.y < 0) r.y = 0;
     if (r.y + r.h > H) r.y = H - r.h;
   }
@@ -307,7 +379,6 @@
     const hit = roi ? hitTestHandle(p.x,p.y) : null;
 
     if (!roi || !hit){
-      // empezar a dibujar desde cero
       roi = { x:p.x, y:p.y, w:1, h:1 };
       dragMode = 'draw';
     } else {
@@ -335,14 +406,12 @@
       roi.y = dragStart.ry + dy;
       clampROI(roi);
     } else {
-      // resize por lados/esquinas
       const r = { ...dragStart };
       const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
       if (dragMode.includes('e')) r.rw += dx;
       if (dragMode.includes('s')) r.rh += dy;
       if (dragMode.includes('w')) { r.rx += dx; r.rw -= dx; }
       if (dragMode.includes('n')) { r.ry += dy; r.rh -= dy; }
-      // aplicar
       roi.x = r.rx; roi.y = r.ry; roi.w = r.rw; roi.h = r.rh;
       if (roi.w < 0){ roi.x += roi.w; roi.w = -roi.w; }
       if (roi.h < 0){ roi.y += roi.h; roi.h = -roi.h; }
@@ -350,12 +419,8 @@
     }
     drawOverlay();
   }
-  function onPointerUp(ev){
-    dragMode = null;
-    drawOverlay();
-  }
+  function onPointerUp(){ dragMode = null; drawOverlay(); }
 
-  // Eventos mouse/touch
   canvasOverlay.addEventListener('mousedown', onPointerDown);
   window.addEventListener('mousemove', onPointerMove);
   window.addEventListener('mouseup', onPointerUp);
@@ -364,66 +429,26 @@
   window.addEventListener('touchmove', onPointerMove, {passive:false});
   window.addEventListener('touchend', onPointerUp);
 
-  // ---------- Auto-detección ROI ----------
+  // ---------- Auto-detección ROI (una sola vez) ----------
   async function autoSelectROI(sourceEl){
     setStatus('Buscando códigos de barras para auto-ajustar el ROI...');
-
-    // 1. Obtener las dimensiones de la fuente real y el viewport
     const sW = sourceEl.naturalWidth || sourceEl.videoWidth || sourceEl.width;
     const sH = sourceEl.naturalHeight || sourceEl.videoHeight || sourceEl.height;
-    const vW = canvasOverlay.width;
-    const vH = canvasOverlay.height;
+    const vW = canvasOverlay.width; const vH = canvasOverlay.height;
+    if (!sW || !sH || !vW || !vH) { setStatus('Fuente o viewport no válidos para auto-ajuste.'); return false; }
 
-    if (!sW || !sH || !vW || !vH) {
-      setStatus('Fuente o viewport no válidos para auto-ajuste.');
-      return false;
-    }
-
-    // 2. Detectar códigos de barras en la imagen completa
     const symbols = await detector.detect(sourceEl);
+    if (symbols.length === 0) { setStatus('No se detectaron códigos de barras para auto-ajustar el ROI.'); return false; }
 
-    if (symbols.length === 0) {
-      setStatus('No se detectaron códigos de barras para auto-ajustar el ROI.');
-      return false;
-    }
+    const bb = symbols[0].boundingBox; if (!bb) { setStatus('Código detectado sin bounding box.'); return false; }
 
-    // 3. Usar el primer bounding box detectado
-    const bb = symbols[0].boundingBox;
-    if (!bb) {
-      setStatus('Código detectado sin bounding box, no se puede auto-ajustar.');
-      return false;
-    }
-
-    // 4. Mapear el bounding box real (source coords) a las coordenadas del viewport (canvasOverlay)
-    const scaleX = vW / sW;
-    const scaleY = vH / sH;
-
-    // Calcular el ROI en coordenadas del viewport, aplicando un margen (e.g., 20px en el viewport)
+    const scaleX = vW / sW; const scaleY = vH / sH;
     const margin = 20;
-    const vx = bb.x * scaleX;
-    const vy = bb.y * scaleY;
-    const vw = bb.width * scaleX;
-    const vh = bb.height * scaleY;
-
-    // Ajustar el ROI con el margen, asegurando que no se salga de los límites del viewport
-    const newRoi = {
-      x: Math.max(0, vx - margin),
-      y: Math.max(0, vy - margin),
-      w: vw + margin * 2,
-      h: vh + margin * 2
-    };
-
-    // Ajustar W y H para que no se excedan los límites del canvas
-    newRoi.w = Math.min(newRoi.w, vW - newRoi.x);
-    newRoi.h = Math.min(newRoi.h, vH - newRoi.y);
-    
-    // Aplicar el nuevo ROI y forzar la validación (clampROI)
-    roi = newRoi;
-    clampROI(roi);
-
-    // 5. Actualizar la interfaz
-    drawOverlay();
-    setStatus(`ROI auto-ajustado alrededor de un código de barras detectado (${symbols[0].format}).`);
+    const vx = bb.x * scaleX, vy = bb.y * scaleY, vw = bb.width * scaleX, vh = bb.height * scaleY;
+    const newRoi = { x: Math.max(0, vx - margin), y: Math.max(0, vy - margin), w: vw + margin*2, h: vh + margin*2 };
+    newRoi.w = Math.min(newRoi.w, vW - newRoi.x); newRoi.h = Math.min(newRoi.h, vH - newRoi.y);
+    roi = newRoi; clampROI(roi); drawOverlay();
+    setStatus(`ROI auto-ajustado alrededor de un código (${symbols[0].format}).`);
     return true;
   }
   
@@ -435,78 +460,24 @@
   }
 
   async function detectBarcodes(source) {
-    const sW = source.naturalWidth || source.videoWidth || source.width || canvasOverlay.clientWidth;
-    const sH = source.naturalHeight || source.videoHeight || source.height || canvasOverlay.clientHeight;
-
-    // No pintamos overlay aquí (podría ser ROI), el loop en vivo sí.
     const symbols = await detector.detect(source);
-
     if (el.beepChk.checked && symbols.length) beep();
-
-    // Limpia detalles si no se piden
     return symbols.map(s => {
       const obj = { ...s };
-      if (!el.detailsChk.checked) {
-        delete obj.boundingBox;
-        delete obj.cornerPoints;
-      }
+      if (!el.detailsChk.checked) { delete obj.boundingBox; delete obj.cornerPoints; }
       return obj;
     });
-  }
-
-  // Bucle de detección en vivo (usando la fuente de video para dibujar BB en pantalla completa)
-  function detectVideoLoop(on) {
-    if (on) {
-      drawOverlay(); // mantener overlay
-      detector.detect(video).then(symbols=>{
-        // dibuja bounding boxes del stream completo (guía visual)
-        const sW = canvasOverlay.width, sH = canvasOverlay.height;
-        // no limpiar ROI/máscara ya hecha; solo extra layer
-        ctxOverlay.save();
-        ctxOverlay.lineWidth = 3;
-        ctxOverlay.strokeStyle = '#24c07a';
-        ctxOverlay.setLineDash([8,5]);
-        for (const s of symbols) {
-          if (s.cornerPoints && s.cornerPoints.length){
-            ctxOverlay.beginPath();
-            const pts = s.cornerPoints;
-            ctxOverlay.moveTo(pts[0].x / video.videoWidth * sW, pts[0].y / video.videoHeight * sH);
-            for (let i=1;i<pts.length;i++){
-              ctxOverlay.lineTo(pts[i].x / video.videoWidth * sW, pts[i].y / video.videoHeight * sH);
-            }
-            ctxOverlay.closePath();
-            ctxOverlay.stroke();
-          }
-        }
-        ctxOverlay.restore();
-        videoRequestId = requestAnimationFrame(()=>detectVideoLoop(true));
-      }).catch(()=>{
-        videoRequestId = requestAnimationFrame(()=>detectVideoLoop(true));
-      });
-    } else {
-      if (videoRequestId) cancelAnimationFrame(videoRequestId);
-      videoRequestId = null;
-    }
   }
 
   // ---------- Beep ----------
   function beep() {
     const now = performance.now();
-    if (now - lastBeepAt < 600) return;
-    lastBeepAt = now;
-
-    if (!audioCtx) {
-      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
-    }
+    if (now - lastBeepAt < 600) return; lastBeepAt = now;
+    if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
     if (!audioCtx) return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 880;
-    gain.gain.value = 0.08;
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start();
-    setTimeout(() => osc.stop(), 150);
+    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+    osc.type = 'sine'; osc.frequency.value = 880; gain.gain.value = 0.08;
+    osc.connect(gain).connect(audioCtx.destination); osc.start(); setTimeout(() => osc.stop(), 150);
   }
 
   // ---------- Preproceso & OCR ----------
@@ -538,16 +509,14 @@
     const pre = preprocessToCanvas(srcEl);
 
     const worker = await Tesseract.createWorker(lang, 1, {
-      logger: m => {
-        if(m.status) setStatus(`OCR (${lang}): ${m.status}${m.progress ? ' ' + Math.round(m.progress*100)+'%' : ''}`);
-      }
+      logger: m => { if(m.status) setStatus(`OCR (${lang}): ${m.status}${m.progress ? ' ' + Math.round(m.progress*100)+'%' : ''}`); }
     });
 
     try{
       const { data } = await worker.recognize(pre);
       const texto = (data.text || '').trim().replace(/\s+/g,' ');
-      const digits = (texto.match(/\d+/g) || []).join('') || '';
-      const digitsArr = digits ? digits.split('').map(Number) : [];
+      const digitsOnly = (texto.match(/\d+/g) || []).join('') || '';
+      const digitsArr = digitsOnly ? digitsOnly.split('').map(Number) : [];
       const conf = Array.isArray(data.words) && data.words.length
         ? data.words.reduce((s,w)=>s+(w.confidence||0),0)/data.words.length
         : (data.confidence ?? 0);
@@ -555,7 +524,7 @@
       return {
         idioma_ocr: lang,
         texto_bruto: texto,
-        digitos: digits,
+        digitos: digitsOnly,
         arreglo_digitos: digitsArr,
         confianza_media: Number((conf||0).toFixed(2))
       };
@@ -571,18 +540,12 @@
 
   // ---------- ROI -> fuente recortada ----------
   function applyROIFromRect(source){
-    // Dimensiones reales de la fuente
     const sW = source.naturalWidth || source.videoWidth || source.width;
     const sH = source.naturalHeight || source.videoHeight || source.height;
     if (!sW || !sH) throw new Error('Fuente no válida.');
 
-    // Dimensiones visibles de overlay
-    const vW = canvasOverlay.width;
-    const vH = canvasOverlay.height;
-
-    // Mapear ROI (coordenadas canvasOverlay) a coordenadas de la fuente
-    const scaleX = sW / vW;
-    const scaleY = sH / vH;
+    const vW = canvasOverlay.width; const vH = canvasOverlay.height;
+    const scaleX = sW / vW; const scaleY = sH / vH;
 
     const cropX = Math.max(0, Math.round(roi.x * scaleX));
     const cropY = Math.max(0, Math.round(roi.y * scaleY));
@@ -590,22 +553,20 @@
     const cropH = Math.min(sH - cropY, Math.round(roi.h * scaleY));
 
     const roiCanvas = document.createElement('canvas');
-    roiCanvas.width = cropW;
-    roiCanvas.height = cropH;
+    roiCanvas.width = cropW; roiCanvas.height = cropH;
     const roiCtx = roiCanvas.getContext('2d');
     roiCtx.drawImage(source, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
     // Mostrar preview
     roiPreview.style.display = 'block';
-    roiPreview.width = cropW;
-    roiPreview.height = cropH;
+    roiPreview.width = cropW; roiPreview.height = cropH;
     ctxRoiPrev.clearRect(0,0,roiPreview.width,roiPreview.height);
     ctxRoiPrev.drawImage(roiCanvas, 0, 0);
 
     return roiCanvas;
   }
 
-  // ---------- Extracción combinada ----------
+  // ---------- Extracción combinada (manual) ----------
   async function runExtraction(roiSource){
     const barcodes = await detectBarcodes(roiSource);
     barcodesFound.textContent = `Códigos detectados: ${barcodes.length}`;
@@ -613,11 +574,7 @@
 
     const ocrResult = await runOCR(roiSource);
 
-    const finalPayload = {
-      codigos_barras: barcodes,
-      ocr: ocrResult
-    };
-
+    const finalPayload = { codigos_barras: barcodes, ocr: ocrResult };
     jsonOut.textContent = JSON.stringify(finalPayload, null, 2);
     table.innerHTML = '';
 
@@ -658,194 +615,158 @@
     tr.appendChild(td1); tr.appendChild(td2); table.appendChild(tr);
   }
 
-  // ---------- Cámara / Imagen ----------
+  // ---------- Bucle de autodetección (cámara) ----------
+  function startAutoLoop(){
+    stopAutoLoop();
+    const step = async ()=>{
+      if(!stream || video.readyState < 2){ videoLoopRAF = requestAnimationFrame(step); return; }
+      const now = performance.now();
+      const minInterval = Math.max(300, Number(el.intervalMs.value||900));
+      if (now - lastAutoRun < minInterval){ videoLoopRAF = requestAnimationFrame(step); return; }
+      lastAutoRun = now;
 
-  /**
-   * Congela el frame actual de la cámara, detiene el stream
-   * y establece la imagen capturada como la nueva fuente (lastImageEl).
-   */
+      // Origen: ROI si existe, si no frame completo
+      let sourceCanvas;
+      try {
+        if (roi){ sourceCanvas = applyROIFromRect(video); }
+        else { sourceCanvas = snapshotCanvasFromVideo(video); }
+      } catch { sourceCanvas = snapshotCanvasFromVideo(video); }
+
+      // 1) Detectar códigos
+      try{
+        const symbols = await detectBarcodes(sourceCanvas);
+        if (symbols && symbols.length){
+          // Log por cada valor (con deduplicación)
+          for(const s of symbols){
+            const key = `BC|${s.format}|${s.rawValue}`;
+            const t = Date.now(); const prev = recentSet.get(key)||0;
+            if (t - prev > DEDUP_MS){
+              recentSet.set(key,t);
+              addHistoryEntry({ type:'barcode', value:s.rawValue, format:s.format, captureCanvas: sourceCanvas });
+            }
+          }
+        } else if (el.ocrDigitsAltChk.checked) {
+          // 2) Alternativa: OCR de dígitos
+          const ocr = await runOCR(sourceCanvas);
+          const digits = (ocr && ocr.digitos) ? ocr.digitos : '';
+          if (digits && digits.length >= 6){
+            const key = `OCR|${digits}`; const t = Date.now(); const prev = recentSet.get(key)||0;
+            if (t - prev > DEDUP_MS){
+              recentSet.set(key,t);
+              addHistoryEntry({ type:'ocr-digitos', value: digits, format: null, captureCanvas: sourceCanvas });
+              if (el.beepChk.checked) beep();
+            }
+          }
+        }
+      } catch(err){ /* silencioso */ }
+
+      videoLoopRAF = requestAnimationFrame(step);
+    };
+    step();
+  }
+  function stopAutoLoop(){ if (videoLoopRAF) cancelAnimationFrame(videoLoopRAF); videoLoopRAF = null; }
+
+  // ---------- Cámara / Imagen ----------
   captureROIButton.addEventListener('click', ()=>{
     if(!stream || video.readyState<2){ setStatus('La cámara no está lista.'); return; }
-    
-    const vW = video.videoWidth;
-    const vH = video.videoHeight;
-    
-    if (vW === 0 || vH === 0) {
-        setStatus('Error: Dimensiones de video no válidas.');
-        return;
-    }
-
-    // 1. Crear un canvas para el frame actual
-    const snapshotCanvas = document.createElement('canvas');
-    snapshotCanvas.width = vW;
-    snapshotCanvas.height = vH;
-    const snapshotCtx = snapshotCanvas.getContext('2d');
-    snapshotCtx.drawImage(video, 0, 0, vW, vH);
-
-    // 2. Convertir el canvas a una imagen (data URL)
-    const dataURL = snapshotCanvas.toDataURL('image/png');
-    
-    // 3. Detener la cámara
-    el.stopCam.click(); 
-
-    // 4. Asignar la imagen capturada al elemento de vista previa
-    imgPrev.src = dataURL; 
-    imgPrev.style.display = 'block';
-    video.style.display = 'none';
-    lastImageEl = imgPrev;
-    
-    // 5. Sincronizar tamaños y actualizar estado
-    syncCanvasSizes();
-    setStatus('ROI Capturado y congelado. Ajusta el recuadro si es necesario y presiona “Extraer de imagen”.');
+    const snap = snapshotCanvasFromVideo(video);
+    const dataURL = toDataURLFromCanvas(snap);
+    el.stopCam.click();
+    imgPrev.src = dataURL; imgPrev.style.display = 'block'; video.style.display = 'none';
+    lastImageEl = imgPrev; syncCanvasSizes();
+    setStatus('ROI Capturado y congelado. Ajusta el recuadro y usa “Extraer de imagen”.');
   });
 
-
   el.startCam.addEventListener('click', async ()=>{
-    if (videoRequestId) return;
+    if (videoLoopRAF) return; // ya corriendo auto-loop o cámara
     try{
       stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
-      video.srcObject = stream;
-      await video.play();
-      el.stopCam.disabled = false;
-      el.extractFromLiveCam.disabled = true; // Habilitado por el nuevo ID
-      captureROIButton.disabled = true; 
-
+      video.srcObject = stream; await video.play();
+      el.stopCam.disabled = false; el.extractFromLiveCam.disabled = true; captureROIButton.disabled = true; 
       camBadge.textContent='iniciando…';
       video.onplaying = ()=>{
-        el.extractFromLiveCam.disabled=false; // Habilitado cuando esté lista
-        captureROIButton.disabled=false;
-        camBadge.textContent='activa';
-        imgPrev.style.display='none'; video.style.display='block';
-        syncCanvasSizes();
-        drawOverlay();
-        setStatus('Cámara iniciada. Dibuja/ajusta el ROI y usa “Extraer desde Cámara”.');
-        detectVideoLoop(true);
+        el.extractFromLiveCam.disabled=false; captureROIButton.disabled=false;
+        camBadge.textContent='activa'; imgPrev.style.display='none'; video.style.display='block';
+        syncCanvasSizes(); drawOverlay();
+        setStatus('Cámara iniciada. Dibuja/ajusta el ROI o activa Autodetectar.');
+        if (el.autoDetectChk.checked) startAutoLoop();
       };
       lastImageEl = null;
-    }catch(err){
-      setStatus('No se pudo iniciar la cámara: ' + err.message);
-    }
+    }catch(err){ setStatus('No se pudo iniciar la cámara: ' + err.message); }
   });
 
   el.stopCam.addEventListener('click', ()=>{
-    detectVideoLoop(false);
+    stopAutoLoop();
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
     video.pause(); video.srcObject=null;
-    el.stopCam.disabled=true;
-    el.extractFromLiveCam.disabled=true; // Deshabilitar al detener
-    captureROIButton.disabled=true; 
+    el.stopCam.disabled=true; el.extractFromLiveCam.disabled=true; captureROIButton.disabled=true; 
     camBadge.textContent='detenida';
     setStatus('Cámara detenida.');
     ctxOverlay.clearRect(0,0,canvasOverlay.width,canvasOverlay.height);
   });
 
-  el.fileInput.addEventListener('change', ()=>{
-    el.stopCam.click(); // asegurar detener
-    const f = el.fileInput.files && el.fileInput.files[0];
-    if(!f) return;
-    const url = URL.createObjectURL(f);
-    imgPrev.src = url; imgPrev.style.display='block';
-    video.style.display='none';
-    setStatus('Imagen cargada. Dibuja/ajusta el ROI y presiona “Extraer de imagen”.');
-    lastImageEl = imgPrev;
-    roi = null; // nuevo ROI
-    syncCanvasSizes();
+  el.autoDetectChk.addEventListener('change', ()=>{
+    if (!stream || video.readyState<2){ setStatus('Inicia la cámara para usar Autodetectar.'); el.autoDetectChk.checked=false; return; }
+    if (el.autoDetectChk.checked) startAutoLoop(); else stopAutoLoop();
   });
 
-  // LISTENER para "Extraer desde Cámara" (evalúa ROI y auto-ajusta)
+  el.fileInput.addEventListener('change', ()=>{
+    el.stopCam.click();
+    const f = el.fileInput.files && el.fileInput.files[0]; if(!f) return;
+    const url = URL.createObjectURL(f);
+    imgPrev.src = url; imgPrev.style.display='block'; video.style.display='none';
+    setStatus('Imagen cargada. Dibuja/ajusta el ROI y presiona “Extraer de imagen”.');
+    lastImageEl = imgPrev; roi = null; syncCanvasSizes();
+  });
+
   extractFromLiveCamButton.addEventListener('click', async ()=>{
     if(!stream || video.readyState<2){ setStatus('La cámara no está lista.'); return; }
-    
-    // Si no hay ROI, intenta el auto-ajuste (Evalúa si existe ROI)
-    if(!roi){ 
-        const success = await autoSelectROI(video);
-        if(!success){
-            setStatus('Primero dibuja el ROI sobre el video o no se pudo auto-ajustar.'); 
-            return;
-        }
-    }
-    
-    try {
-      // Usa el ROI recién dibujado o el auto-ajustado
-      const roiSource = applyROIFromRect(video);
-      await runExtraction(roiSource);
-    } catch (e) {
-      setStatus('Error al aplicar ROI: ' + e.message);
-    }
+    if(!roi){ const success = await autoSelectROI(video); if(!success){ setStatus('Dibuja el ROI o intenta auto-ajustar.'); return; } }
+    try { const roiSource = applyROIFromRect(video); await runExtraction(roiSource); }
+    catch (e) { setStatus('Error al aplicar ROI: ' + e.message); }
   });
 
   el.extractFromImage.addEventListener('click', async ()=>{
     if(!lastImageEl){ setStatus('No hay imagen. Carga una imagen o usa la cámara.'); return; }
-    
-    // Si no hay ROI, intenta el auto-ajuste (NUEVA LÓGICA)
-    if(!roi){
-        const success = await autoSelectROI(lastImageEl);
-        if(!success){
-            setStatus('Primero dibuja el ROI sobre la imagen o no se pudo auto-ajustar.'); 
-            return;
-        }
-    }
-
-    try {
-      // Usa el ROI recién dibujado o el auto-ajustado
-      const roiSource = applyROIFromRect(lastImageEl);
-      await runExtraction(roiSource);
-    } catch (e) {
-      setStatus('Error al aplicar ROI: ' + e.message);
-    }
+    if(!roi){ const success = await autoSelectROI(lastImageEl); if(!success){ setStatus('Dibuja el ROI o intenta auto-ajustar.'); return; } }
+    try { const roiSource = applyROIFromRect(lastImageEl); await runExtraction(roiSource); }
+    catch (e) { setStatus('Error al aplicar ROI: ' + e.message); }
   });
   
-  // Event listener para el nuevo botón de Auto-ajuste
   el.autoDetectROI.addEventListener('click', async ()=>{
     let source = null;
-    if(stream && video.readyState >= 2){
-        source = video; // Cámara activa
-    } else if (lastImageEl) {
-        source = lastImageEl; // Imagen cargada
-    } else {
-        setStatus('No hay fuente activa (cámara o imagen) para auto-ajustar.');
-        return;
-    }
-    
-    // Ejecutar el auto-ajuste
+    if(stream && video.readyState >= 2){ source = video; }
+    else if (lastImageEl) { source = lastImageEl; }
+    else { setStatus('No hay fuente activa (cámara o imagen) para auto-ajustar.'); return; }
     await autoSelectROI(source);
   });
 
   el.clear.addEventListener('click', ()=>{
-    jsonOut.textContent='{}';
-    table.innerHTML='';
-    quality.innerHTML='Confianza OCR: —';
-    quality.style.removeProperty('border-color'); quality.style.removeProperty('color');
-    barcodesFound.textContent = 'Códigos detectados: 0';
-    barcodesFound.style.removeProperty('border-color');
+    jsonOut.textContent='{}'; table.innerHTML='';
+    quality.innerHTML='Confianza OCR: —'; quality.style.removeProperty('border-color'); quality.style.removeProperty('color');
+    barcodesFound.textContent = 'Códigos detectados: 0'; barcodesFound.style.removeProperty('border-color');
     setStatus('Limpio.');
     ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
-    roiPreview.style.display = 'none';
-    ctxRoiPrev.clearRect(0, 0, roiPreview.width, roiPreview.height);
-    roi = null;
-    drawOverlay();
+    roiPreview.style.display = 'none'; ctxRoiPrev.clearRect(0, 0, roiPreview.width, roiPreview.height);
+    roi = null; drawOverlay();
   });
 
-  // Habilitar contexto de audio en primer gesto (si está marcado beep)
+  // Historial UI
+  el.exportCsv.addEventListener('click', exportHistoryCSV);
+  el.clearHistory.addEventListener('click', ()=>{ history.length = 0; historyTableBody.innerHTML = ''; });
+
+  // Habilitar contexto de audio en primer gesto
   ['click','change'].forEach(evt => {
     document.addEventListener(evt, () => {
-      if (!audioCtx && el.beepChk.checked) {
-        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
-      }
+      if (!audioCtx && el.beepChk.checked) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
     }, { once:true, capture:true });
   });
 
   // ---------- Init ----------
   await createBarcodeDetector();
-  const ro = new ResizeObserver(syncCanvasSizes);
-  ro.observe(document.querySelector('.viewport'));
-
-  // ocultar al inicio
-  video.style.display='none';
-  imgPrev.style.display='none';
-  syncCanvasSizes(); // establece tamaños y dibuja overlay inicial
-  setStatus('Listo. Inicia cámara o sube una imagen, luego dibuja el ROI.');
-
+  const ro = new ResizeObserver(syncCanvasSizes); ro.observe(document.querySelector('.viewport'));
+  video.style.display='none'; imgPrev.style.display='none';
+  syncCanvasSizes(); setStatus('Listo. Inicia cámara o sube una imagen, luego dibuja el ROI o activa Autodetectar.');
 </script>
 </body>
 </html>
