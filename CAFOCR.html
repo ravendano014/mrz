@@ -127,6 +127,24 @@
         <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
         <tbody></tbody>
       </table>
+
+      <div style="height:10px"></div>
+      <div class="title">Historial (localStorage — solo fecha, hora, datos)</div>
+      <div class="row" style="gap:12px; margin-bottom:10px">
+        <button id="exportLSJson" class="good">Exportar LocalStorage JSON</button>
+        <button id="clearLS" class="bad">Limpiar LocalStorage</button>
+        <span class="badge">Entradas: <strong id="lsCount">0</strong></span>
+      </div>
+      <table id="lsTable">
+        <thead>
+          <tr>
+            <th class="nowrap">Fecha</th>
+            <th class="nowrap">Hora</th>
+            <th>Datos</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </section>
   </div>
 
@@ -236,13 +254,20 @@
     const ctx = c.getContext('2d'); ctx.drawImage(v, 0, 0, vw, vh); return c;
   }
 
-  function addHistoryEntry({ type, value, format=null, captureCanvas=null }){
-    const {date, time} = nowParts();
-    const imgB64 = captureCanvas ? toDataURLFromCanvas(captureCanvas) : '';
-    const row = { date, time, type, value, format, imageB64: imgB64 };
-    history.unshift(row); // más reciente primero
-    renderHistoryRow(row);
+  function addHistoryEntry({ type, value, format = null, captureCanvas = null }) {
+  const { date, time } = nowParts();
+  const imgB64 = captureCanvas ? toDataURLFromCanvas(captureCanvas) : '';
+  const row = { date, time, type, value, format, imageB64: imgB64 };
+  history.unshift(row); // más reciente primero
+  renderHistoryRow(row);
+  // Guardado mínimo por defecto en LocalStorage (fecha, hora, datos)
+  try {
+    addLS({ date, time, data: value || '' });
+  } catch (err) {
+    console.error('Error al guardar en LocalStorage:', err);
   }
+}
+
 
   function renderHistoryRow(row){
     const tr = document.createElement('tr');
@@ -762,11 +787,55 @@
     }, { once:true, capture:true });
   });
 
+  // ---------- LocalStorage (mínimo) ----------
+  const LS_KEY = 'barcode_history_min';
+  function getLS(){
+    try{ return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); }catch{ return []; }
+  }
+  function setLS(arr){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(arr)); }catch{}
+  }
+  function addLS(entry){
+    const arr = getLS();
+    arr.push(entry); // mantener orden cronológico de inserción
+    setLS(arr);
+    renderLS(arr);
+  }
+  function renderLS(list){
+    const tbody = document.querySelector('#lsTable tbody');
+    const count = document.querySelector('#lsCount');
+    tbody.innerHTML = '';
+    (list||[]).slice().reverse().forEach(item=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="nowrap">${item.date}</td><td class="nowrap">${item.time}</td><td>${(item.data||'')}</td>`;
+      tbody.appendChild(tr);
+    });
+    if(count) count.textContent = (list||[]).length;
+  }
+  function exportLSAsJSON(){
+    const arr = getLS();
+    const blob = new Blob([JSON.stringify(arr, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `historial_localstorage_${Date.now()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // Botones LocalStorage
+  document.addEventListener('click', (ev)=>{
+    if(ev.target && ev.target.id === 'exportLSJson') exportLSAsJSON();
+    if(ev.target && ev.target.id === 'clearLS') { setLS([]); renderLS([]); }
+  });
+
   // ---------- Init ----------
   await createBarcodeDetector();
   const ro = new ResizeObserver(syncCanvasSizes); ro.observe(document.querySelector('.viewport'));
   video.style.display='none'; imgPrev.style.display='none';
   syncCanvasSizes(); setStatus('Listo. Inicia cámara o sube una imagen, luego dibuja el ROI o activa Autodetectar.');
+  // Render inicial de LS
+  renderLS(getLS());
 </script>
 </body>
 </html>
+
+
