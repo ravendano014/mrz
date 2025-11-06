@@ -35,20 +35,19 @@
   canvas.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
   .mini{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .mini canvas{width:100%;aspect-ratio:4/3;background:#0a0f1c;border:1px dashed #223250;border-radius:10px}
-  .formats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}
-  .formats label{display:flex;align-items:center;gap:8px;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--muted)}
   .footer{margin-top:14px;color:#7f8aa3;font-size:.85rem}
   .capture-thumb{width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer}
   .capture-thumb:hover{filter:brightness(1.2)}
   .history-item{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border);font-size:.9rem}
   .history-item:last-child{border-bottom:none}
   .history-content{flex:1}
+  .history-actions{display:flex;gap:8px;margin-top:8px}
 </style>
 </head>
 <body>
 <div class="app">
   <h1>Detección de códigos en tiempo real (Video) — ZXing + OpenCV + BarcodeDetector</h1>
-  <p class="hint">Incluye: selección manual, <b>Cambiar cámara</b> (rota entre dispositivos), botones <b>Trasera/Frontal</b>, <b>linterna</b>, preprocesado <b>OpenCV</b>, overlay, FPS, filtros por formato, capturas y sonido.</p>
+  <p class="hint">Motores: ZXing, OpenCV+ZXing, BarcodeDetector, HTML5-QR-Code, QuaggaJS y jsQR. Historial con captura base64, librería y exportación JSON. Nuevo: <b>modo persistente</b> que alterna librerías hasta detectar.</p>
 
   <div class="grid cols">
     <!-- IZQUIERDA: Cámara + resultados -->
@@ -77,10 +76,20 @@
           <option value="zxing">ZXing (JavaScript)</option>
           <option value="barcodeDetector">BarcodeDetector API</option>
           <option value="html5qrcode">HTML5 QR Code</option>
+          <option value="quagga">QuaggaJS (1D)</option>
+          <option value="jsqr">jsQR (QR)</option>
         </select>
+        <!-- NUEVO: Modo persistente -->
+        <label title="Alterna automáticamente entre librerías hasta detectar o agotar todas">
+          <input type="checkbox" id="persistentMode"> Modo persistente (alternar librerías)
+        </label>
+        <label title="Tiempo máximo por motor antes de alternar (milisegundos)">
+          Tiempo por motor (ms)
+          <input type="number" id="engineTimeout" min="500" step="250" value="3000" style="width:100px">
+        </label>
       </div>
 
-      <div class="video-wrap">
+      <div class="video-wrap" id="videoWrap">
         <video id="video" playsinline></video>
         <canvas id="overlay" class="overlay"></canvas>
       </div>
@@ -102,7 +111,7 @@
         <div>Texto</div><div id="text">—</div>
         <div>Tiempo decod.</div><div id="tdec">—</div>
       </div>
-      <div class="footer">Tip: si cuesta leer, activa OpenCV (CLAHE + Blur 1–3) y reduce formatos a los necesarios.</div>
+      <div class="footer">Tip: con modo persistente activo, el sistema probará cada motor hasta leer o agotar la lista.</div>
     </section>
 
     <!-- DERECHA: Opciones -->
@@ -125,6 +134,11 @@
 
         <div>
           <h2>Historial con capturas</h2>
+          <div class="history-actions">
+            <button id="btnCopyJson" class="ghost" title="Copiar historial como JSON">Copiar JSON</button>
+            <button id="btnExportJson" class="ghost" title="Descargar historial como archivo JSON">Exportar JSON</button>
+            <button id="btnClearHistory" class="ghost" title="Vaciar historial en memoria y pantalla">Limpiar</button>
+          </div>
           <div id="log" style="font-family:ui-monospace,Consolas,monospace;font-size:.9rem;line-height:1.35;max-height:280px;overflow:auto;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:10px"></div>
         </div>
       </div>
@@ -136,6 +150,9 @@
 <script src="https://unpkg.com/@zxing/library@latest"></script>
 <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+<!-- NUEVAS: QuaggaJS y jsQR -->
+<script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
+<script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
 
 <script>
 (function(){
@@ -151,7 +168,10 @@
   const showOverlay = document.getElementById('showOverlay');
   const enableBeep = document.getElementById('enableBeep');
   const engineSelect = document.getElementById('engineSelect');
+  const persistentMode = document.getElementById('persistentMode');
+  const engineTimeout = document.getElementById('engineTimeout');
   const video = document.getElementById('video');
+  const videoWrap = document.getElementById('videoWrap');
   const overlay = document.getElementById('overlay');
   const cRaw = document.getElementById('canvasRaw');
   const cProc = document.getElementById('canvasProc');
@@ -179,7 +199,28 @@
   let deviceIndex = 0;   // índice actual para "Cambiar cámara"
   let barcodeDetector = null;
   let html5QrCode = null;
-  let lastDetection = null; // Para evitar detecciones duplicadas
+  let lastDetection = null; // Para evitar duplicados consecutivos
+
+  // ====== NUEVO: almacenamiento del historial ======
+  const historyData = []; // cada item: {timestamp, format, text, library, duration_ms, points, image_base64}
+
+  // ====== NUEVO: modo persistente ======
+  let persistentActive = false;
+  let persistentDetected = false;
+  let persistentTimer = null;
+  let persistentEngineIndex = 0;
+  let persistentOrder = []; // se arma al iniciar
+  function clearPersistentTimers(){
+    if (persistentTimer) { clearTimeout(persistentTimer); persistentTimer = null; }
+  }
+  function buildPersistentOrder(){
+    // Orden base: el seleccionado primero; luego prioridad general
+    const base = ["barcodeDetector","zxing","jsqr","quagga","html5qrcode"];
+    const first = engineSelect.value;
+    const ordered = [first, ...base.filter(e=>e!==first)];
+    // Filtrar motores no disponibles por entorno (opcional; nos saltamos en tiempo de ejecución también)
+    return ordered;
+  }
 
   // ------- Audio para beep -------
   const beepAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
@@ -217,27 +258,7 @@
     });
     return formats.length ? formats : [ZXing.BarcodeFormat.QR_CODE];
   }
-
-  // ------- ZXing -------
-  let codeReader = null;
-  function rebuildReader(){
-    const hints = new Map();
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, getSelectedFormats());
-    codeReader = new ZXing.BrowserMultiFormatReader(hints, 500);
-  }
-  rebuildReader();
-
-  // ------- BarcodeDetector API -------
-  function initBarcodeDetector(){
-    if ('BarcodeDetector' in window) {
-      barcodeDetector = new BarcodeDetector({
-        formats: getBarcodeDetectorFormats()
-      });
-      return true;
-    }
-    return false;
-  }
-
+  // Map para BarcodeDetector API
   function getBarcodeDetectorFormats(){
     const formatMap = {
       "QR_CODE": "qr_code",
@@ -253,15 +274,50 @@
       "UPC_E": "upc_e",
       "ITF": "itf"
     };
-    
     const formats = [];
     formatItems.forEach(([key]) => {
       const el = document.getElementById('fmt_'+key);
-      if(el && el.checked && formatMap[key]) {
-        formats.push(formatMap[key]);
-      }
+      if(el && el.checked && formatMap[key]) formats.push(formatMap[key]);
     });
     return formats.length ? formats : ['qr_code'];
+  }
+  // Lectores Quagga según selección
+  function getQuaggaReaders(){
+    const m = {
+      "CODE_128":"code_128_reader",
+      "CODE_39":"code_39_reader",
+      "CODABAR":"codabar_reader",
+      "EAN_13":"ean_reader",
+      "EAN_8":"ean_8_reader",
+      "UPC_A":"upc_reader",
+      "UPC_E":"upc_e_reader",
+      "ITF":"i2of5_reader",
+      // Quagga NO soporta QR/PDF417/DataMatrix/Aztec/RSS
+    };
+    const readers = [];
+    formatItems.forEach(([key])=>{
+      const el = document.getElementById('fmt_'+key);
+      if(el && el.checked && m[key]) readers.push(m[key]);
+    });
+    return readers.length ? readers : ["code_128_reader","ean_reader"];
+  }
+
+  // ------- ZXing -------
+  let codeReader = null;
+  function rebuildReader(){
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, getSelectedFormats());
+    codeReader = new ZXing.BrowserMultiFormatReader(hints, 500);
+  }
+  rebuildReader();
+
+  // ------- BarcodeDetector API -------
+  function initBarcodeDetector(){
+    if ('BarcodeDetector' in window) {
+      barcodeDetector = new BarcodeDetector({ formats: getBarcodeDetectorFormats() });
+      return true;
+    }
+    return false;
   }
 
   // ------- HTML5 QR Code -------
@@ -287,7 +343,6 @@
     const time = new Date().toLocaleTimeString();
     const logItem = document.createElement('div');
     logItem.className = 'history-item';
-    
     if (captureDataUrl) {
       const img = document.createElement('img');
       img.className = 'capture-thumb';
@@ -299,48 +354,103 @@
       });
       logItem.appendChild(img);
     }
-    
     const content = document.createElement('div');
     content.className = 'history-content';
     content.innerHTML = `[${time}] ${msg}`;
     logItem.appendChild(content);
-    
     logEl.insertBefore(logItem, logEl.firstChild);
-    
-    // Limitar el historial a 20 elementos
-    if (logEl.children.length > 20) {
-      logEl.removeChild(logEl.lastChild);
+    if (logEl.children.length > 20) logEl.removeChild(logEl.lastChild);
+  }
+  function setStatus(msg, cls="warn"){ statusEl.className = cls; statusEl.textContent = msg; }
+
+  // ====== NUEVO: helpers de historial ======
+  function pushHistory({format, text, library, duration, points, image}){
+    historyData.unshift({
+      timestamp: new Date().toISOString(),
+      format, text, library,
+      duration_ms: typeof duration === 'number' ? Math.round(duration) : null,
+      points: points && points.length ? points.map(p=>({x:Math.round(p.x), y:Math.round(p.y)})) : null,
+      image_base64: image || null
+    });
+  }
+  function copyHistoryJson(){
+    try{
+      const json = JSON.stringify(historyData, null, 2);
+      navigator.clipboard.writeText(json).then(()=>{
+        setStatus("Historial copiado al portapapeles", "ok");
+      }).catch(err=>{
+        setStatus("No se pudo copiar al portapapeles", "err");
+        console.error(err);
+      });
+    }catch(e){
+      setStatus("Error al serializar historial", "err");
+      console.error(e);
     }
   }
-  
-  function setStatus(msg, cls="warn"){ statusEl.className = cls; statusEl.textContent = msg; }
-  
-  function setResult(res, t, captureDataUrl = null){
+  function exportHistoryJson(){
+    try{
+      const json = JSON.stringify(historyData, null, 2);
+      const blob = new Blob([json], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g,'-');
+      a.href = url;
+      a.download = `detecciones_${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus("Historial exportado en JSON", "ok");
+    }catch(e){
+      setStatus("Error al exportar historial", "err");
+      console.error(e);
+    }
+  }
+  function clearHistory(){
+    historyData.length = 0;
+    logEl.innerHTML = "";
+    setStatus("Historial limpiado", "ok");
+  }
+
+  // *** setResult: registra librería y avisa al modo persistente ***
+  function setResult(res, t, captureDataUrl = null, libName = null){
     if(!res){ fmtEl.textContent = "—"; textEl.textContent = "—"; tdecEl.textContent = "—"; return; }
-    
     const fmt = res.getBarcodeFormat ? res.getBarcodeFormat().toString() : (res.format || "—");
     const txt = res.getText ? res.getText() : (res.text || "—");
-    
-    // Evitar duplicados consecutivos
     const currentDetection = `${fmt}:${txt}`;
     if (currentDetection === lastDetection) return;
     lastDetection = currentDetection;
-    
+
     fmtEl.textContent = fmt; 
     textEl.textContent = txt; 
-    tdecEl.textContent = `${t.toFixed(1)} ms`;
-    
-    // Reproducir sonido si está habilitado
-    if (enableBeep.checked) {
-      beepAudio.play().catch(e => console.log("No se pudo reproducir sonido:", e));
+    tdecEl.textContent = `${(t||0).toFixed ? t.toFixed(1) : t} ms`;
+
+    if (enableBeep.checked) { beepAudio.play().catch(()=>{}); }
+
+    const source = libName ? ` <span class="badge">via ${libName}</span>` : "";
+    log(`<span class="ok">✔</span> <b>${fmt}</b> → <code>${escapeHtml(txt)}</code>${source}`, captureDataUrl);
+
+    const pts = Array.isArray(res.resultPoints) ? res.resultPoints.map(p=>({x:p.x ?? (p.getX && p.getX()), y:p.y ?? (p.getY && p.getY())})) : null;
+    pushHistory({
+      format: fmt,
+      text: txt,
+      library: libName || "N/A",
+      duration: typeof t === 'number' ? t : 0,
+      points: pts,
+      image: captureDataUrl
+    });
+
+    // Avisar al modo persistente
+    if (persistentActive) {
+      persistentDetected = true;
+      clearPersistentTimers();
+      setStatus(`Detectado con ${libName}.`, "ok");
+      // dejamos corriendo el motor actual; si prefieres detenerlo:
+      // stop();
     }
-    
-    // Registrar con captura
-    log(`<span class="ok">✔</span> <b>${fmt}</b> → <code>${escapeHtml(txt)}</code>`, captureDataUrl);
   }
-  
+
   function escapeHtml(s){ return String(s).replace(/[&<>]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
-  
   function drawOverlay(points){
     const ctx = overlay.getContext('2d');
     ctx.clearRect(0,0,overlay.width,overlay.height);
@@ -351,7 +461,6 @@
     for(let i=1;i<points.length;i++) ctx.lineTo(points[i].x, points[i].y);
     ctx.closePath(); ctx.stroke(); ctx.fill();
   }
-  
   function drawFPS(){
     frames++;
     const now = performance.now();
@@ -360,19 +469,21 @@
       fpsEl.textContent = `FPS: ${fps}`;
     }
   }
-  
   function resizeCanvases(){
-    const w = video.videoWidth || 1280;
-    const h = video.videoHeight || 720;
+    const w = video.videoWidth || overlay.clientWidth || 1280;
+    const h = video.videoHeight || Math.round((overlay.clientWidth||1280)*9/16) || 720;
     [overlay,cRaw,cProc].forEach(c=>{ c.width = w; c.height = h; });
   }
-  
   function createCapture(){
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const srcVideo = (engineSelect.value === 'quagga') 
+      ? videoWrap.querySelector('video') || video
+      : video;
+    const vw = srcVideo.videoWidth || overlay.width;
+    const vh = srcVideo.videoHeight || overlay.height;
+    canvas.width = vw; canvas.height = vh;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(srcVideo, 0, 0, vw, vh);
     return canvas.toDataURL('image/jpeg', 0.7);
   }
 
@@ -390,7 +501,6 @@
       deviceSelect.appendChild(opt);
     });
 
-    // Restaurar selección si aplica
     if (keepSelection && prev && devicesCache.some(d=>d.deviceId===prev)){
       deviceSelect.value = prev;
       deviceIndex = devicesCache.findIndex(d=>d.deviceId===prev);
@@ -399,7 +509,6 @@
       deviceSelect.value = devicesCache[deviceIndex]?.deviceId || '';
     }
   }
-
   function findByFacingName(prefer='back'){
     const needle = prefer === 'back'
       ? /(back|rear|trase|environment|trás|trasera)/i
@@ -412,18 +521,28 @@
 
   async function startWithDevice(deviceId, facing){
     try{
+      const engine = engineSelect.value;
+
+      // Si el motor es Quagga, dejamos que Quagga gestione la cámara para evitar conflictos
+      if (engine === 'quagga') {
+        await enumerateCameras(); // asegurar devicesCache
+        video.style.display = 'none';
+        await startQuagga(deviceId || findByFacingName('back'));
+        setStatus("Detectando...", "ok");
+        return;
+      } else {
+        video.style.display = '';
+      }
+
       const constraints = deviceId ? {
         video: { deviceId: {exact: deviceId}, width:{ideal:1280}, height:{ideal:720}, frameRate: { ideal: 30 } }
       } : {
         video: { facingMode: facing || "environment", width:{ideal:1280}, height:{ideal:720}, frameRate: { ideal: 30 } }
       };
-      
-      // Optimización: usar resolución más baja para mejor rendimiento en dispositivos móviles
       if (window.innerWidth < 768) {
         constraints.video.width = {ideal: 640};
         constraints.video.height = {ideal: 480};
       }
-      
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream; await video.play();
       track = stream.getVideoTracks()[0];
@@ -431,17 +550,16 @@
       setStatus("Detectando...", "ok");
       torchOn = false; btnTorch.classList.remove('primary');
       rebuildReader();
-      
-      // Inicializar motores de detección
+
       initBarcodeDetector();
       initHtml5QrCode();
-      
-      // Seleccionar método de detección según el motor elegido
-      const engine = engineSelect.value;
+
       if (engine === 'barcodeDetector' && barcodeDetector) {
         loopWithBarcodeDetector();
       } else if (engine === 'html5qrcode' && html5QrCode) {
         startHtml5QrCode();
+      } else if (engine === 'jsqr') {
+        loopWithJsQR();
       } else {
         if (useOpenCV.checked) loopWithOpenCV();
         else decodeWithZXingLive();
@@ -456,20 +574,85 @@
   async function start(){
     await enumerateCameras();
     const devId = deviceSelect.value || undefined;
-    await startWithDevice(devId, "environment");
+
+    if (!persistentMode.checked){
+      await startWithDevice(devId, "environment");
+      return;
+    }
+
+    // ====== MODO PERSISTENTE ======
+    persistentActive = true;
+    persistentDetected = false;
+    persistentEngineIndex = 0;
+    persistentOrder = buildPersistentOrder();
+
+    const tryNext = async () => {
+      clearPersistentTimers();
+      if (!persistentActive) return;
+      if (persistentDetected) return;
+
+      if (persistentEngineIndex >= persistentOrder.length){
+        setStatus("Sin detección: modo persistente probó todas las librerías", "warn");
+        persistentActive = false;
+        return;
+      }
+
+      const engine = persistentOrder[persistentEngineIndex++];
+      // Validar disponibilidad mínima para evitar intentos inútiles
+      if (engine === 'barcodeDetector' && !('BarcodeDetector' in window)) {
+        return tryNext();
+      }
+      if (engine === 'html5qrcode' && !window.Html5Qrcode) {
+        return tryNext();
+      }
+      if (engine === 'jsqr' && !window.jsQR) {
+        return tryNext();
+      }
+      if (engine === 'quagga' && !(window.Quagga && Quagga.init)) {
+        return tryNext();
+      }
+
+      engineSelect.value = engine;
+      setStatus(`Modo persistente: probando ${engine}…`, "warn");
+      await startWithDevice(devId, "environment");
+
+      const perMs = Math.max(250, +engineTimeout.value || 3000);
+      const deadline = Date.now() + perMs;
+
+      const tick = () => {
+        if (!persistentActive) return;
+        if (persistentDetected) return; // setResult se encargó
+        if (Date.now() >= deadline) {
+          // Siguiente motor
+          stop(); // limpia streams/loops actuales
+          tryNext();
+          return;
+        }
+        persistentTimer = setTimeout(tick, 200);
+      };
+      tick();
+    };
+
+    tryNext();
   }
-  
+
   function stop(){
+    persistentActive = false;
+    clearPersistentTimers();
+
     if (rafId) cancelAnimationFrame(rafId), rafId=null;
     if (codeReader) codeReader.reset();
     if (html5QrCode) {
       html5QrCode.stop().catch(() => {});
       html5QrCode.clear();
     }
+    if (window.Quagga && Quagga.stop) {
+      try { Quagga.offDetected && Quagga.offDetected(); Quagga.stop(); } catch(e){}
+    }
     if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; }
     setStatus("Detenido");
   }
-  
+
   async function toggleTorch(){
     try{
       if(!track) return;
@@ -480,14 +663,13 @@
       btnTorch.classList.toggle('primary', torchOn);
     }catch(err){ log(`<span class="err">✖</span> Torch: ${err.message||err}`); }
   }
-
   async function switchCamera(){
     if (!devicesCache.length){ await enumerateCameras(false); }
     if (!devicesCache.length) return;
     deviceIndex = (deviceIndex + 1) % devicesCache.length;
     const nextId = devicesCache[deviceIndex].deviceId;
     deviceSelect.value = nextId;
-    if(stream){ stop(); }
+    if(stream || engineSelect.value==='quagga'){ stop(); }
     await startWithDevice(nextId, "environment");
   }
 
@@ -501,7 +683,7 @@
         const pts = (result.resultPoints||[]).map(p=>({x:p.getX?p.getX():p.x, y:p.getY?p.getY():p.y}));
         drawOverlay(pts);
         const captureDataUrl = createCapture();
-        setResult(result, 0, captureDataUrl);
+        setResult(result, 0, captureDataUrl, "ZXing");
       } else if (err && !(err instanceof ZXing.NotFoundException)) {
         setStatus("Buscando...", "warn");
       }
@@ -524,7 +706,7 @@
           const t1 = performance.now();
           drawOverlay(result?.resultPoints?.map(p=>({x:p.x??p.getX(), y:p.y??p.getY()})) || null);
           const captureDataUrl = createCapture();
-          setResult(result, t1 - t0, captureDataUrl);
+          setResult(result, t1 - t0, captureDataUrl, "OpenCV+ZXing");
         } catch(e){
           if (!(e instanceof ZXing.NotFoundException)) log(`<span class="err">✖</span> ${e.message||e}`);
         } finally { decoding = false; }
@@ -537,11 +719,7 @@
 
   // ------- Flujo 3: BarcodeDetector API -------
   async function loopWithBarcodeDetector(){
-    if (!barcodeDetector) {
-      setStatus("BarcodeDetector no disponible", "err");
-      return;
-    }
-    
+    if (!barcodeDetector) { setStatus("BarcodeDetector no disponible", "err"); return; }
     const step = async () => {
       paintRaw();
       if(!decoding){
@@ -550,17 +728,12 @@
           const t0 = performance.now();
           const barcodes = await barcodeDetector.detect(video);
           const t1 = performance.now();
-          
           if (barcodes && barcodes.length > 0) {
-            const barcode = barcodes[0];
-            const result = {
-              format: barcode.format,
-              text: barcode.rawValue,
-              resultPoints: barcode.cornerPoints
-            };
-            drawOverlay(barcode.cornerPoints);
+            const b = barcodes[0];
+            const result = { format: b.format, text: b.rawValue, resultPoints: b.cornerPoints };
+            drawOverlay(b.cornerPoints?.map(p=>({x:p.x,y:p.y})));
             const captureDataUrl = createCapture();
-            setResult(result, t1 - t0, captureDataUrl);
+            setResult(result, t1 - t0, captureDataUrl, "BarcodeDetector");
           } else {
             setStatus("Buscando...", "warn");
           }
@@ -576,18 +749,8 @@
 
   // ------- Flujo 4: HTML5 QR Code -------
   function startHtml5QrCode(){
-    if (!html5QrCode) {
-      setStatus("HTML5 QR Code no disponible", "err");
-      return;
-    }
-    
-    const config = {
-      fps: 10,
-      qrbox: { width: 250, height: 250 },
-      aspectRatio: 16/9,
-      disableFlip: false
-    };
-    
+    if (!html5QrCode) { setStatus("HTML5 QR Code no disponible", "err"); return; }
+    const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 16/9, disableFlip: false };
     html5QrCode.start(
       { deviceId: deviceSelect.value || undefined },
       config,
@@ -598,28 +761,103 @@
       setStatus("Error HTML5 QR Code", "err");
     });
   }
-  
   function onHtml5QrCodeSuccess(decodedText, decodedResult) {
-    const result = {
-      format: decodedResult.result.format.formatName,
-      text: decodedText
-    };
+    const result = { format: decodedResult.result.format.formatName, text: decodedText };
     const captureDataUrl = createCapture();
-    setResult(result, 0, captureDataUrl);
+    setResult(result, 0, captureDataUrl, "HTML5-QR-Code");
     drawFPS();
   }
-  
   function onHtml5QrCodeFailure(error) {
-    // No hacer nada para errores normales de no encontrar código
-    if (error && !error.startsWith("No QR code")) {
-      console.log("HTML5 QR Code error:", error);
-    }
+    if (error && !String(error).startsWith("No QR code")) console.log("HTML5 QR Code error:", error);
     drawFPS();
+  }
+
+  // ------- Flujo 5: QuaggaJS (1D) -------
+  async function startQuagga(deviceId){
+    if (!window.Quagga) { setStatus("QuaggaJS no disponible", "err"); return; }
+
+    try { Quagga.offDetected && Quagga.offDetected(); Quagga.stop && Quagga.stop(); } catch(e){}
+
+    const readers = getQuaggaReaders();
+    const constraints = deviceId ? { deviceId: deviceId, facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+                                 : { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } };
+    Quagga.init({
+      inputStream: {
+        type: "LiveStream",
+        constraints: constraints,
+        area: { top: "0%", right: "0%", left: "0%", bottom: "0%" },
+        target: videoWrap
+      },
+      decoder: { readers },
+      locator: { patchSize: "medium", halfSample: true },
+      numOfWorkers: navigator.hardwareConcurrency ? Math.max(1, Math.min(4, navigator.hardwareConcurrency)) : 2
+    }, function(err){
+      if (err) {
+        console.error(err);
+        setStatus("Error QuaggaJS", "err");
+        return;
+      }
+      Quagga.start();
+      setStatus("Detectando...", "ok");
+    });
+
+    Quagga.onDetected(function(data){
+      if (!data || !data.codeResult) return;
+      const code = data.codeResult.code || "";
+      const fmt = (data.codeResult.format || data.codeResult.formatName || "1D").toUpperCase();
+      const box = (data.box || []).map(pt=>({x:pt[0], y:pt[1]}));
+      drawOverlay(box);
+      const captureDataUrl = createCapture();
+      const result = { format: fmt, text: code, resultPoints: box };
+      setResult(result, 0, captureDataUrl, "QuaggaJS");
+    });
+  }
+
+  // ------- Flujo 6: jsQR (QR) -------
+  function loopWithJsQR(){
+    const step = () => {
+      paintRaw();
+      try{
+        const ctx = cRaw.getContext('2d');
+        const w = cRaw.width, h = cRaw.height;
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const t0 = performance.now();
+        const qr = jsQR(imgData.data, w, h, { inversionAttempts: "attemptBoth" });
+        const t1 = performance.now();
+        if (qr && qr.data) {
+          const corners = qr.location ? [
+            {x:qr.location.topLeftCorner.x, y:qr.location.topLeftCorner.y},
+            {x:qr.location.topRightCorner.x, y:qr.location.topRightCorner.y},
+            {x:qr.location.bottomRightCorner.x, y:qr.location.bottomRightCorner.y},
+            {x:qr.location.bottomLeftCorner.x, y:qr.location.bottomLeftCorner.y}
+          ] : null;
+          drawOverlay(corners);
+          const captureDataUrl = createCapture();
+          const result = { format: "QR_CODE", text: qr.data, resultPoints: corners };
+          setResult(result, t1 - t0, captureDataUrl, "jsQR");
+        } else {
+          setStatus("Buscando...", "warn");
+        }
+      } catch(e){
+        console.error("jsQR error:", e);
+      }
+      drawFPS();
+      rafId = requestAnimationFrame(step);
+    };
+    step();
   }
 
   function paintRaw(){
     const ctx = cRaw.getContext('2d');
-    ctx.drawImage(video, 0, 0, cRaw.width, cRaw.height);
+    const srcVideo = (engineSelect.value === 'quagga') 
+      ? (videoWrap.querySelector('video') || video)
+      : video;
+    if (srcVideo && srcVideo.videoWidth) {
+      overlay.width = srcVideo.videoWidth; overlay.height = srcVideo.videoHeight;
+      cRaw.width = srcVideo.videoWidth; cRaw.height = srcVideo.videoHeight;
+      cProc.width = srcVideo.videoWidth; cProc.height = srcVideo.videoHeight;
+      ctx.drawImage(srcVideo, 0, 0, cRaw.width, cRaw.height);
+    }
   }
 
   async function waitForCV(){
@@ -628,7 +866,6 @@
       chk();
     });
   }
-
   async function cvProcess(canvas, opts){
     const {blur=1, thresh=true, clahe=false} = opts;
     const src = cv.imread(canvas);
@@ -659,40 +896,38 @@
   showOverlay.addEventListener('change', ()=> drawOverlay(null));
   formatList.addEventListener('change', ()=>{ 
     rebuildReader();
-    if (barcodeDetector) {
-      barcodeDetector = new BarcodeDetector({
-        formats: getBarcodeDetectorFormats()
-      });
-    }
-    if (stream){ stop(); start(); } 
+    if (barcodeDetector) barcodeDetector = new BarcodeDetector({ formats: getBarcodeDetectorFormats() });
+    if (engineSelect.value==='quagga') { stop(); start(); }
+    else if (stream){ stop(); start(); }
   });
-  useOpenCV.addEventListener('change', ()=>{ if(stream){ stop(); start(); } });
-  engineSelect.addEventListener('change', ()=>{ if(stream){ stop(); start(); } });
+  useOpenCV.addEventListener('change', ()=>{ if(stream || engineSelect.value==='jsqr'){ stop(); start(); } });
+  engineSelect.addEventListener('change', ()=>{ if(stream || engineSelect.value==='quagga' || engineSelect.value==='jsqr'){ stop(); start(); } });
 
-  // Selector de dispositivo manual
   deviceSelect.addEventListener('change', async ()=>{
     if (!deviceSelect.value) return;
     deviceIndex = devicesCache.findIndex(d=>d.deviceId===deviceSelect.value);
     if (deviceIndex < 0) deviceIndex = 0;
-    if (stream){ stop(); }
+    if(stream || engineSelect.value==='quagga'){ stop(); }
     await startWithDevice(deviceSelect.value, "environment");
   });
 
-  // Botones rápidos Frontal/Trasera por nombre
   btnBack.addEventListener('click', async ()=>{
     await enumerateCameras();
     const devId = findByFacingName('back');
     if (devId){ deviceSelect.value = devId; deviceIndex = devicesCache.findIndex(d=>d.deviceId===devId);
-      if(stream){ stop(); } await startWithDevice(devId, "environment"); }
+      if(stream || engineSelect.value==='quagga'){ stop(); } await startWithDevice(devId, "environment"); }
   });
   btnFront.addEventListener('click', async ()=>{
     await enumerateCameras();
     const devId = findByFacingName('front');
     if (devId){ deviceSelect.value = devId; deviceIndex = devicesCache.findIndex(d=>d.deviceId===devId);
-      if(stream){ stop(); } await startWithDevice(devId, "user"); }
+      if(stream || engineSelect.value==='quagga'){ stop(); } await startWithDevice(devId, "user"); }
   });
 
-  // Enumerar cámaras al cargar
+  document.getElementById('btnCopyJson').addEventListener('click', copyHistoryJson);
+  document.getElementById('btnExportJson').addEventListener('click', exportHistoryJson);
+  document.getElementById('btnClearHistory').addEventListener('click', clearHistory);
+
   if (navigator.mediaDevices?.getUserMedia) {
     enumerateCameras(false).catch(()=>{});
   } else {
