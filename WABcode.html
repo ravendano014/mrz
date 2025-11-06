@@ -13,10 +13,10 @@
   h1 { font-size: 1.5rem; margin: 0 0 8px; }
   h2 { font-size: 1.1rem; margin: 0 0 8px; color:#cfe0ff }
   p { margin: 6px 0 14px; color:#b9c2d0 }
-  .app { max-width: 1200px; margin: 0 auto; }
+  .app { max-width: 1100px; margin: 0 auto; }
   .card { background: #121a2b; border: 1px solid #1e2a44; border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
   .grid { display: grid; gap: 16px; }
-  .cols { grid-template-columns: 1.15fr .85fr; }
+  .cols { grid-template-columns: 1.1fr .9fr; }
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   label{font-size:.95rem;color:#cfe0ff}
   select,input,button{border-radius:12px;border:1px solid var(--border);background:#0e1627;color:var(--text);padding:10px 12px}
@@ -42,24 +42,12 @@
   .history-item:last-child{border-bottom:none}
   .history-content{flex:1}
   .history-actions{display:flex;gap:8px;margin-top:8px}
-  /* Chips de motores */
-  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
-  .chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);background:#0e1627;border-radius:999px;font-size:.9rem;user-select:none}
-  .chip[draggable="true"]{cursor:grab}
-  .chip.dragging{opacity:.35}
-  .chip .handle{font-size:1.1rem;opacity:.7}
-  /* DUI table */
-  table{width:100%;border-collapse:collapse}
-  th,td{padding:8px 10px;border-bottom:1px dashed #223250;font-size:.93rem}
-  th{color:#cfe0ff;text-align:left;width:200px}
-  .muted{color:#95a0b6}
-  details summary{cursor:pointer}
 </style>
 </head>
 <body>
 <div class="app">
   <h1>Detección de códigos en tiempo real (Video) — ZXing + OpenCV + BarcodeDetector</h1>
-  <p class="hint">Motores: ZXing, OpenCV+ZXing, BarcodeDetector, HTML5-QR-Code, QuaggaJS y jsQR. Historial con captura base64, librería y exportación JSON. Modo persistente que alterna librerías hasta detectar.</p>
+  <p class="hint">Motores: ZXing, OpenCV+ZXing, BarcodeDetector, HTML5-QR-Code, QuaggaJS y jsQR. Historial con captura base64, librería y exportación JSON. Nuevo: <b>modo persistente</b> que alterna librerías hasta detectar.</p>
 
   <div class="grid cols">
     <!-- IZQUIERDA: Cámara + resultados -->
@@ -91,6 +79,7 @@
           <option value="quagga">QuaggaJS (1D)</option>
           <option value="jsqr">jsQR (QR)</option>
         </select>
+        <!-- NUEVO: Modo persistente -->
         <label title="Alterna automáticamente entre librerías hasta detectar o agotar todas">
           <input type="checkbox" id="persistentMode"> Modo persistente (alternar librerías)
         </label>
@@ -98,33 +87,6 @@
           Tiempo por motor (ms)
           <input type="number" id="engineTimeout" min="500" step="250" value="3000" style="width:100px">
         </label>
-      </div>
-
-      <!-- Orden de motores arrastrable y perfiles -->
-      <div class="row" style="align-items:flex-start">
-        <div style="flex:1 1 380px">
-          <h2 style="margin-bottom:6px">Orden de motores (arrastrable)</h2>
-          <div id="engineChips" class="chips" aria-label="Orden de motores persistentes"></div>
-          <div class="row" style="margin-top:8px">
-            <button id="btnResetOrder" class="ghost">Restablecer orden</button>
-          </div>
-          <p class="hint">Este orden define la secuencia del <b>Modo persistente</b>. Arrastra para reorganizar.</p>
-        </div>
-        <div style="flex:1 1 260px">
-          <h2 style="margin-bottom:6px">Perfiles</h2>
-          <div class="row">
-            <select id="profileSelect" title="Selecciona un perfil de detección">
-              <option value="default">Predeterminado (equilibrado)</option>
-              <option value="fast_qr">Rápido QR</option>
-              <option value="pdf417">Documento PDF417</option>
-              <option value="retail_1d">Retail 1D</option>
-              <option value="exhaustive">Exhaustivo</option>
-              <option value="dui_sv">DUI El Salvador (PDF417)</option>
-            </select>
-            <button id="btnApplyProfile" class="ghost">Aplicar</button>
-          </div>
-          <p class="hint">Los perfiles ajustan orden, formatos y optimizaciones sin eliminar nada.</p>
-        </div>
       </div>
 
       <div class="video-wrap" id="videoWrap">
@@ -149,10 +111,10 @@
         <div>Texto</div><div id="text">—</div>
         <div>Tiempo decod.</div><div id="tdec">—</div>
       </div>
-      <div class="footer">Tip: con modo persistente activo, el sistema probará cada motor en el orden de los chips.</div>
+      <div class="footer">Tip: con modo persistente activo, el sistema probará cada motor hasta leer o agotar la lista.</div>
     </section>
 
-    <!-- DERECHA: Opciones + DUI -->
+    <!-- DERECHA: Opciones -->
     <section class="card">
       <div class="stack">
         <div>
@@ -177,27 +139,8 @@
             <button id="btnExportJson" class="ghost" title="Descargar historial como archivo JSON">Exportar JSON</button>
             <button id="btnClearHistory" class="ghost" title="Vaciar historial en memoria y pantalla">Limpiar</button>
           </div>
-          <div id="log" style="font-family:ui-monospace,Consolas,monospace;font-size:.9rem;line-height:1.35;max-height:220px;overflow:auto;background:#0e1627;border:1px solid var(--border);border-radius:10px"></div>
+          <div id="log" style="font-family:ui-monospace,Consolas,monospace;font-size:.9rem;line-height:1.35;max-height:280px;overflow:auto;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:10px"></div>
         </div>
-
-        <!-- === DUI ES (PDF417) === -->
-        <div>
-          <h2>DUI (PDF417) — Datos parseados</h2>
-          <div class="row">
-            <label><input type="checkbox" id="autoShowDui" checked> Mostrar automáticamente al detectar PDF417</label>
-            <button id="btnClearDui" class="ghost">Limpiar tabla</button>
-          </div>
-          <div id="duiEmpty" class="muted" style="margin:6px 0 10px">Aún no hay detecciones PDF417 en esta sesión.</div>
-          <div id="duiTableWrap" style="display:none">
-            <table id="duiTable"></table>
-            <details style="margin-top:10px">
-              <summary>Ver JSON parseado</summary>
-              <pre id="duiJsonPre" style="white-space:pre-wrap;line-height:1.35;background:#0e1627;border:1px solid var(--border);border-radius:10px;padding:10px;max-height:200px;overflow:auto"></pre>
-            </details>
-          </div>
-        </div>
-        <!-- === /DUI ES (PDF417) === -->
-
       </div>
     </section>
   </div>
@@ -207,6 +150,7 @@
 <script src="https://unpkg.com/@zxing/library@latest"></script>
 <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+<!-- NUEVAS: QuaggaJS y jsQR -->
 <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
 <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
 
@@ -242,20 +186,6 @@
   const cvThresh = document.getElementById('cvThresh');
   const cvClahe = document.getElementById('cvClahe');
 
-  // Chips y perfiles
-  const engineChips = document.getElementById('engineChips');
-  const btnResetOrder = document.getElementById('btnResetOrder');
-  const profileSelect = document.getElementById('profileSelect');
-  const btnApplyProfile = document.getElementById('btnApplyProfile');
-
-  // DUI UI
-  const autoShowDui = document.getElementById('autoShowDui');
-  const btnClearDui = document.getElementById('btnClearDui');
-  const duiEmpty = document.getElementById('duiEmpty');
-  const duiTableWrap = document.getElementById('duiTableWrap');
-  const duiTable = document.getElementById('duiTable');
-  const duiJsonPre = document.getElementById('duiJsonPre');
-
   // ------- Estado -------
   let stream = null;
   let track = null;
@@ -265,36 +195,39 @@
   let lastTime = performance.now();
   let frames = 0, fps = 0;
   let opencvReady = false;
-  let devicesCache = [];
-  let deviceIndex = 0;
+  let devicesCache = []; // videoinput devices
+  let deviceIndex = 0;   // índice actual para "Cambiar cámara"
   let barcodeDetector = null;
   let html5QrCode = null;
-  let lastDetection = null;
+  let lastDetection = null; // Para evitar duplicados consecutivos
 
-  const historyData = []; // {timestamp, format, text, library, duration_ms, points, image_base64}
+  // ====== NUEVO: almacenamiento del historial ======
+  const historyData = []; // cada item: {timestamp, format, text, library, duration_ms, points, image_base64}
 
-  // Modo persistente
+  // ====== NUEVO: modo persistente ======
   let persistentActive = false;
   let persistentDetected = false;
   let persistentTimer = null;
   let persistentEngineIndex = 0;
+  let persistentOrder = []; // se arma al iniciar
+  function clearPersistentTimers(){
+    if (persistentTimer) { clearTimeout(persistentTimer); persistentTimer = null; }
+  }
+  function buildPersistentOrder(){
+    // Orden base: el seleccionado primero; luego prioridad general
+    const base = ["barcodeDetector","zxing","jsqr","quagga","html5qrcode"];
+    const first = engineSelect.value;
+    const ordered = [first, ...base.filter(e=>e!==first)];
+    // Filtrar motores no disponibles por entorno (opcional; nos saltamos en tiempo de ejecución también)
+    return ordered;
+  }
 
-  // Motores
-  const ENGINE_LABELS = {
-    barcodeDetector: 'BarcodeDetector',
-    zxing: 'ZXing',
-    jsqr: 'jsQR',
-    quagga: 'QuaggaJS',
-    html5qrcode: 'HTML5-QR-Code'
-  };
-  const DEFAULT_ORDER = ['barcodeDetector','zxing','jsqr','quagga','html5qrcode'];
-
-  // ------- Audio -------
+  // ------- Audio para beep -------
   const beepAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
   beepAudio.volume = 0.3;
 
   // ------- Formatos -------
-  const ALL_FORMATS = [
+  const formatItems = [
     ["QR_CODE","QR"],
     ["DATA_MATRIX","DataMatrix"],
     ["AZTEC","Aztec"],
@@ -311,39 +244,58 @@
     ["RSS_EXPANDED","RSS Expanded"]
   ];
   const formatList = document.getElementById('formatList');
-  ALL_FORMATS.forEach(([key,label])=>{
+  formatItems.forEach(([key,label])=>{
     const id = "fmt_"+key;
     const wrap = document.createElement('label');
     wrap.innerHTML = `<input type="checkbox" id="${id}" checked> ${label}`;
     formatList.appendChild(wrap);
   });
-
-  const $ = sel => document.querySelector(sel);
-  function setFormatChecked(key, checked){
-    const el = document.getElementById('fmt_'+key);
-    if (el) el.checked = !!checked;
-  }
-  function getSelectedFormatsZXing(){
+  function getSelectedFormats(){
     const formats = [];
-    ALL_FORMATS.forEach(([key])=>{
+    formatItems.forEach(([key])=>{
       const el = document.getElementById('fmt_'+key);
       if(el && el.checked) formats.push(ZXing.BarcodeFormat[key]);
     });
     return formats.length ? formats : [ZXing.BarcodeFormat.QR_CODE];
   }
-  function getFormatsForBarcodeDetector(){
-    const map = {"QR_CODE":"qr_code","DATA_MATRIX":"data_matrix","AZTEC":"aztec","PDF_417":"pdf417","CODE_128":"code_128","CODE_39":"code_39","CODABAR":"codabar","EAN_13":"ean_13","EAN_8":"ean_8","UPC_A":"upc_a","UPC_E":"upc_e","ITF":"itf"};
+  // Map para BarcodeDetector API
+  function getBarcodeDetectorFormats(){
+    const formatMap = {
+      "QR_CODE": "qr_code",
+      "DATA_MATRIX": "data_matrix",
+      "AZTEC": "aztec",
+      "PDF_417": "pdf417",
+      "CODE_128": "code_128",
+      "CODE_39": "code_39",
+      "CODABAR": "codabar",
+      "EAN_13": "ean_13",
+      "EAN_8": "ean_8",
+      "UPC_A": "upc_a",
+      "UPC_E": "upc_e",
+      "ITF": "itf"
+    };
     const formats = [];
-    ALL_FORMATS.forEach(([key])=>{
+    formatItems.forEach(([key]) => {
       const el = document.getElementById('fmt_'+key);
-      if(el && el.checked && map[key]) formats.push(map[key]);
+      if(el && el.checked && formatMap[key]) formats.push(formatMap[key]);
     });
     return formats.length ? formats : ['qr_code'];
   }
+  // Lectores Quagga según selección
   function getQuaggaReaders(){
-    const m = {"CODE_128":"code_128_reader","CODE_39":"code_39_reader","CODABAR":"codabar_reader","EAN_13":"ean_reader","EAN_8":"ean_8_reader","UPC_A":"upc_reader","UPC_E":"upc_e_reader","ITF":"i2of5_reader"};
+    const m = {
+      "CODE_128":"code_128_reader",
+      "CODE_39":"code_39_reader",
+      "CODABAR":"codabar_reader",
+      "EAN_13":"ean_reader",
+      "EAN_8":"ean_8_reader",
+      "UPC_A":"upc_reader",
+      "UPC_E":"upc_e_reader",
+      "ITF":"i2of5_reader",
+      // Quagga NO soporta QR/PDF417/DataMatrix/Aztec/RSS
+    };
     const readers = [];
-    ALL_FORMATS.forEach(([key])=>{
+    formatItems.forEach(([key])=>{
       const el = document.getElementById('fmt_'+key);
       if(el && el.checked && m[key]) readers.push(m[key]);
     });
@@ -354,18 +306,26 @@
   let codeReader = null;
   function rebuildReader(){
     const hints = new Map();
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, getSelectedFormatsZXing());
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, getSelectedFormats());
     codeReader = new ZXing.BrowserMultiFormatReader(hints, 500);
   }
   rebuildReader();
 
-  // ------- Otros motores -------
+  // ------- BarcodeDetector API -------
   function initBarcodeDetector(){
-    if ('BarcodeDetector' in window) { barcodeDetector = new BarcodeDetector({ formats: getFormatsForBarcodeDetector() }); return true; }
+    if ('BarcodeDetector' in window) {
+      barcodeDetector = new BarcodeDetector({ formats: getBarcodeDetectorFormats() });
+      return true;
+    }
     return false;
   }
+
+  // ------- HTML5 QR Code -------
   function initHtml5QrCode(){
-    if (window.Html5Qrcode) { html5QrCode = new Html5Qrcode("video"); return true; }
+    if (window.Html5Qrcode) {
+      html5QrCode = new Html5Qrcode("video");
+      return true;
+    }
     return false;
   }
 
@@ -378,22 +338,32 @@
     document.addEventListener('opencvready', onCVReady, {once:true});
   }
 
-  // ------- Historial / utilidades -------
+  // ------- Utilidades -------
   function log(msg, captureDataUrl = null){
     const time = new Date().toLocaleTimeString();
-    const div = document.createElement('div');
-    div.className = 'history-item';
+    const logItem = document.createElement('div');
+    logItem.className = 'history-item';
     if (captureDataUrl) {
-      const img = document.createElement('img'); img.className='capture-thumb'; img.src=captureDataUrl;
-      img.title='Ver captura'; img.addEventListener('click',()=>{ const w=window.open('','_blank'); w.document.write(`<img src="${captureDataUrl}" style="max-width:100%">`); });
-      div.appendChild(img);
+      const img = document.createElement('img');
+      img.className = 'capture-thumb';
+      img.src = captureDataUrl;
+      img.title = 'Hacer clic para ver en tamaño completo';
+      img.addEventListener('click', () => {
+        const win = window.open('', '_blank');
+        win.document.write(`<img src="${captureDataUrl}" style="max-width:100%;height:auto;">`);
+      });
+      logItem.appendChild(img);
     }
-    const content = document.createElement('div'); content.className='history-content';
-    content.innerHTML = `[${time}] ${msg}`; div.appendChild(content);
-    logEl.insertBefore(div, logEl.firstChild);
+    const content = document.createElement('div');
+    content.className = 'history-content';
+    content.innerHTML = `[${time}] ${msg}`;
+    logItem.appendChild(content);
+    logEl.insertBefore(logItem, logEl.firstChild);
     if (logEl.children.length > 20) logEl.removeChild(logEl.lastChild);
   }
   function setStatus(msg, cls="warn"){ statusEl.className = cls; statusEl.textContent = msg; }
+
+  // ====== NUEVO: helpers de historial ======
   function pushHistory({format, text, library, duration, points, image}){
     historyData.unshift({
       timestamp: new Date().toISOString(),
@@ -406,80 +376,482 @@
   function copyHistoryJson(){
     try{
       const json = JSON.stringify(historyData, null, 2);
-      navigator.clipboard.writeText(json).then(()=> setStatus("Historial copiado al portapapeles","ok"));
-    }catch(e){ setStatus("Error al serializar historial","err"); console.error(e); }
+      navigator.clipboard.writeText(json).then(()=>{
+        setStatus("Historial copiado al portapapeles", "ok");
+      }).catch(err=>{
+        setStatus("No se pudo copiar al portapapeles", "err");
+        console.error(err);
+      });
+    }catch(e){
+      setStatus("Error al serializar historial", "err");
+      console.error(e);
+    }
   }
   function exportHistoryJson(){
     try{
       const json = JSON.stringify(historyData, null, 2);
       const blob = new Blob([json], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       const ts = new Date().toISOString().replace(/[:.]/g,'-');
-      a.href = url; a.download = `detecciones_${ts}.json`; document.body.appendChild(a); a.click(); a.remove();
+      a.href = url;
+      a.download = `detecciones_${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       URL.revokeObjectURL(url);
-      setStatus("Historial exportado en JSON","ok");
-    }catch(e){ setStatus("Error al exportar historial","err"); console.error(e); }
+      setStatus("Historial exportado en JSON", "ok");
+    }catch(e){
+      setStatus("Error al exportar historial", "err");
+      console.error(e);
+    }
   }
-  function clearHistory(){ historyData.length = 0; logEl.innerHTML = ""; setStatus("Historial limpiado","ok"); }
-  function escapeHtml(s){ return String(s).replace(/[&<>]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+  function clearHistory(){
+    historyData.length = 0;
+    logEl.innerHTML = "";
+    setStatus("Historial limpiado", "ok");
+  }
 
-  // ------- setResult (incluye aviso persistente y parser DUI) -------
+  // *** setResult: registra librería y avisa al modo persistente ***
   function setResult(res, t, captureDataUrl = null, libName = null){
     if(!res){ fmtEl.textContent = "—"; textEl.textContent = "—"; tdecEl.textContent = "—"; return; }
     const fmt = res.getBarcodeFormat ? res.getBarcodeFormat().toString() : (res.format || "—");
     const txt = res.getText ? res.getText() : (res.text || "—");
-    const current = `${fmt}:${txt}`;
-    if (current === lastDetection) return;
-    lastDetection = current;
+    const currentDetection = `${fmt}:${txt}`;
+    if (currentDetection === lastDetection) return;
+    lastDetection = currentDetection;
 
-    fmtEl.textContent = fmt; textEl.textContent = txt; tdecEl.textContent = `${(t||0).toFixed ? t.toFixed(1) : t} ms`;
+    fmtEl.textContent = fmt; 
+    textEl.textContent = txt; 
+    tdecEl.textContent = `${(t||0).toFixed ? t.toFixed(1) : t} ms`;
+
     if (enableBeep.checked) { beepAudio.play().catch(()=>{}); }
+
     const source = libName ? ` <span class="badge">via ${libName}</span>` : "";
     log(`<span class="ok">✔</span> <b>${fmt}</b> → <code>${escapeHtml(txt)}</code>${source}`, captureDataUrl);
 
     const pts = Array.isArray(res.resultPoints) ? res.resultPoints.map(p=>({x:p.x ?? (p.getX && p.getX()), y:p.y ?? (p.getY && p.getY())})) : null;
-    pushHistory({ format: fmt, text: txt, library: libName || "N/A", duration: typeof t === 'number' ? t : 0, points: pts, image: captureDataUrl });
+    pushHistory({
+      format: fmt,
+      text: txt,
+      library: libName || "N/A",
+      duration: typeof t === 'number' ? t : 0,
+      points: pts,
+      image: captureDataUrl
+    });
 
-    // === DUI ES (PDF417) ===
-    if (/PDF/i.test(String(fmt))) {
-      const dui = parseDUI_ES(txt || "");
-      if (dui && autoShowDui.checked) {
-        renderDuiTable(dui);
-      }
-    }
-    // === /DUI ES (PDF417) ===
-
+    // Avisar al modo persistente
     if (persistentActive) {
       persistentDetected = true;
       clearPersistentTimers();
-      setStatus(`Detectado con ${libName}.`,"ok");
+      setStatus(`Detectado con ${libName}.`, "ok");
+      // dejamos corriendo el motor actual; si prefieres detenerlo:
+      // stop();
     }
   }
 
-  // ------- Overlay / FPS / Captura -------
+  function escapeHtml(s){ return String(s).replace(/[&<>]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
   function drawOverlay(points){
     const ctx = overlay.getContext('2d');
     ctx.clearRect(0,0,overlay.width,overlay.height);
     if(!showOverlay.checked || !points || !points.length) return;
     ctx.lineWidth = 3; ctx.strokeStyle = '#00d28a'; ctx.fillStyle = 'rgba(0,210,138,.12)';
-    ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
     for(let i=1;i<points.length;i++) ctx.lineTo(points[i].x, points[i].y);
     ctx.closePath(); ctx.stroke(); ctx.fill();
   }
   function drawFPS(){
-    frames++; const now=performance.now(); if (now-lastTime>=1000){ fpsEl.textContent=`FPS: ${frames}`; frames=0; lastTime=now; }
+    frames++;
+    const now = performance.now();
+    if (now - lastTime >= 1000) {
+      fps = frames; frames = 0; lastTime = now;
+      fpsEl.textContent = `FPS: ${fps}`;
+    }
+  }
+  function resizeCanvases(){
+    const w = video.videoWidth || overlay.clientWidth || 1280;
+    const h = video.videoHeight || Math.round((overlay.clientWidth||1280)*9/16) || 720;
+    [overlay,cRaw,cProc].forEach(c=>{ c.width = w; c.height = h; });
   }
   function createCapture(){
     const canvas = document.createElement('canvas');
-    const srcVideo = (engineSelect.value === 'quagga') ? (videoWrap.querySelector('video') || video) : video;
-    const vw = srcVideo.videoWidth || overlay.width, vh = srcVideo.videoHeight || overlay.height;
-    canvas.width = vw; canvas.height = vh; canvas.getContext('2d').drawImage(srcVideo,0,0,vw,vh);
+    const srcVideo = (engineSelect.value === 'quagga') 
+      ? videoWrap.querySelector('video') || video
+      : video;
+    const vw = srcVideo.videoWidth || overlay.width;
+    const vh = srcVideo.videoHeight || overlay.height;
+    canvas.width = vw; canvas.height = vh;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(srcVideo, 0, 0, vw, vh);
     return canvas.toDataURL('image/jpeg', 0.7);
   }
+
+  // ------- Cámaras -------
+  async function enumerateCameras(keepSelection=true){
+    const prev = deviceSelect.value;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    devicesCache = devices.filter(d=>d.kind==='videoinput');
+
+    deviceSelect.innerHTML = '';
+    devicesCache.forEach((d,i)=>{
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Cámara ${i+1}`;
+      deviceSelect.appendChild(opt);
+    });
+
+    if (keepSelection && prev && devicesCache.some(d=>d.deviceId===prev)){
+      deviceSelect.value = prev;
+      deviceIndex = devicesCache.findIndex(d=>d.deviceId===prev);
+    } else {
+      deviceIndex = Math.max(0, Math.min(deviceIndex, devicesCache.length-1));
+      deviceSelect.value = devicesCache[deviceIndex]?.deviceId || '';
+    }
+  }
+  function findByFacingName(prefer='back'){
+    const needle = prefer === 'back'
+      ? /(back|rear|trase|environment|trás|trasera)/i
+      : /(front|user|frente|frontal)/i;
+    let dev = devicesCache.find(d=> needle.test(d.label||''));
+    if (dev) return dev.deviceId;
+    if (prefer==='back') return devicesCache[devicesCache.length-1]?.deviceId || devicesCache[0]?.deviceId;
+    return devicesCache[0]?.deviceId || devicesCache[devicesCache.length-1]?.deviceId;
+  }
+
+  async function startWithDevice(deviceId, facing){
+    try{
+      const engine = engineSelect.value;
+
+      // Si el motor es Quagga, dejamos que Quagga gestione la cámara para evitar conflictos
+      if (engine === 'quagga') {
+        await enumerateCameras(); // asegurar devicesCache
+        video.style.display = 'none';
+        await startQuagga(deviceId || findByFacingName('back'));
+        setStatus("Detectando...", "ok");
+        return;
+      } else {
+        video.style.display = '';
+      }
+
+      const constraints = deviceId ? {
+        video: { deviceId: {exact: deviceId}, width:{ideal:1280}, height:{ideal:720}, frameRate: { ideal: 30 } }
+      } : {
+        video: { facingMode: facing || "environment", width:{ideal:1280}, height:{ideal:720}, frameRate: { ideal: 30 } }
+      };
+      if (window.innerWidth < 768) {
+        constraints.video.width = {ideal: 640};
+        constraints.video.height = {ideal: 480};
+      }
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream; await video.play();
+      track = stream.getVideoTracks()[0];
+      resizeCanvases();
+      setStatus("Detectando...", "ok");
+      torchOn = false; btnTorch.classList.remove('primary');
+      rebuildReader();
+
+      initBarcodeDetector();
+      initHtml5QrCode();
+
+      if (engine === 'barcodeDetector' && barcodeDetector) {
+        loopWithBarcodeDetector();
+      } else if (engine === 'html5qrcode' && html5QrCode) {
+        startHtml5QrCode();
+      } else if (engine === 'jsqr') {
+        loopWithJsQR();
+      } else {
+        if (useOpenCV.checked) loopWithOpenCV();
+        else decodeWithZXingLive();
+      }
+    }catch(err){
+      console.error(err);
+      setStatus("Error al iniciar cámara","err");
+      log(`<span class="err">✖</span> ${err.message||err}`);
+    }
+  }
+
+  async function start(){
+    await enumerateCameras();
+    const devId = deviceSelect.value || undefined;
+
+    if (!persistentMode.checked){
+      await startWithDevice(devId, "environment");
+      return;
+    }
+
+    // ====== MODO PERSISTENTE ======
+    persistentActive = true;
+    persistentDetected = false;
+    persistentEngineIndex = 0;
+    persistentOrder = buildPersistentOrder();
+
+    const tryNext = async () => {
+      clearPersistentTimers();
+      if (!persistentActive) return;
+      if (persistentDetected) return;
+
+      if (persistentEngineIndex >= persistentOrder.length){
+        setStatus("Sin detección: modo persistente probó todas las librerías", "warn");
+        persistentActive = false;
+        return;
+      }
+
+      const engine = persistentOrder[persistentEngineIndex++];
+      // Validar disponibilidad mínima para evitar intentos inútiles
+      if (engine === 'barcodeDetector' && !('BarcodeDetector' in window)) {
+        return tryNext();
+      }
+      if (engine === 'html5qrcode' && !window.Html5Qrcode) {
+        return tryNext();
+      }
+      if (engine === 'jsqr' && !window.jsQR) {
+        return tryNext();
+      }
+      if (engine === 'quagga' && !(window.Quagga && Quagga.init)) {
+        return tryNext();
+      }
+
+      engineSelect.value = engine;
+      setStatus(`Modo persistente: probando ${engine}…`, "warn");
+      await startWithDevice(devId, "environment");
+
+      const perMs = Math.max(250, +engineTimeout.value || 3000);
+      const deadline = Date.now() + perMs;
+
+      const tick = () => {
+        if (!persistentActive) return;
+        if (persistentDetected) return; // setResult se encargó
+        if (Date.now() >= deadline) {
+          // Siguiente motor
+          stop(); // limpia streams/loops actuales
+          tryNext();
+          return;
+        }
+        persistentTimer = setTimeout(tick, 200);
+      };
+      tick();
+    };
+
+    tryNext();
+  }
+
+  function stop(){
+    persistentActive = false;
+    clearPersistentTimers();
+
+    if (rafId) cancelAnimationFrame(rafId), rafId=null;
+    if (codeReader) codeReader.reset();
+    if (html5QrCode) {
+      html5QrCode.stop().catch(() => {});
+      html5QrCode.clear();
+    }
+    if (window.Quagga && Quagga.stop) {
+      try { Quagga.offDetected && Quagga.offDetected(); Quagga.stop(); } catch(e){}
+    }
+    if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; }
+    setStatus("Detenido");
+  }
+
+  async function toggleTorch(){
+    try{
+      if(!track) return;
+      const caps = track.getCapabilities?.();
+      if(!caps || !caps.torch){ setStatus("La linterna no es compatible","warn"); return; }
+      torchOn = !torchOn;
+      await track.applyConstraints({advanced:[{torch: torchOn}]});
+      btnTorch.classList.toggle('primary', torchOn);
+    }catch(err){ log(`<span class="err">✖</span> Torch: ${err.message||err}`); }
+  }
+  async function switchCamera(){
+    if (!devicesCache.length){ await enumerateCameras(false); }
+    if (!devicesCache.length) return;
+    deviceIndex = (deviceIndex + 1) % devicesCache.length;
+    const nextId = devicesCache[deviceIndex].deviceId;
+    deviceSelect.value = nextId;
+    if(stream || engineSelect.value==='quagga'){ stop(); }
+    await startWithDevice(nextId, "environment");
+  }
+
+  // ------- Flujo 1: ZXing directo desde video -------
+  function decodeWithZXingLive(){
+    if (!codeReader) rebuildReader();
+    codeReader.decodeFromVideoDevice(deviceSelect.value || undefined, video, (result, err) => {
+      paintRaw();
+      drawFPS();
+      if (result) {
+        const pts = (result.resultPoints||[]).map(p=>({x:p.getX?p.getX():p.x, y:p.getY?p.getY():p.y}));
+        drawOverlay(pts);
+        const captureDataUrl = createCapture();
+        setResult(result, 0, captureDataUrl, "ZXing");
+      } else if (err && !(err instanceof ZXing.NotFoundException)) {
+        setStatus("Buscando...", "warn");
+      }
+    });
+  }
+
+  // ------- Flujo 2: OpenCV + ZXing -------
+  async function loopWithOpenCV(){
+    if (!opencvReady) { setStatus("Cargando OpenCV...", "warn"); await waitForCV(); }
+    const ctxProc = cProc.getContext('2d');
+    const step = async () => {
+      paintRaw();
+      if(!decoding){
+        decoding = true;
+        try{
+          ctxProc.drawImage(video, 0, 0, cProc.width, cProc.height);
+          await cvProcess(cProc, {blur:+cvBlur.value||0, thresh:cvThresh.checked, clahe:cvClahe.checked});
+          const t0 = performance.now();
+          const result = await codeReader.decodeFromCanvas(cProc);
+          const t1 = performance.now();
+          drawOverlay(result?.resultPoints?.map(p=>({x:p.x??p.getX(), y:p.y??p.getY()})) || null);
+          const captureDataUrl = createCapture();
+          setResult(result, t1 - t0, captureDataUrl, "OpenCV+ZXing");
+        } catch(e){
+          if (!(e instanceof ZXing.NotFoundException)) log(`<span class="err">✖</span> ${e.message||e}`);
+        } finally { decoding = false; }
+      }
+      drawFPS();
+      rafId = requestAnimationFrame(step);
+    };
+    step();
+  }
+
+  // ------- Flujo 3: BarcodeDetector API -------
+  async function loopWithBarcodeDetector(){
+    if (!barcodeDetector) { setStatus("BarcodeDetector no disponible", "err"); return; }
+    const step = async () => {
+      paintRaw();
+      if(!decoding){
+        decoding = true;
+        try{
+          const t0 = performance.now();
+          const barcodes = await barcodeDetector.detect(video);
+          const t1 = performance.now();
+          if (barcodes && barcodes.length > 0) {
+            const b = barcodes[0];
+            const result = { format: b.format, text: b.rawValue, resultPoints: b.cornerPoints };
+            drawOverlay(b.cornerPoints?.map(p=>({x:p.x,y:p.y})));
+            const captureDataUrl = createCapture();
+            setResult(result, t1 - t0, captureDataUrl, "BarcodeDetector");
+          } else {
+            setStatus("Buscando...", "warn");
+          }
+        } catch(e){
+          console.error("BarcodeDetector error:", e);
+        } finally { decoding = false; }
+      }
+      drawFPS();
+      rafId = requestAnimationFrame(step);
+    };
+    step();
+  }
+
+  // ------- Flujo 4: HTML5 QR Code -------
+  function startHtml5QrCode(){
+    if (!html5QrCode) { setStatus("HTML5 QR Code no disponible", "err"); return; }
+    const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 16/9, disableFlip: false };
+    html5QrCode.start(
+      { deviceId: deviceSelect.value || undefined },
+      config,
+      onHtml5QrCodeSuccess,
+      onHtml5QrCodeFailure
+    ).catch(err => {
+      console.error("HTML5 QR Code error:", err);
+      setStatus("Error HTML5 QR Code", "err");
+    });
+  }
+  function onHtml5QrCodeSuccess(decodedText, decodedResult) {
+    const result = { format: decodedResult.result.format.formatName, text: decodedText };
+    const captureDataUrl = createCapture();
+    setResult(result, 0, captureDataUrl, "HTML5-QR-Code");
+    drawFPS();
+  }
+  function onHtml5QrCodeFailure(error) {
+    if (error && !String(error).startsWith("No QR code")) console.log("HTML5 QR Code error:", error);
+    drawFPS();
+  }
+
+  // ------- Flujo 5: QuaggaJS (1D) -------
+  async function startQuagga(deviceId){
+    if (!window.Quagga) { setStatus("QuaggaJS no disponible", "err"); return; }
+
+    try { Quagga.offDetected && Quagga.offDetected(); Quagga.stop && Quagga.stop(); } catch(e){}
+
+    const readers = getQuaggaReaders();
+    const constraints = deviceId ? { deviceId: deviceId, facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+                                 : { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } };
+    Quagga.init({
+      inputStream: {
+        type: "LiveStream",
+        constraints: constraints,
+        area: { top: "0%", right: "0%", left: "0%", bottom: "0%" },
+        target: videoWrap
+      },
+      decoder: { readers },
+      locator: { patchSize: "medium", halfSample: true },
+      numOfWorkers: navigator.hardwareConcurrency ? Math.max(1, Math.min(4, navigator.hardwareConcurrency)) : 2
+    }, function(err){
+      if (err) {
+        console.error(err);
+        setStatus("Error QuaggaJS", "err");
+        return;
+      }
+      Quagga.start();
+      setStatus("Detectando...", "ok");
+    });
+
+    Quagga.onDetected(function(data){
+      if (!data || !data.codeResult) return;
+      const code = data.codeResult.code || "";
+      const fmt = (data.codeResult.format || data.codeResult.formatName || "1D").toUpperCase();
+      const box = (data.box || []).map(pt=>({x:pt[0], y:pt[1]}));
+      drawOverlay(box);
+      const captureDataUrl = createCapture();
+      const result = { format: fmt, text: code, resultPoints: box };
+      setResult(result, 0, captureDataUrl, "QuaggaJS");
+    });
+  }
+
+  // ------- Flujo 6: jsQR (QR) -------
+  function loopWithJsQR(){
+    const step = () => {
+      paintRaw();
+      try{
+        const ctx = cRaw.getContext('2d');
+        const w = cRaw.width, h = cRaw.height;
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const t0 = performance.now();
+        const qr = jsQR(imgData.data, w, h, { inversionAttempts: "attemptBoth" });
+        const t1 = performance.now();
+        if (qr && qr.data) {
+          const corners = qr.location ? [
+            {x:qr.location.topLeftCorner.x, y:qr.location.topLeftCorner.y},
+            {x:qr.location.topRightCorner.x, y:qr.location.topRightCorner.y},
+            {x:qr.location.bottomRightCorner.x, y:qr.location.bottomRightCorner.y},
+            {x:qr.location.bottomLeftCorner.x, y:qr.location.bottomLeftCorner.y}
+          ] : null;
+          drawOverlay(corners);
+          const captureDataUrl = createCapture();
+          const result = { format: "QR_CODE", text: qr.data, resultPoints: corners };
+          setResult(result, t1 - t0, captureDataUrl, "jsQR");
+        } else {
+          setStatus("Buscando...", "warn");
+        }
+      } catch(e){
+        console.error("jsQR error:", e);
+      }
+      drawFPS();
+      rafId = requestAnimationFrame(step);
+    };
+    step();
+  }
+
   function paintRaw(){
     const ctx = cRaw.getContext('2d');
-    const srcVideo = (engineSelect.value === 'quagga') ? (videoWrap.querySelector('video') || video) : video;
+    const srcVideo = (engineSelect.value === 'quagga') 
+      ? (videoWrap.querySelector('video') || video)
+      : video;
     if (srcVideo && srcVideo.videoWidth) {
       overlay.width = srcVideo.videoWidth; overlay.height = srcVideo.videoHeight;
       cRaw.width = srcVideo.videoWidth; cRaw.height = srcVideo.videoHeight;
@@ -488,443 +860,82 @@
     }
   }
 
-  // ------- OpenCV pipeline -------
-  async function waitForCV(){ return new Promise(res=>{ const chk=()=> (opencvReady && window.cv && cv.Mat)?res():setTimeout(chk,60); chk(); }); }
+  async function waitForCV(){
+    return new Promise(res=>{
+      const chk = ()=>{ if (opencvReady && window.cv && cv.Mat) res(); else setTimeout(chk, 60); };
+      chk();
+    });
+  }
   async function cvProcess(canvas, opts){
     const {blur=1, thresh=true, clahe=false} = opts;
-    const src = cv.imread(canvas); let dst = new cv.Mat();
+    const src = cv.imread(canvas);
+    let dst = new cv.Mat();
     try{
       cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
-      if (clahe) { const cla = new cv.CLAHE(2.0, new cv.Size(8,8)); cla.apply(dst,dst); cla.delete(); }
-      if (blur>0){ const k = blur%2===1 ? blur : blur+1; if (k>1) cv.GaussianBlur(dst,dst,new cv.Size(k,k),0,0,cv.BORDER_DEFAULT); }
-      if (thresh) cv.adaptiveThreshold(dst,dst,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY,35,10);
-      else cv.threshold(dst,dst,0,255,cv.THRESH_BINARY|cv.THRESH_OTSU);
-      cv.cvtColor(dst, src, cv.COLOR_GRAY2RGBA); cv.imshow(canvas, src);
+      if (clahe) {
+        const cla = new cv.CLAHE(2.0, new cv.Size(8,8));
+        cla.apply(dst, dst);
+        cla.delete();
+      }
+      if (blur>0) {
+        const k = blur%2===1 ? blur : blur+1;
+        if (k>1) cv.GaussianBlur(dst, dst, new cv.Size(k,k), 0, 0, cv.BORDER_DEFAULT);
+      }
+      if (thresh) cv.adaptiveThreshold(dst, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 10);
+      else cv.threshold(dst, dst, 0, 255, cv.THRESH_BINARY|cv.THRESH_OTSU);
+      cv.cvtColor(dst, src, cv.COLOR_GRAY2RGBA);
+      cv.imshow(canvas, src);
     } finally { src.delete(); dst.delete(); }
   }
 
-  // ------- Cámaras -------
-  async function enumerateCameras(keepSelection=true){
-    const prev = deviceSelect.value;
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    devicesCache = devices.filter(d=>d.kind==='videoinput');
-    deviceSelect.innerHTML = '';
-    devicesCache.forEach((d,i)=>{ const opt=document.createElement('option'); opt.value=d.deviceId; opt.textContent=d.label||`Cámara ${i+1}`; deviceSelect.appendChild(opt); });
-    if (keepSelection && prev && devicesCache.some(d=>d.deviceId===prev)){ deviceSelect.value=prev; deviceIndex=devicesCache.findIndex(d=>d.deviceId===prev); }
-    else { deviceIndex = Math.max(0, Math.min(deviceIndex, devicesCache.length-1)); deviceSelect.value = devicesCache[deviceIndex]?.deviceId || ''; }
-  }
-  function findByFacingName(prefer='back'){
-    const needle = prefer==='back' ? /(back|rear|trase|environment|trás|trasera)/i : /(front|user|frente|frontal)/i;
-    let dev = devicesCache.find(d=> needle.test(d.label||'')); if (dev) return dev.deviceId;
-    return prefer==='back' ? (devicesCache[devicesCache.length-1]?.deviceId || devicesCache[0]?.deviceId) : (devicesCache[0]?.deviceId || devicesCache[devicesCache.length-1]?.deviceId);
-  }
-
-  // ------- Motores (loops) -------
-  function decodeWithZXingLive(){
-    if (!codeReader) rebuildReader();
-    codeReader.decodeFromVideoDevice(deviceSelect.value || undefined, video, (result, err) => {
-      paintRaw(); drawFPS();
-      if (result) {
-        const pts=(result.resultPoints||[]).map(p=>({x:p.getX?p.getX():p.x,y:p.getY?p.getY():p.y}));
-        drawOverlay(pts); const cap=createCapture(); setResult(result,0,cap,"ZXing");
-      }
-    });
-  }
-  async function loopWithOpenCV(){
-    if (!opencvReady){ setStatus("Cargando OpenCV...","warn"); await waitForCV(); }
-    const ctxProc=cProc.getContext('2d');
-    const step = async ()=>{
-      paintRaw();
-      if(!decoding){ decoding=true;
-        try{
-          ctxProc.drawImage(video,0,0,cProc.width,cProc.height);
-          await cvProcess(cProc,{blur:+cvBlur.value||0,thresh:cvThresh.checked,clahe:cvClahe.checked});
-          const t0=performance.now(); const result=await codeReader.decodeFromCanvas(cProc); const t1=performance.now();
-          drawOverlay(result?.resultPoints?.map(p=>({x:p.x??p.getX(),y:p.y??p.getY()}))||null);
-          const cap=createCapture(); setResult(result,t1-t0,cap,"OpenCV+ZXing");
-        }catch(e){/* NotFound se ignora */} finally{ decoding=false; }
-      }
-      drawFPS(); rafId=requestAnimationFrame(step);
-    }; step();
-  }
-  async function loopWithBarcodeDetector(){
-    if (!barcodeDetector){ setStatus("BarcodeDetector no disponible","err"); return; }
-    const step = async ()=>{
-      paintRaw();
-      if(!decoding){ decoding=true;
-        try{
-          const t0=performance.now(); const barcodes=await barcodeDetector.detect(video); const t1=performance.now();
-          if (barcodes && barcodes.length>0){
-            const b=barcodes[0]; const result={format:b.format,text:b.rawValue,resultPoints:b.cornerPoints};
-            drawOverlay(b.cornerPoints?.map(p=>({x:p.x,y:p.y}))); const cap=createCapture(); setResult(result,t1-t0,cap,"BarcodeDetector");
-          } else setStatus("Buscando...","warn");
-        }catch(e){ console.error("BarcodeDetector error:",e); } finally{ decoding=false; }
-      }
-      drawFPS(); rafId=requestAnimationFrame(step);
-    }; step();
-  }
-  function startHtml5QrCode(){
-    if (!html5QrCode){ setStatus("HTML5 QR Code no disponible","err"); return; }
-    const config={ fps:10, qrbox:{width:250,height:250}, aspectRatio:16/9, disableFlip:false };
-    html5QrCode.start({ deviceId: deviceSelect.value || undefined }, config,
-      (decodedText,decodedResult)=>{ const cap=createCapture(); setResult({format:decodedResult.result.format.formatName,text:decodedText},0,cap,"HTML5-QR-Code"); drawFPS(); },
-      (err)=>{ if (err && !String(err).startsWith("No QR code")) console.log("HTML5 QR Code error:",err); drawFPS(); }
-    ).catch(err=>{ console.error("HTML5 QR Code error:",err); setStatus("Error HTML5 QR Code","err"); });
-  }
-  async function startQuagga(deviceId){
-    if (!window.Quagga){ setStatus("QuaggaJS no disponible","err"); return; }
-    try{ Quagga.offDetected && Quagga.offDetected(); Quagga.stop && Quagga.stop(); }catch(e){}
-    const readers=getQuaggaReaders();
-    const constraints = deviceId ? { deviceId, facingMode:"environment", width:{ideal:1280}, height:{ideal:720} } : { facingMode:"environment", width:{ideal:1280}, height:{ideal:720} };
-    Quagga.init({
-      inputStream:{ type:"LiveStream", constraints, area:{top:"0%",right:"0%",left:"0%",bottom:"0%"}, target:videoWrap },
-      decoder:{ readers }, locator:{ patchSize:"medium", halfSample:true },
-      numOfWorkers: navigator.hardwareConcurrency ? Math.max(1, Math.min(4, navigator.hardwareConcurrency)) : 2
-    }, err=>{ if(err){ console.error(err); setStatus("Error QuaggaJS","err"); return;} Quagga.start(); setStatus("Detectando...","ok"); });
-    Quagga.onDetected(function(data){
-      if (!data || !data.codeResult) return;
-      const code=data.codeResult.code||""; const fmt=(data.codeResult.format||data.codeResult.formatName||"1D").toUpperCase();
-      const box=(data.box||[]).map(pt=>({x:pt[0],y:pt[1]})); drawOverlay(box);
-      const cap=createCapture(); const result={format:fmt,text:code,resultPoints:box}; setResult(result,0,cap,"QuaggaJS");
-    });
-  }
-
-  // ------- Start/Stop -------
-  async function startWithDevice(deviceId, facing){
-    try{
-      const engine=engineSelect.value;
-      if (engine==='quagga'){ await enumerateCameras(); video.style.display='none'; await startQuagga(deviceId||findByFacingName('back')); setStatus("Detectando...","ok"); return; }
-      else { video.style.display=''; }
-
-      const constraints = deviceId ? { video:{ deviceId:{exact:deviceId}, width:{ideal:1280}, height:{ideal:720}, frameRate:{ideal:30} } }
-                                   : { video:{ facingMode:facing||"environment", width:{ideal:1280}, height:{ideal:720}, frameRate:{ideal:30} } };
-      if (window.innerWidth < 768){ constraints.video.width={ideal:640}; constraints.video.height={ideal:480}; }
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream; await video.play(); track = stream.getVideoTracks()[0];
-      setStatus("Detectando...","ok"); rebuildReader(); initBarcodeDetector(); initHtml5QrCode();
-
-      if (engine==='barcodeDetector' && barcodeDetector){ loopWithBarcodeDetector(); }
-      else if (engine==='html5qrcode' && html5QrCode){ startHtml5QrCode(); }
-      else if (engine==='jsqr'){ loopWithJsQR(); }
-      else { if (useOpenCV.checked) loopWithOpenCV(); else decodeWithZXingLive(); }
-    }catch(err){ console.error(err); setStatus("Error al iniciar cámara","err"); log(`<span class="err">✖</span> ${err.message||err}`); }
-  }
-  async function start(){
-    await enumerateCameras(); const devId=deviceSelect.value || undefined;
-    if (!persistentMode.checked){ await startWithDevice(devId,"environment"); return; }
-    // Modo persistente
-    persistentActive=true; persistentDetected=false; persistentEngineIndex=0;
-    const order = getChipOrder();
-    await tryNextEngine(devId, order);
-  }
-  function stop(){
-    persistentActive=false; clearPersistentTimers();
-    if (rafId) cancelAnimationFrame(rafId), rafId=null;
-    if (codeReader) codeReader.reset();
-    if (html5QrCode){ html5QrCode.stop().catch(()=>{}); html5QrCode.clear(); }
-    if (window.Quagga && Quagga.stop){ try{ Quagga.offDetected && Quagga.offDetected(); Quagga.stop(); }catch(e){} }
-    if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; }
-    setStatus("Detenido");
-  }
-
-  // ------- Persistente: alternar motores según chips -------
-  function clearPersistentTimers(){ if (persistentTimer){ clearTimeout(persistentTimer); persistentTimer=null; } }
-  async function tryNextEngine(devId, order){
-    clearPersistentTimers();
-    if (!persistentActive || persistentDetected) return;
-    if (persistentEngineIndex >= order.length){ setStatus("Sin detección: probó todas las librerías","warn"); persistentActive=false; return; }
-
-    const engine=order[persistentEngineIndex++];
-
-    // saltos por disponibilidad
-    if (engine==='barcodeDetector' && !('BarcodeDetector' in window)) return tryNextEngine(devId, order);
-    if (engine==='html5qrcode' && !window.Html5Qrcode) return tryNextEngine(devId, order);
-    if (engine==='jsqr' && !window.jsQR) return tryNextEngine(devId, order);
-    if (engine==='quagga' && !(window.Quagga && Quagga.init)) return tryNextEngine(devId, order);
-
-    engineSelect.value = engine;
-    setStatus(`Modo persistente: probando ${ENGINE_LABELS[engine]}…`,"warn");
-    await startWithDevice(devId,"environment");
-
-    const perMs=Math.max(250, +engineTimeout.value||3000);
-    const deadline=Date.now()+perMs;
-    const tick=()=>{ if (!persistentActive||persistentDetected) return;
-      if (Date.now()>=deadline){ stop(); tryNextEngine(devId, order); return; }
-      persistentTimer=setTimeout(tick,200);
-    }; tick();
-  }
-
-  // ------- Chips (drag & drop) -------
-  function renderChips(order=DEFAULT_ORDER){
-    engineChips.innerHTML='';
-    order.forEach(key=>{
-      const chip=document.createElement('div');
-      chip.className='chip'; chip.setAttribute('draggable','true'); chip.dataset.engine=key;
-      chip.innerHTML=`<span class="handle">⋮⋮</span>${ENGINE_LABELS[key]}`;
-      engineChips.appendChild(chip);
-    });
-    bindDragAndDrop();
-  }
-  function getChipOrder(){
-    return Array.from(engineChips.querySelectorAll('.chip')).map(ch=>ch.dataset.engine);
-  }
-  function bindDragAndDrop(){
-    let dragEl=null;
-    engineChips.querySelectorAll('.chip').forEach(chip=>{
-      chip.addEventListener('dragstart',e=>{ dragEl=chip; chip.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
-      chip.addEventListener('dragend',()=>{ if(dragEl){ dragEl.classList.remove('dragging'); dragEl=null; }});
-      chip.addEventListener('dragover',e=>{
-        e.preventDefault();
-        const afterEl = getDragAfterElement(engineChips, e.clientX, e.clientY);
-        if (afterEl==null) engineChips.appendChild(dragEl);
-        else engineChips.insertBefore(dragEl, afterEl);
-      });
-    });
-  }
-  function getDragAfterElement(container, x, y){
-    const els=[...container.querySelectorAll('.chip:not(.dragging)')];
-    return els.reduce((closest,child)=>{
-      const rect=child.getBoundingClientRect();
-      const offset = y - rect.top - rect.height/2;
-      if (offset<0 && offset>closest.offset) return {offset,element:child};
-      return closest;
-    }, {offset:Number.NEGATIVE_INFINITY}).element;
-  }
-
-  // ------- Perfiles -------
-  function applyProfile(name){
-    const setAll = val => ALL_FORMATS.forEach(([k])=> setFormatChecked(k,val));
-    const setSome = keys => keys.forEach(k=> setFormatChecked(k,true));
-
-    setAll(false);
-    let order = DEFAULT_ORDER.slice();
-    let timeout = +engineTimeout.value || 3000;
-
-    switch(name){
-      case 'fast_qr':
-        order = ['jsqr','html5qrcode','barcodeDetector','zxing','quagga'];
-        setSome(['QR_CODE']);
-        useOpenCV.checked = false; cvClahe.checked = false; cvThresh.checked = true; cvBlur.value = 1;
-        timeout = 2000;
-        break;
-      case 'pdf417':
-        order = ['barcodeDetector','zxing','jsqr','html5qrcode','quagga'];
-        setSome(['PDF_417']);
-        useOpenCV.checked = true; cvClahe.checked = true; cvThresh.checked = true; cvBlur.value = 1;
-        timeout = 3500;
-        break;
-      case 'retail_1d':
-        order = ['quagga','zxing','barcodeDetector','html5qrcode','jsqr'];
-        setSome(['CODE_128','EAN_13','EAN_8','UPC_A','UPC_E','CODE_39','ITF','CODABAR','RSS_14','RSS_EXPANDED']);
-        useOpenCV.checked = false; cvClahe.checked = false; cvThresh.checked = true; cvBlur.value = 1;
-        timeout = 3000;
-        break;
-      case 'exhaustive':
-        order = ['barcodeDetector','zxing','jsqr','html5qrcode','quagga'];
-        ALL_FORMATS.forEach(([k])=> setFormatChecked(k,true));
-        useOpenCV.checked = true; cvClahe.checked = true; cvThresh.checked = true; cvBlur.value = 1;
-        timeout = 4000;
-        break;
-      case 'dui_sv':
-        order = ['barcodeDetector','zxing','html5qrcode','quagga','jsqr'];
-        setSome(['PDF_417']);
-        useOpenCV.checked = true; cvClahe.checked = true; cvThresh.checked = true; cvBlur.value = 1;
-        timeout = 4500;
-        break;
-      default:
-        order = DEFAULT_ORDER.slice();
-        ALL_FORMATS.forEach(([k])=> setFormatChecked(k,true));
-        useOpenCV.checked = false; cvClahe.checked = false; cvThresh.checked = true; cvBlur.value = 1;
-        timeout = 3000;
-    }
-
-    renderChips(order);
-    engineTimeout.value = timeout;
-    rebuildReader();
-    if (barcodeDetector) barcodeDetector = new BarcodeDetector({ formats: getFormatsForBarcodeDetector() });
-    setStatus(`Perfil aplicado: ${profileSelect.options[profileSelect.selectedIndex].text}`,'ok');
-  }
-
-  // ------- DUI ES (PDF417): Parser + Render -------
-  function safe(val, d='—'){ return (val===undefined||val===null||val==='') ? d : String(val); }
-  function yyyymmddToISO(s){
-    if(!/^\d{8}$/.test(s)) return null;
-    const y = s.slice(0,4), m = s.slice(4,6), d = s.slice(6,8);
-    const mm = (+m>=1 && +m<=12) ? m : null;
-    const dd = (+d>=1 && +d<=31) ? d : null;
-    if (!mm || !dd) return null;
-    return `${y}-${m}-${d}`;
-  }
-  function titleCase(str){
-    return String(str||'').toLowerCase()
-      .replace(/(?:^|[\s\-'])\p{L}/gu, ch=> ch.toUpperCase());
-  }
-  /**
-   * Parser heurístico para DUI El Salvador.
-   * Soporta cadenas "RAW" típicas de lectores PDF417 de DUI 2011–2016 y 2022+ polímero.
-   * Extrae: número, nombres, apellidos, sexo, fecha de nacimiento, tipo de sangre, nacionalidad, fecha emisión (cuando aparezca).
-   */
-  function parseDUI_ES(raw){
-    const out = {
-      source: 'PDF417-ES',
-      raw: raw,
-      dui: null,
-      nombres: null,
-      apellidos: null,
-      sexo: null,
-      fecha_nacimiento: null,
-      fecha_emision: null,
-      fecha_expiracion: null,
-      tipo_sangre: null,
-      nacionalidad: null,
-      otros: {}
-    };
-    if (!raw) return out;
-
-    // Normalización básica
-    let s = raw.replace(/\u0000/g,' ').replace(/\s+/g,' ').trim();
-    const upper = s.toUpperCase();
-
-    // DUI: 8 ó 9 dígitos (a veces con guiones removidos)
-    const mDui = upper.match(/(?:^|[^\d])(\d{8,9})(?:[^\d]|$)/);
-    if (mDui) out.dui = mDui[1];
-
-    // Fechas: buscamos YY/MM/DD o YYYYMMDD (más común)
-    // Tomamos hasta 3 ocurrencias por si vienen nacimiento, emisión y vencimiento
-    const dateTokens = [...upper.matchAll(/(\d{8})/g)].map(m=>m[1]).slice(0,4);
-    // Heurística: la primera fecha suele ser nacimiento; si hay más, 2da emisión, 3ra expiración
-    if (dateTokens[0]) out.fecha_nacimiento = yyyymmddToISO(dateTokens[0]);
-    if (dateTokens[1]) out.fecha_emision = yyyymmddToISO(dateTokens[1]);
-    if (dateTokens[2]) out.fecha_expiracion = yyyymmddToISO(dateTokens[2]);
-
-    // Sexo
-    const mSex = upper.match(/\b([MF])\b/);
-    if (mSex) out.sexo = mSex[1] === 'M' ? 'M' : 'F';
-
-    // Tipo de sangre (ABO+Rh)
-    const mBlood = upper.match(/\b(AB\+|AB\-|A\+|A\-|B\+|B\-|O\+|O\-)\b/);
-    if (mBlood) out.tipo_sangre = mBlood[1];
-
-    // Nacionalidad: dos letras (p.ej. US, SV, ES). En DUI suele aparecer al lado del factor RH y/o después de datos
-    const mNat = upper.match(/\b([A-Z]{2})\b(?!\w)/);
-    if (mNat) out.nacionalidad = mNat[1];
-
-    // Nombres y apellidos:
-    // En varias capturas vienen "APELLIDOS NOMBRES" o "NOMBRES APELLIDOS" contiguos a campos VISITOR/CIUDADANO/etc.
-    // Vamos a separar los tokens "palabra" largos y detectar secuencia probable de 2–4 palabras alfabéticas.
-    const alphaSeq = upper.match(/[A-ZÁÉÍÓÚÜÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÜÑ]{2,}){1,4}/g) || [];
-    // Filtramos palabras que son rótulos comunes para no confundir
-    const blacklist = new Set(['VISITOR','CIUDADANO','NOMBRE','NOMBRES','APELLIDO','APELLIDOS','DUI','EL','SALVADOR','DOC','DOCID','MRZ','FMR']);
-    const candidates = alphaSeq
-      .filter(seg => seg.split(/\s+/).every(w => !blacklist.has(w)))
-      .sort((a,b)=> b.length - a.length); // el más largo suele ser el nombre completo
-
-    if (candidates.length){
-      // Heurística: partimos en 2 mitades aproximadas para apellidos/nombres si hay 3–4 tokens
-      const parts = candidates[0].split(/\s+/);
-      if (parts.length===2){
-        // sin saber el orden exacto, usamos "apellidos" = primera, "nombres" = segunda (ajustable según tu plantilla)
-        out.apellidos = titleCase(parts[0]);
-        out.nombres = titleCase(parts[1]);
-      } else if (parts.length===3){
-        out.apellidos = titleCase(parts[0] + ' ' + parts[1]);
-        out.nombres = titleCase(parts[2]);
-      } else if (parts.length>=4){
-        out.apellidos = titleCase(parts[0] + ' ' + parts[1]);
-        out.nombres = titleCase(parts.slice(2).join(' '));
-      }
-    }
-
-    // Campos adicionales que a veces aparecen (serie, correlativo, oficina)
-    const mSerie = upper.match(/\b([A-Z]\d{6,})\b/);
-    if (mSerie) out.otros.serie = mSerie[1];
-
-    // Devuelve objeto parseado
-    return out;
-  }
-
-  function renderDuiTable(obj){
-    duiEmpty.style.display = 'none';
-    duiTableWrap.style.display = '';
-    // Render tabla K/V
-    const rows = [
-      ['DUI', safe(obj.dui)],
-      ['Apellidos', safe(obj.apellidos)],
-      ['Nombres', safe(obj.nombres)],
-      ['Sexo', safe(obj.sexo)],
-      ['Fecha de nacimiento', safe(obj.fecha_nacimiento)],
-      ['Fecha de emisión', safe(obj.fecha_emision)],
-      ['Fecha de expiración', safe(obj.fecha_expiracion)],
-      ['Tipo de sangre', safe(obj.tipo_sangre)],
-      ['Nacionalidad', safe(obj.nacionalidad)]
-    ];
-    // Agregar 'otros' si existen
-    Object.entries(obj.otros||{}).forEach(([k,v])=>{
-      rows.push([titleCase(k.replace(/_/g,' ')), safe(v)]);
-    });
-
-    duiTable.innerHTML = rows.map(([k,v])=>`<tr><th>${k}</th><td>${escapeHtml(v)}</td></tr>`).join('');
-    duiJsonPre.textContent = JSON.stringify(obj, null, 2);
-  }
-
-  btnClearDui.addEventListener('click', ()=>{
-    duiTable.innerHTML = '';
-    duiJsonPre.textContent = '';
-    duiTableWrap.style.display = 'none';
-    duiEmpty.style.display = '';
-  });
-
-  // ------- Eventos UI -------
+  // ------- Eventos -------
   btnStart.addEventListener('click', start);
   btnStop.addEventListener('click', stop);
-  btnTorch.addEventListener('click', async ()=>{
-    try{
-      if(!track) return;
-      const caps=track.getCapabilities?.();
-      if(!caps || !caps.torch){ setStatus("La linterna no es compatible","warn"); return; }
-      torchOn=!torchOn; await track.applyConstraints({advanced:[{torch:torchOn}]});
-      btnTorch.classList.toggle('primary', torchOn);
-    }catch(err){ log(`<span class="err">✖</span> Torch: ${err.message||err}`); }
-  });
-  btnSwitch.addEventListener('click', async ()=>{
-    if (!devicesCache.length){ await enumerateCameras(false); }
-    if (!devicesCache.length) return;
-    deviceIndex=(deviceIndex+1)%devicesCache.length; const nextId=devicesCache[deviceIndex].deviceId;
-    deviceSelect.value=nextId; if(stream || engineSelect.value==='quagga'){ stop(); } await startWithDevice(nextId,"environment");
-  });
-  deviceSelect.addEventListener('change', async ()=>{
-    if (!deviceSelect.value) return;
-    deviceIndex = devicesCache.findIndex(d=>d.deviceId===deviceSelect.value); if (deviceIndex<0) deviceIndex=0;
-    if(stream || engineSelect.value==='quagga'){ stop(); } await startWithDevice(deviceSelect.value,"environment");
-  });
-  btnBack.addEventListener('click', async ()=>{
-    await enumerateCameras(); const devId=findByFacingName('back');
-    if (devId){ deviceSelect.value=devId; deviceIndex=devicesCache.findIndex(d=>d.deviceId===devId); if(stream || engineSelect.value==='quagga'){ stop(); } await startWithDevice(devId,"environment"); }
-  });
-  btnFront.addEventListener('click', async ()=>{
-    await enumerateCameras(); const devId=findByFacingName('front');
-    if (devId){ deviceSelect.value=devId; deviceIndex=devicesCache.findIndex(d=>d.deviceId===devId); if(stream || engineSelect.value==='quagga'){ stop(); } await startWithDevice(devId,"user"); }
-  });
-
-  formatList.addEventListener('change', ()=>{ rebuildReader(); if (barcodeDetector) barcodeDetector=new BarcodeDetector({ formats:getFormatsForBarcodeDetector() }); if (engineSelect.value==='quagga'){ stop(); start(); } else if (stream){ stop(); start(); } });
+  btnTorch.addEventListener('click', toggleTorch);
+  btnSwitch.addEventListener('click', switchCamera);
   showOverlay.addEventListener('change', ()=> drawOverlay(null));
+  formatList.addEventListener('change', ()=>{ 
+    rebuildReader();
+    if (barcodeDetector) barcodeDetector = new BarcodeDetector({ formats: getBarcodeDetectorFormats() });
+    if (engineSelect.value==='quagga') { stop(); start(); }
+    else if (stream){ stop(); start(); }
+  });
   useOpenCV.addEventListener('change', ()=>{ if(stream || engineSelect.value==='jsqr'){ stop(); start(); } });
   engineSelect.addEventListener('change', ()=>{ if(stream || engineSelect.value==='quagga' || engineSelect.value==='jsqr'){ stop(); start(); } });
+
+  deviceSelect.addEventListener('change', async ()=>{
+    if (!deviceSelect.value) return;
+    deviceIndex = devicesCache.findIndex(d=>d.deviceId===deviceSelect.value);
+    if (deviceIndex < 0) deviceIndex = 0;
+    if(stream || engineSelect.value==='quagga'){ stop(); }
+    await startWithDevice(deviceSelect.value, "environment");
+  });
+
+  btnBack.addEventListener('click', async ()=>{
+    await enumerateCameras();
+    const devId = findByFacingName('back');
+    if (devId){ deviceSelect.value = devId; deviceIndex = devicesCache.findIndex(d=>d.deviceId===devId);
+      if(stream || engineSelect.value==='quagga'){ stop(); } await startWithDevice(devId, "environment"); }
+  });
+  btnFront.addEventListener('click', async ()=>{
+    await enumerateCameras();
+    const devId = findByFacingName('front');
+    if (devId){ deviceSelect.value = devId; deviceIndex = devicesCache.findIndex(d=>d.deviceId===devId);
+      if(stream || engineSelect.value==='quagga'){ stop(); } await startWithDevice(devId, "user"); }
+  });
 
   document.getElementById('btnCopyJson').addEventListener('click', copyHistoryJson);
   document.getElementById('btnExportJson').addEventListener('click', exportHistoryJson);
   document.getElementById('btnClearHistory').addEventListener('click', clearHistory);
 
-  btnResetOrder.addEventListener('click', ()=>{ renderChips(DEFAULT_ORDER); setStatus("Orden restablecido","ok"); });
-  btnApplyProfile.addEventListener('click', ()=> applyProfile(profileSelect.value));
+  if (navigator.mediaDevices?.getUserMedia) {
+    enumerateCameras(false).catch(()=>{});
+  } else {
+    setStatus("Tu navegador no soporta getUserMedia","err");
+  }
 
-  // Init chips y cámaras
-  renderChips(DEFAULT_ORDER);
-  if (navigator.mediaDevices?.getUserMedia) { enumerateCameras(false).catch(()=>{}); } else { setStatus("Tu navegador no soporta getUserMedia","err"); }
   window.addEventListener('beforeunload', stop);
 })();
 </script>
 </body>
 </html>
-
-
