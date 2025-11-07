@@ -72,7 +72,15 @@
         </div>
       </div>
 
+      
       <div class="row" style="margin-top:10px">
+        <label class="badge">Set:
+          <input id="setInput" type="text" placeholder="(opcional)" size="24" style="margin-left:8px" />
+        </label>
+        <span class="badge">Set actual: <strong id="setBadge">(vacío)</strong></span>
+        <span class="hint">Este valor se guardará con cada lectura en LocalStorage.</span>
+      </div>
+<div class="row" style="margin-top:10px">
         <button id="startCam" class="primary">Iniciar cámara</button>
         <button id="stopCam" class="bad" disabled>Detener cámara</button>
         <button id="extractFromLiveCam" class="good" disabled>Extraer desde Cámara</button>
@@ -138,9 +146,11 @@
       <table id="lsTable">
         <thead>
           <tr>
+            <th class="nowrap">Set</th>
             <th class="nowrap">Fecha</th>
             <th class="nowrap">Hora</th>
             <th>Datos</th>
+            <th>Acciones</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -158,6 +168,7 @@
     <table id="historyTable">
       <thead>
         <tr>
+          <th class="nowrap">Set</th>
           <th class="nowrap">Fecha</th>
           <th class="nowrap">Hora</th>
           <th>Tipo</th>
@@ -257,12 +268,12 @@
   function addHistoryEntry({ type, value, format = null, captureCanvas = null }) {
   const { date, time } = nowParts();
   const imgB64 = captureCanvas ? toDataURLFromCanvas(captureCanvas) : '';
-  const row = { date, time, type, value, format, imageB64: imgB64 };
+  const row = { set: (el.setInput ? el.setInput.value : ''), date, time, type, value, format, imageB64: imgB64 };
   history.unshift(row); // más reciente primero
   renderHistoryRow(row);
   // Guardado mínimo por defecto en LocalStorage (fecha, hora, datos)
   try {
-    addLS({ date, time, data: value || '' });
+    addLS({ Set: (el.setInput ? el.setInput.value : ''), Fecha: date, Hora: time, Datos: value || '' });
   } catch (err) {
     console.error('Error al guardar en LocalStorage:', err);
   }
@@ -272,6 +283,7 @@
   function renderHistoryRow(row){
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td class="nowrap">${row.set || ''}</td>
       <td class="nowrap">${row.date}</td>
       <td class="nowrap">${row.time}</td>
       <td>${row.type}</td>
@@ -805,9 +817,15 @@
     const tbody = document.querySelector('#lsTable tbody');
     const count = document.querySelector('#lsCount');
     tbody.innerHTML = '';
-    (list||[]).slice().reverse().forEach(item=>{
+    const total = (list||[]).length;
+    (list||[]).slice().reverse().forEach((item, revIdx)=>{
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td class="nowrap">${item.date}</td><td class="nowrap">${item.time}</td><td>${(item.data||'')}</td>`;
+      const origIdx = total - 1 - revIdx;
+      tr.innerHTML = `<td class="nowrap">${item.Set||''}</td>
+                      <td class="nowrap">${item.Fecha||item.date||''}</td>
+                      <td class="nowrap">${item.Hora||item.time||''}</td>
+                      <td>${item.Datos||item.data||''}</td>
+                      <td><button class="delLS" data-index="${origIdx}">Eliminar</button></td>`;
       tbody.appendChild(tr);
     });
     if(count) count.textContent = (list||[]).length;
@@ -827,6 +845,31 @@
     if(ev.target && ev.target.id === 'clearLS') { setLS([]); renderLS([]); }
   });
 
+  // Eliminar entrada individual por índice (según almacenamiento original)
+  document.addEventListener('click', (ev)=>{
+    const btn = ev.target && ev.target.classList && ev.target.classList.contains('delLS') ? ev.target : null;
+    if(btn){
+      const idx = Number(btn.dataset.index);
+      const arr = getLS();
+      if(Number.isInteger(idx) && idx>=0 && idx < arr.length){
+        arr.splice(idx,1);
+        setLS(arr);
+        renderLS(arr);
+      }
+    }
+  });
+
+  // Mantener badge de Set actualizado
+  const setInputEl = document.getElementById('setInput');
+  const setBadgeEl = document.getElementById('setBadge');
+  if(setInputEl && setBadgeEl){
+    const syncSetBadge = ()=>{ setBadgeEl.textContent = (setInputEl.value || '(vacío)'); };
+    setInputEl.addEventListener('input', syncSetBadge);
+    // Inicial
+    syncSetBadge();
+  }
+
+
   // ---------- Init ----------
   await createBarcodeDetector();
   const ro = new ResizeObserver(syncCanvasSizes); ro.observe(document.querySelector('.viewport'));
@@ -837,5 +880,4 @@
 </script>
 </body>
 </html>
-
 
