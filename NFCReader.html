@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>NFC Web — NDEF (Modo Oscuro) + Historial (Set/Fecha/Hora/Datos)</title>
+<style>
+  :root{
+    --bg:#0f1220; --panel:#151a2e; --muted:#273055; --line:#1b2242;
+    --accent:#7aa2ff; --ok:#21c48c; --warn:#ffcf5c; --err:#ff6b6b; --txt:#e6e9ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif}
+  header{padding:18px 14px;border-bottom:1px solid var(--muted);text-align:center}
+  h1{margin:0 0 6px;font-size:1.25rem}
+  .small{color:#b7bdf3;font-size:.93rem}
+  main{max-width:1100px;margin:16px auto;padding:0 12px 24px}
+  .grid{display:grid;gap:12px}
+  @media(min-width:980px){.grid{grid-template-columns:1fr 1fr}}
+  .card{background:var(--panel);border:1px solid var(--muted);border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+  .card h2{margin:0 0 10px;font-size:1.05rem}
+  label{display:block;margin:.4rem 0 .2rem}
+  input,select,button,textarea{
+    border-radius:12px;border:1px solid var(--muted);background:#0d1330;color:var(--txt);
+    padding:10px 12px;font-size:.95rem;outline:none;width:100%
+  }
+  input::placeholder{color:#93a0de}
+  button{cursor:pointer;font-weight:600;transition:.2s;width:auto}
+  button.primary{background:var(--accent);border-color:transparent}
+  button.success{background:var(--ok);border-color:transparent}
+  button.warn{background:var(--warn);border-color:transparent;color:#1a1400}
+  button.danger{background:var(--err);border-color:transparent}
+  button.ghost{background:#0d1330}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .status{margin-top:8px;padding:10px 12px;background:#0c1230;border-left:4px solid var(--muted);border-radius:10px}
+  .status.ok{border-left-color:var(--ok)} .status.warn{border-left-color:var(--warn)} .status.err{border-left-color:var(--err)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;background:#1a2040;border:1px solid var(--muted);color:#d3d9ff}
+  .log{list-style:none;margin:8px 0 0;padding:0;max-height:260px;overflow:auto;border:1px solid var(--muted);border-radius:12px;background:#0d1330}
+  .log li{padding:10px 12px;border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:.9rem}
+  .log li:last-child{border-bottom:none}
+  table{width:100%;border-collapse:collapse;border:1px solid var(--muted);border-radius:12px;overflow:hidden}
+  thead{background:#0d1330}
+  th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:.95rem}
+  tbody tr:hover{background:#0f183a}
+  .right{display:flex;justify-content:flex-end}
+  footer{text-align:center;opacity:.7;font-size:.9rem;margin-top:18px}
+  .hint{font-size:.85rem;color:#b7bdf3}
+</style>
+</head>
+<body>
+<header>
+  <h1>NFC Web — NDEF (Lectura/Escritura) + Historial</h1>
+  <p class="small">Android + Chrome. Acerca una etiqueta <span class="badge">NDEF</span>. iOS/Safari no soporta Web NFC.</p>
+</header>
+
+<main class="grid">
+
+  <!-- Panel Set / Controles globales -->
+  <section class="card" style="grid-column:1/-1">
+    <h2>Configuración rápida</h2>
+    <div class="row">
+      <div style="flex:1 1 260px">
+        <label for="setInput">Set (se guarda con cada lectura)</label>
+        <input id="setInput" type="text" placeholder="Ej. Grupo A, Lote 3, Aula 2..."/>
+        <div class="hint">Este valor se puede editar en cualquier momento; las nuevas lecturas guardarán el Set actual.</div>
+      </div>
+      <div style="align-self:flex-end" class="row">
+        <button id="btnSaveSet" class="success">Guardar Set</button>
+        <button id="btnClearSet" class="ghost">Limpiar Set</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lectura -->
+  <section class="card">
+    <h2>Lectura de NDEF</h2>
+    <div class="row">
+      <button id="btnStart" class="primary">Iniciar lectura</button>
+      <button id="btnStop" class="ghost">Detener</button>
+    </div>
+    <div id="scanStatus" class="status" role="status">Listo. Pulsa <b>Iniciar lectura</b> y acerca la etiqueta.</div>
+    <ul id="scanLog" class="log" aria-live="polite"></ul>
+  </section>
+
+  <!-- Escritura -->
+  <section class="card">
+    <h2>Escritura de NDEF</h2>
+    <label>Tipo de registro</label>
+    <select id="writeType">
+      <option value="text">Texto (NDEF Text)</option>
+      <option value="url">URL (NDEF URI)</option>
+    </select>
+    <div id="boxText" style="margin-top:8px">
+      <input id="txtPayload" type="text" placeholder="Texto a escribir (ej. Hola NFC)"/>
+    </div>
+    <div id="boxUrl" style="display:none;margin-top:8px">
+      <input id="urlPayload" type="url" placeholder="https://ejemplo.com"/>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnWrite" class="success">Escribir en etiqueta</button>
+    </div>
+    <div id="writeStatus" class="status">Prepara el contenido y pulsa <b>Escribir</b>. Mantén la etiqueta pegada durante el proceso.</div>
+  </section>
+
+  <!-- Historial -->
+  <section class="card" style="grid-column:1/-1">
+    <h2>Historial (localStorage)</h2>
+    <div class="row right" style="margin-bottom:8px">
+      <button id="btnClearAll" class="danger">Vaciar historial</button>
+    </div>
+    <div class="hint" style="margin-bottom:6px">Se guarda: <span class="mono">Set</span>, <span class="mono">Fecha</span>, <span class="mono">Hora</span>, <span class="mono">Datos</span>. Puedes eliminar filas individuales.</div>
+    <div style="overflow:auto;border:1px solid var(--muted);border-radius:12px">
+      <table id="tblHistory">
+        <thead>
+          <tr>
+            <th style="min-width:150px">Set</th>
+            <th style="min-width:110px">Fecha</th>
+            <th style="min-width:100px">Hora</th>
+            <th>Datos</th>
+            <th style="min-width:90px">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p class="small">Demo educativa — Web NFC (NDEF). <span class="mono">window.NDEFReader</span> • Historial en <span class="mono">localStorage</span>.</p>
+</footer>
+
+<script>
+/* ========= Utilidades de fecha/hora ========= */
+function nowParts(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth()+1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+  return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${mi}:${ss}` };
+}
+
+/* ========= Estado UI ========= */
+const $ = sel => document.querySelector(sel);
+const scanStatus = $('#scanStatus');
+const writeStatus = $('#writeStatus');
+const scanLog = $('#scanLog');
+function setStatus(el, msg, kind=''){ el.className = 'status' + (kind?(' '+kind):''); el.innerHTML = msg; }
+function addLog(msg){ const li = document.createElement('li'); li.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`; scanLog.prepend(li); }
+
+/* ========= Persistencia (localStorage) ========= */
+const LS_KEY = 'nfc_history_v1';
+const LS_SET = 'nfc_current_set';
+
+function readLS(){
+  try{ return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
+  catch{ return []; }
+}
+function writeLS(arr){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(arr)); }catch(e){}
+}
+function getCurrentSet(){ return localStorage.getItem(LS_SET) || ''; }
+function setCurrentSet(v){ localStorage.setItem(LS_SET, v || ''); }
+
+/* ========= Render de historial ========= */
+function renderHistory(){
+  const body = $('#histBody');
+  body.innerHTML = '';
+  const data = readLS();
+  if (!data.length){
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.innerHTML = '<span class="hint">Sin registros aún.</span>';
+    tr.appendChild(td);
+    body.appendChild(tr);
+    return;
+  }
+  // mostrar más reciente primero
+  data.forEach((row, idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHTML(row.set||'')}</td>
+      <td>${escapeHTML(row.date||'')}</td>
+      <td>${escapeHTML(row.time||'')}</td>
+      <td class="mono">${escapeHTML(row.data||'')}</td>
+      <td><button class="danger" data-del="${idx}">Eliminar</button></td>
+    `;
+    body.appendChild(tr);
+  });
+  // botones eliminar
+  body.querySelectorAll('button[data-del]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const ix = Number(btn.getAttribute('data-del'));
+      const arr = readLS();
+      if (ix>=0 && ix < arr.length){
+        arr.splice(ix,1);
+        writeLS(arr);
+        renderHistory();
+      }
+    });
+  });
+}
+function escapeHTML(s){ return (s??'').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+/* ========= Guardar fila en historial ========= */
+function addHistoryEntry({ value }){
+  const {date,time} = nowParts();
+  const row = { set: getCurrentSet(), date, time, data: value||'' };
+  // guardamos al inicio (más reciente primero)
+  const arr = readLS();
+  arr.unshift(row);
+  writeLS(arr);
+  renderHistory();
+}
+
+/* ========= Web NFC (lectura/escritura) ========= */
+let ndef = null;
+let abortCtrl = null;
+
+function supported(){ return 'NDEFReader' in window; }
+function ensureNDEF(){
+  if (!supported()) throw new Error('Este navegador no soporta Web NFC (NDEFReader).');
+  if (!ndef) ndef = new NDEFReader();
+  return ndef;
+}
+
+// parseo de registros NDEF comunes (text/url/mime)
+function parseRecord(record){
+  const {recordType, mediaType} = record;
+  const data = ('data' in record) ? record.data : null;
+
+  if (recordType === 'text'){
+    // intentar decodificar RTD Text
+    try{
+      if (data instanceof DataView){
+        const u8 = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        const status = u8[0];
+        const langLen = status & 0x3F;
+        const encoding = (status & 0x80) ? 'utf-16' : 'utf-8';
+        const textBytes = u8.slice(1 + langLen);
+        const text = new TextDecoder(encoding).decode(textBytes);
+        return {kind:'text', value:text};
+      }
+      if (typeof data === 'string') return {kind:'text', value:data};
+    }catch(_){}
+    return {kind:'text', value:'(no decodificado)'};
+  }
+
+  if (recordType === 'url'){
+    if (typeof data === 'string') return {kind:'url', value:data};
+    if (data instanceof DataView){
+      try{ return {kind:'url', value:new TextDecoder('utf-8').decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))}; }catch(_){}
+    }
+    return {kind:'url', value:'(no decodificado)'};
+  }
+
+  if (recordType === 'mime'){
+    if (data instanceof DataView){
+      const txt = safeDecodeUTF8(data);
+      return {kind:'mime', value: txt ?? `[${mediaType||'MIME'}] ${data.byteLength} bytes`};
+    }
+    return {kind:'mime', value:`[${mediaType||'MIME'}]`};
+  }
+
+  // genérico
+  if (data instanceof DataView) return {kind:recordType, value:`${data.byteLength} bytes`};
+  if (typeof data === 'string') return {kind:recordType, value:data};
+  return {kind:recordType, value:'(sin datos)'};
+}
+function safeDecodeUTF8(dv){
+  try{ return new TextDecoder('utf-8',{fatal:false}).decode(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)); }catch(_){ return null; }
+}
+
+async function startScan(){
+  try{
+    ensureNDEF();
+    if (abortCtrl){ abortCtrl.abort(); abortCtrl = null; }
+    abortCtrl = new AbortController();
+    await ndef.scan({ signal: abortCtrl.signal });
+    setStatus(scanStatus,'Escaneo activo. Acerca una etiqueta NDEF…','ok');
+    addLog('Escaneo iniciado.');
+
+    ndef.onreadingerror = ()=>{ setStatus(scanStatus,'Error de lectura. Intenta acercar de nuevo.','warn'); addLog('onreadingerror'); };
+
+    ndef.onreading = (ev)=>{
+      const { serialNumber, message } = ev;
+      addLog(`Detectada etiqueta (serial: ${serialNumber||'N/D'}) con ${message.records.length} registro(s).`);
+      for (const rec of message.records){
+        const p = parseRecord(rec);
+        addLog(`Registro: tipo=${p.kind}; valor=${p.value}`);
+        // Guardar en historial (una fila por registro)
+        addHistoryEntry({ value: p.value });
+      }
+      setStatus(scanStatus,'Lectura OK. Puedes acercar otra etiqueta.','ok');
+    };
+  }catch(err){
+    if (err?.name === 'NotAllowedError'){ setStatus(scanStatus,'Permiso NFC denegado. Vuelve a intentar y acepta el permiso.','err'); }
+    else if (err?.name === 'NotSupportedError'){ setStatus(scanStatus,'Este dispositivo/navegador no soporta Web NFC.','err'); }
+    else { setStatus(scanStatus,'Error: '+err.message,'err'); }
+    addLog('Error al iniciar escaneo: '+(err?.message||err));
+  }
+}
+function stopScan(){
+  try{
+    if (abortCtrl){ abortCtrl.abort(); abortCtrl = null; }
+    setStatus(scanStatus,'Escaneo detenido.','warn');
+    addLog('Escaneo detenido.');
+  }catch(e){ setStatus(scanStatus,'No se pudo detener: '+e.message,'err'); }
+}
+
+async function writeTag(){
+  try{
+    ensureNDEF();
+    const t = $('#writeType').value;
+    let records = [];
+    if (t==='text'){
+      const txt = ($('#txtPayload').value||'').trim();
+      if (!txt){ setStatus(writeStatus,'Escribe algún texto primero.','warn'); return; }
+      records = [{ recordType:'text', data:txt }];
+    }else{
+      const url = ($('#urlPayload').value||'').trim();
+      if (!/^https?:\/\//i.test(url)){ setStatus(writeStatus,'Ingresa una URL válida con http(s)://','warn'); return; }
+      records = [{ recordType:'url', data:url }];
+    }
+    setStatus(writeStatus,'Acerca la etiqueta…','warn');
+    await ndef.write({ records });
+    setStatus(writeStatus,'¡Escritura completada con éxito!','ok');
+  }catch(err){
+    if (err?.name==='NotAllowedError'){ setStatus(writeStatus,'Permiso denegado. Intenta de nuevo y acepta.','err'); }
+    else if (err?.name==='NotSupportedError'){ setStatus(writeStatus,'Escritura no soportada en este dispositivo.','err'); }
+    else if (err?.name==='NetworkError'){ setStatus(writeStatus,'Etiqueta retirada demasiado rápido; manténla más tiempo y reintenta.','warn'); }
+    else { setStatus(writeStatus,'Error: '+err.message,'err'); }
+  }
+}
+
+/* ========= Eventos UI ========= */
+$('#btnStart').addEventListener('click', startScan);
+$('#btnStop').addEventListener('click', stopScan);
+$('#btnWrite').addEventListener('click', writeTag);
+
+const sel = $('#writeType');
+sel.addEventListener('change', ()=>{
+  $('#boxText').style.display = sel.value==='text' ? '' : 'none';
+  $('#boxUrl').style.display  = sel.value==='url'  ? '' : 'none';
+});
+
+// Set persistente
+const setInput = $('#setInput');
+$('#btnSaveSet').addEventListener('click', ()=>{ setCurrentSet(setInput.value||''); });
+$('#btnClearSet').addEventListener('click', ()=>{ setInput.value=''; setCurrentSet(''); });
+
+$('#btnClearAll').addEventListener('click', ()=>{
+  if (confirm('¿Vaciar todo el historial? Esta acción no se puede deshacer.')){
+    writeLS([]); renderHistory();
+  }
+});
+
+/* ========= Init ========= */
+(function init(){
+  // Compatibilidad
+  if (!supported()){
+    setStatus(scanStatus,'Este navegador no soporta Web NFC. Usa Android + Chrome y sirve la página por HTTPS.','err');
+    setStatus(writeStatus,'Escritura no disponible sin soporte Web NFC.','err');
+  }
+  // Cargar Set y render historial
+  setInput.value = getCurrentSet();
+  renderHistory();
+})();
+</script>
+</body>
+</html>
