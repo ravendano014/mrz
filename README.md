@@ -49,6 +49,9 @@ Uses:
 
 <span style="color:green;">Barcode & OCR</span> [Barcode & OCR](https://ravendano014.github.io/mrz/CAFOCR.html)
 
+<span style="color:green;">NFC Scanner</span> [NFC Web Scanner](https://ravendano014.github.io/mrz/NFCWeb.html)
+
+
 
 
 
