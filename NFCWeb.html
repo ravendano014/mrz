@@ -3,42 +3,46 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Web NFC — Lector (Modo Oscuro)</title>
+<title>Web NFC — Lector/Escritor (Modo Oscuro)</title>
 <style>
   :root{
-    --bg:#0b0d10;
-    --card:#0f1720;
-    --muted:#9aa3b2;
-    --accent:#4fd1c5;
-    --danger:#ff6b6b;
+    --bg:#0b0d10; --card:#0f1720; --muted:#9aa3b2; --accent:#4fd1c5; --danger:#ff6b6b; --ok:#8bd17c;
     --glass: rgba(255,255,255,0.03);
     font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   }
   html,body{height:100%;margin:0;background:linear-gradient(180deg,#050608 0%,var(--bg) 100%);color:#e6eef6}
-  .wrap{max-width:920px;margin:28px auto;padding:20px;background:var(--card);border-radius:12px;box-shadow:0 6px 30px rgba(0,0,0,0.6);backdrop-filter:blur(6px)}
-  h1{margin:0 0 8px;font-size:1.4rem}
+  .wrap{max-width:980px;margin:28px auto;padding:20px;background:var(--card);border-radius:12px;box-shadow:0 6px 30px rgba(0,0,0,0.6);backdrop-filter:blur(6px)}
+  h1{margin:0 0 8px;font-size:1.35rem}
   p.small{color:var(--muted);margin:6px 0 16px}
   .controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-  button{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);padding:10px 14px;border-radius:10px;color:inherit;cursor:pointer}
+  button{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.06);padding:10px 14px;border-radius:10px;color:inherit;cursor:pointer}
   button[disabled]{opacity:.45;cursor:not-allowed}
   .status{padding:10px;border-radius:8px;background:var(--glass);border:1px solid rgba(255,255,255,0.02);margin-bottom:12px;color:var(--muted)}
-  .grid{display:grid;grid-template-columns:1fr 300px;gap:12px}
-  .card{background:linear-gradient(180deg,rgba(255,255,255,0.015),transparent);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02)}
-  label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:6px}
-  input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  .grid{display:grid;grid-template-columns:1.2fr 1fr;gap:12px}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,0.015),transparent);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04)}
+  label{display:block;font-size:.86rem;color:var(--muted);margin-bottom:6px}
+  input[type=text], input[type=url], textarea{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  textarea{min-height:84px;resize:vertical}
   ul{padding-left:18px;margin:8px 0;color:var(--muted)}
   pre{white-space:pre-wrap;word-break:break-word;color:#c6f6e6;background:transparent;margin:0;font-size:.9rem}
   .chip{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(79,209,197,0.08);color:var(--accent);font-weight:600;border:1px solid rgba(79,209,197,0.08)}
-  footer{margin-top:16px;color:var(--muted);font-size:.82rem}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .muted{color:var(--muted)}
+  .ok{color:var(--ok)}
   .danger{color:var(--danger)}
-  @media (max-width:880px){ .grid{grid-template-columns:1fr} }
+  .hr{border:none;height:10px}
+  .mini{font-size:.8rem}
+  .tag{display:inline-block;border:1px solid rgba(255,255,255,.08);padding:2px 8px;border-radius:999px;margin-left:6px;color:var(--muted)}
+  .history-li{margin-bottom:10px}
+  .history-li button{margin-left:8px}
+  @media (max-width:980px){ .grid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
   <main class="wrap" role="main">
     <header>
-      <h1>Lector NFC (Web NFC) — Modo oscuro</h1>
-      <p class="small">Acerca la tarjeta NFC al móvil y usa el botón <strong>Iniciar escaneo</strong>. Debe abrirse un diálogo de permisos en el navegador. (Funciona en Chrome/Opera/Samsung en Android; requiere HTTPS o localhost.)</p>
+      <h1>Web NFC — Lector y Escritor (Modo oscuro)</h1>
+      <p class="small">Acerca una tarjeta **NFC/NDEF** al móvil. Requiere navegador compatible en Android y <strong>HTTPS</strong> o <strong>localhost</strong>. El campo <strong>Set</strong> se guarda con cada lectura.</p>
     </header>
 
     <div class="status" id="status">Comprobando compatibilidad…</div>
@@ -50,46 +54,73 @@
       <span class="chip" id="supportChip">—</span>
     </div>
 
+    <section class="card" style="margin-bottom:12px">
+      <div class="row" style="align-items:flex-end">
+        <div style="flex:1 1 240px">
+          <label for="setInput">Set (se guarda con cada lectura)</label>
+          <input id="setInput" type="text" placeholder="Ej.: Grupo A, Lote #3">
+          <p class="mini muted" id="setHint">Valor persistente. Cambia el Set cuando quieras: se aplicará a las lecturas siguientes.</p>
+        </div>
+        <div style="flex:1 1 220px">
+          <label for="noteInput">Nota (opcional, por lectura)</label>
+          <input id="noteInput" type="text" placeholder="Comentario de esta sesión">
+        </div>
+      </div>
+    </section>
+
     <div class="grid">
+      <!-- LECTOR -->
       <section class="card">
         <label>Última lectura</label>
-        <div id="lastCard">
-          <p style="margin:0;color:var(--muted)">Aún no se ha leído ninguna tarjeta.</p>
-        </div>
+        <div id="lastCard"><p class="muted" style="margin:0">Aún no se ha leído ninguna tarjeta.</p></div>
 
-        <hr style="border:none;height:12px">
+        <div class="hr"></div>
 
         <label>Detalles / Payload</label>
         <pre id="details">—</pre>
 
-        <hr style="border:none;height:12px">
+        <div class="hr"></div>
 
-        <label>Entrada de usuario (opcional)</label>
-        <input id="noteInput" type="text" placeholder="Etiqueta / Set (guardada con cada registro)">
-        <p class="small">El texto que introduzcas se guardará junto con cada lectura en el historial.</p>
-      </section>
-
-      <aside class="card">
-        <label>Historial de lecturas (más reciente arriba)</label>
-        <div style="max-height:380px;overflow:auto;padding-right:6px">
+        <label>Historial (más reciente arriba)</label>
+        <div style="max-height:280px;overflow:auto;padding-right:6px">
           <ul id="historyList"></ul>
         </div>
-        <hr style="border:none;height:10px">
-        <label>Exportar / Descargar</label>
-        <div style="display:flex;gap:8px">
+
+        <div class="row" style="margin-top:8px">
           <button id="btnExport">Exportar JSON</button>
-          <button id="btnCopy">Copiar al portapapeles</button>
+          <button id="btnCopy">Copiar JSON</button>
         </div>
+      </section>
+
+      <!-- ESCRITOR -->
+      <aside class="card">
+        <label>Escritura NDEF</label>
+        <p class="mini muted">Requiere gesto del usuario. Mantén la tarjeta cerca durante la operación.</p>
+
+        <label for="writeText">Texto a escribir (NDEF Text)</label>
+        <textarea id="writeText" placeholder="Ej.: Hola desde Web NFC"></textarea>
+        <div class="row" style="margin:8px 0 16px">
+          <button id="btnWriteText">Escribir Texto</button>
+        </div>
+
+        <label for="writeUrl">URL a escribir (NDEF URL)</label>
+        <input id="writeUrl" type="url" placeholder="https://ejemplo.com">
+        <div class="row" style="margin:8px 0 16px">
+          <button id="btnWriteUrl">Escribir URL</button>
+        </div>
+
+        <p id="writeStatus" class="mini muted">—</p>
       </aside>
     </div>
 
-    <footer>
-      <div id="notes" class="small"></div>
+    <footer class="mini muted" style="margin-top:14px">
+      Consejos: usa Chrome/Opera/Samsung en Android. iOS no soporta Web NFC en navegadores. La API trabaja con mensajes NDEF (texto/URL/MIME).
     </footer>
   </main>
 
 <script>
 (function(){
+  // ==== UI refs ====
   const statusEl = document.getElementById('status');
   const supportChip = document.getElementById('supportChip');
   const btnStart = document.getElementById('btnStart');
@@ -98,49 +129,216 @@
   const lastCard = document.getElementById('lastCard');
   const details = document.getElementById('details');
   const historyList = document.getElementById('historyList');
+  const setInput = document.getElementById('setInput');
+  const setHint = document.getElementById('setHint');
   const noteInput = document.getElementById('noteInput');
   const btnExport = document.getElementById('btnExport');
   const btnCopy = document.getElementById('btnCopy');
+
+  const writeTextEl = document.getElementById('writeText');
+  const writeUrlEl  = document.getElementById('writeUrl');
+  const btnWriteText = document.getElementById('btnWriteText');
+  const btnWriteUrl  = document.getElementById('btnWriteUrl');
+  const writeStatus  = document.getElementById('writeStatus');
+
+  // ==== NFC ====
   let ndef = null;
   let scanning = false;
+  let abortCtrl = null;
+
+  // ==== localStorage ====
+  const LS_KEY_HISTORY = 'webnfc_history_v1';
+  const LS_KEY_SET     = 'webnfc_set_v1';
   let history = [];
 
-  // Feature detection
-  function setSupport(ok){
+  // ======= Helpers =======
+  const escapeHtml = s => String(s??'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const nowParts = () => {
+    const d = new Date();
+    const fecha = d.toISOString().slice(0,10);
+    const hora = d.toTimeString().slice(0,8);
+    return {fecha, hora};
+  };
+  const updateStatus = (msg, cls=''){
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (cls ? ' ' + cls : '');
+  };
+  const setSupport = ok => {
     supportChip.textContent = ok ? 'Web NFC disponible' : 'Web NFC no disponible';
     supportChip.style.background = ok ? 'rgba(79,209,197,0.08)' : 'rgba(255,107,107,0.06)';
     supportChip.style.color = ok ? 'var(--accent)' : 'var(--danger)';
+  };
+
+  // ======= localStorage: load/save =======
+  function loadHistory(){
+    try{
+      const s = localStorage.getItem(LS_KEY_HISTORY);
+      history = s ? JSON.parse(s) : [];
+      if (!Array.isArray(history)) history = [];
+    }catch{ history = []; }
+  }
+  function saveHistory(){
+    try{ localStorage.setItem(LS_KEY_HISTORY, JSON.stringify(history)); }catch{}
+  }
+  function loadSet(){
+    try{ setInput.value = localStorage.getItem(LS_KEY_SET) || ''; }catch{ setInput.value = ''; }
+  }
+  function saveSet(){
+    try{ localStorage.setItem(LS_KEY_SET, setInput.value || ''); }catch{}
   }
 
-  function updateStatus(msg, danger=false){
-    statusEl.textContent = msg;
-    statusEl.className = danger ? 'status danger' : 'status';
-  }
-
+  // ======= Render =======
   function renderHistory(){
     historyList.innerHTML = '';
-    for (let i=0;i<history.length;i++){
-      const item = history[i];
+    history.forEach((item, idx)=>{
       const li = document.createElement('li');
-      li.innerHTML = `<strong>${item.time}</strong> — <em>${escapeHtml(item.tagType||'NDEF')}</em><br>
-        ${escapeHtml(item.text || JSON.stringify(item.records||item.payload||{}))}<br>
-        <small style="color:var(--muted)">${escapeHtml(item.note||'')}</small>`;
+      li.className = 'history-li';
+      const datosStr = typeof item.Datos === 'string' ? item.Datos : JSON.stringify(item.Datos);
+      li.innerHTML = `
+        <strong>${escapeHtml(item.Hora)}</strong> — <em>${escapeHtml(item.Tag||'NDEF')}</em>
+        <span class="tag">Set: ${escapeHtml(item.Set||'')}</span>
+        <br>
+        <span>${escapeHtml(datosStr)}</span>
+        <br><small class="muted">${escapeHtml(item.Fecha)}</small>
+        <button data-del="${idx}">Eliminar</button>
+      `;
       historyList.appendChild(li);
-    }
+    });
+    // Wire delete buttons
+    [...historyList.querySelectorAll('button[data-del]')].forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const i = Number(btn.getAttribute('data-del'));
+        if (Number.isInteger(i) && i >= 0 && i < history.length){
+          history.splice(i,1);
+          saveHistory();
+          renderHistory();
+          updateStatus('Elemento eliminado del historial.');
+        }
+      });
+    });
   }
 
-  function addHistory(record){
-    history.unshift(record); // más reciente primero
-    if (history.length>200) history.pop();
+  function addHistoryEntry({Set, Fecha, Hora, Datos, Tag}){
+    history.unshift({Set, Fecha, Hora, Datos, Tag});
+    if (history.length > 500) history.pop();
+    saveHistory();
     renderHistory();
   }
 
-  function escapeHtml(s){
-    if(!s) return '';
-    return String(s).replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; });
+  // ======= NFC Read =======
+  async function startScan(){
+    if (scanning) return;
+    if (!('NDEFReader' in window)){
+      updateStatus('Web NFC no está disponible en este navegador.', 'danger');
+      return;
+    }
+    try{
+      abortCtrl = new AbortController();
+      ndef = new NDEFReader();
+      updateStatus('Solicitando permiso para NFC…');
+      await ndef.scan({ signal: abortCtrl.signal });
+      scanning = true;
+      btnStart.disabled = true; btnStop.disabled = false;
+      updateStatus('Escaneando… acerca la tarjeta al dispositivo.');
+
+      ndef.onreading = (event)=>{
+        const {fecha: Fecha, hora: Hora} = nowParts();
+        const Set = setInput.value || '';
+        const note = noteInput.value || '';
+
+        // Parse records
+        const parsed = [];
+        for (const rec of event.message.records){
+          const obj = { recordType: rec.recordType, mediaType: rec.mediaType||null, id: rec.id||null, data:null, text:null };
+          try{
+            if (rec.recordType === 'text'){
+              obj.text = new TextDecoder(rec.encoding||'utf-8').decode(rec.data);
+              obj.data = obj.text;
+            } else if (rec.recordType === 'url'){
+              obj.text = new TextDecoder().decode(rec.data);
+              obj.data = obj.text;
+            } else {
+              const arr = new Uint8Array(rec.data || new ArrayBuffer(0));
+              obj.data = Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('');
+            }
+          }catch(e){
+            obj.data = '[error decoding]';
+          }
+          parsed.push(obj);
+        }
+
+        const Tag = event.serialNumber || 'NDEF';
+        const Datos = parsed.length === 1 ? (parsed[0].text || parsed[0].data) : parsed;
+        // UI
+        lastCard.innerHTML = `<div><strong>${escapeHtml(Tag)}</strong> <span class="tag">Set: ${escapeHtml(Set)}</span><div class="muted mini">${escapeHtml(Fecha)} ${escapeHtml(Hora)}</div></div>`;
+        details.textContent = JSON.stringify(parsed, null, 2);
+        addHistoryEntry({Set, Fecha, Hora, Datos, Tag});
+
+        const display = typeof Datos === 'string' ? Datos : JSON.stringify(Datos);
+        updateStatus('Lectura OK: ' + display);
+        if (note) { noteInput.value = ''; }
+      };
+
+      ndef.onreadingerror = (err)=>{
+        updateStatus('Error de lectura: ' + (err?.message || 'desconocido'), 'danger');
+      };
+
+    }catch(err){
+      updateStatus('No se pudo iniciar el escaneo: ' + (err?.message || err), 'danger');
+    }
   }
 
-  // Export / copy
+  function stopScan(){
+    if (!scanning) return;
+    try{
+      if (abortCtrl) abortCtrl.abort();
+      if (ndef){ ndef.onreading = null; ndef.onreadingerror = null; }
+    }catch{}
+    scanning = false;
+    btnStart.disabled = false; btnStop.disabled = true;
+    updateStatus('Escaneo detenido.');
+  }
+
+  // ======= NFC Write =======
+  async function doWrite(records){
+    if (!('NDEFReader' in window)){
+      writeStatus.textContent = 'Web NFC no disponible para escribir.';
+      writeStatus.className = 'mini danger';
+      return;
+    }
+    try{
+      // Chrome permite usar la misma instancia para write(); requiere gesto de usuario.
+      const writer = new NDEFReader();
+      writeStatus.textContent = 'Acerca la tarjeta para escribir…';
+      writeStatus.className = 'mini muted';
+      await writer.write({ records }); // user gesture context by button click
+      writeStatus.textContent = 'Escritura completada ✔';
+      writeStatus.className = 'mini ok';
+    }catch(err){
+      writeStatus.textContent = 'Error al escribir: ' + (err?.message || err);
+      writeStatus.className = 'mini danger';
+    }
+  }
+
+  async function writeText(){
+    const txt = (writeTextEl.value || '').trim();
+    if (!txt){ writeStatus.textContent = 'Ingresa texto para escribir.'; writeStatus.className='mini danger'; return; }
+    await doWrite([{ recordType: 'text', data: txt }]);
+  }
+
+  async function writeUrl(){
+    const url = (writeUrlEl.value || '').trim();
+    try{
+      if (!url || !/^https?:\/\//i.test(url)) throw new Error('URL inválida. Debe iniciar con http:// o https://');
+    }catch(e){
+      writeStatus.textContent = e.message;
+      writeStatus.className = 'mini danger';
+      return;
+    }
+    await doWrite([{ recordType: 'url', data: url }]);
+  }
+
+  // ======= Export / Copy / Clear =======
   btnExport.addEventListener('click', ()=>{
     const blob = new Blob([JSON.stringify(history, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
@@ -154,128 +352,44 @@
       await navigator.clipboard.writeText(JSON.stringify(history, null, 2));
       updateStatus('Historial copiado al portapapeles.');
     }catch(e){
-      updateStatus('Error al copiar: ' + (e.message || e), true);
+      updateStatus('No se pudo copiar: ' + (e.message||e), 'danger');
     }
   });
 
   btnClear.addEventListener('click', ()=>{
     if (!confirm('¿Borrar todo el historial?')) return;
     history = [];
+    saveHistory();
     renderHistory();
     updateStatus('Historial limpiado.');
   });
 
-  // Main NFC handlers
-  async function startScan(){
-    if (scanning) return;
-    if (!('NDEFReader' in window)) {
-      updateStatus('Web NFC no está disponible en este navegador.', true);
-      return;
-    }
-
-    try{
-      ndef = new NDEFReader();
-      updateStatus('Solicitando permiso para NFC...');
-      // Opciones: mode implicit; puedes pasar {signal: controller.signal} para cancelarlo con AbortController
-      await ndef.scan();
-      scanning = true;
-      btnStart.disabled = true;
-      btnStop.disabled = false;
-      updateStatus('Escaneando… acerca la tarjeta al dispositivo.');
-      ndef.onreading = event => {
-        const now = new Date();
-        const timestamp = now.toLocaleString();
-        const note = (noteInput.value || '').trim();
-        // Extraer registros NDEF
-        const records = [];
-        for (const rec of event.message.records){
-          const recObj = {
-            recordType: rec.recordType,
-            mediaType: rec.mediaType || null,
-            id: rec.id || null,
-            data: null,
-            text: null
-          };
-          try{
-            // Intento leer como texto si aplica
-            if (rec.recordType === 'text') {
-              const textDecoder = new TextDecoder(rec.encoding || 'utf-8');
-              recObj.text = textDecoder.decode(rec.data);
-              recObj.data = recObj.text;
-            } else if (rec.recordType === 'url') {
-              const td = new TextDecoder();
-              recObj.text = td.decode(rec.data);
-              recObj.data = recObj.text;
-            } else {
-              // fallback: ArrayBuffer -> hex
-              const arr = new Uint8Array(rec.data || new ArrayBuffer(0));
-              recObj.data = Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('');
-            }
-          }catch(e){
-            recObj.data = '[error decoding]';
-          }
-          records.push(recObj);
-        }
-
-        const entry = {
-          time: timestamp,
-          tagType: event.serialNumber || 'NDEF',
-          records,
-          note
-        };
-
-        // Mostrar en UI
-        lastCard.innerHTML = `<div><strong>${escapeHtml(entry.tagType)}</strong><div style="color:var(--muted);font-size:.95rem">${escapeHtml(entry.time)}</div></div>`;
-        details.textContent = JSON.stringify(records, null, 2);
-        addHistory(entry);
-        updateStatus('Lectura exitosa: ' + (records.length ? (records[0].text || records[0].data) : 'sin registros legibles'));
-      };
-
-      ndef.onreadingerror = (err) => {
-        updateStatus('Error de lectura NFC: ' + (err?.message || 'desconocido'), true);
-      };
-
-    }catch(err){
-      updateStatus('No se pudo iniciar el escaneo: ' + (err?.message || err), true);
-    }
-  }
-
-  function stopScan(){
-    // La especificación actual no expone un stop() universal; se sugiere usar AbortController al llamar a scan().
-    // Aquí intentamos eliminar handlers y marcar estado.
-    if (!scanning) return;
-    try{
-      if (ndef){
-        ndef.onreading = null;
-        ndef.onreadingerror = null;
-      }
-    }catch(e){}
-    scanning = false;
-    btnStart.disabled = false;
-    btnStop.disabled = true;
-    updateStatus('Escaneo detenido.');
-  }
-
-  // Inicialización
+  // ======= Init =======
   (function init(){
     const supported = ('NDEFReader' in window);
     setSupport(supported);
     if (!supported){
-      updateStatus('Tu navegador no soporta Web NFC. Prueba Chrome/Opera/Samsung en Android y asegúrate de usar HTTPS o localhost.', true);
+      updateStatus('Tu navegador no soporta Web NFC. Prueba Chrome/Opera/Samsung en Android y usa HTTPS/localhost.', 'danger');
       btnStart.disabled = true;
-      return;
+    }else{
+      if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'){
+        updateStatus('Listo. Pulsa "Iniciar escaneo" o usa la sección de escritura.');
+      }else{
+        updateStatus('Atención: Web NFC requiere HTTPS (o localhost). Sirve esta página por HTTPS.', 'danger');
+      }
     }
-    // Indicar seguridad/https
-    if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'){
-      updateStatus('Listo. Pulsa "Iniciar escaneo" y acerca la tarjeta NFC.');
-    } else {
-      updateStatus('Atención: Web NFC requiere HTTPS (o localhost). Si ves problemas, sirve esta página mediante HTTPS o usa localhost durante el desarrollo.', true);
-    }
+    // Persistencia Set + Historial
+    loadSet();
+    loadHistory();
+    renderHistory();
   })();
 
-  // Eventos UI
+  // ======= Events =======
   btnStart.addEventListener('click', startScan);
   btnStop.addEventListener('click', stopScan);
+  setInput.addEventListener('input', saveSet);
+  btnWriteText.addEventListener('click', writeText);
+  btnWriteUrl.addEventListener('click', writeUrl);
 
 })();
 </script>
