@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Web NFC — Lector (Modo Oscuro)</title>
+<style>
+  :root{
+    --bg:#0b0d10;
+    --card:#0f1720;
+    --muted:#9aa3b2;
+    --accent:#4fd1c5;
+    --danger:#ff6b6b;
+    --glass: rgba(255,255,255,0.03);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#050608 0%,var(--bg) 100%);color:#e6eef6}
+  .wrap{max-width:920px;margin:28px auto;padding:20px;background:var(--card);border-radius:12px;box-shadow:0 6px 30px rgba(0,0,0,0.6);backdrop-filter:blur(6px)}
+  h1{margin:0 0 8px;font-size:1.4rem}
+  p.small{color:var(--muted);margin:6px 0 16px}
+  .controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  button{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);padding:10px 14px;border-radius:10px;color:inherit;cursor:pointer}
+  button[disabled]{opacity:.45;cursor:not-allowed}
+  .status{padding:10px;border-radius:8px;background:var(--glass);border:1px solid rgba(255,255,255,0.02);margin-bottom:12px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr 300px;gap:12px}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,0.015),transparent);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02)}
+  label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:6px}
+  input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  ul{padding-left:18px;margin:8px 0;color:var(--muted)}
+  pre{white-space:pre-wrap;word-break:break-word;color:#c6f6e6;background:transparent;margin:0;font-size:.9rem}
+  .chip{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(79,209,197,0.08);color:var(--accent);font-weight:600;border:1px solid rgba(79,209,197,0.08)}
+  footer{margin-top:16px;color:var(--muted);font-size:.82rem}
+  .danger{color:var(--danger)}
+  @media (max-width:880px){ .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+  <main class="wrap" role="main">
+    <header>
+      <h1>Lector NFC (Web NFC) — Modo oscuro</h1>
+      <p class="small">Acerca la tarjeta NFC al móvil y usa el botón <strong>Iniciar escaneo</strong>. Debe abrirse un diálogo de permisos en el navegador. (Funciona en Chrome/Opera/Samsung en Android; requiere HTTPS o localhost.)</p>
+    </header>
+
+    <div class="status" id="status">Comprobando compatibilidad…</div>
+
+    <div class="controls">
+      <button id="btnStart">Iniciar escaneo</button>
+      <button id="btnStop" disabled>Detener escaneo</button>
+      <button id="btnClear">Limpiar historial</button>
+      <span class="chip" id="supportChip">—</span>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <label>Última lectura</label>
+        <div id="lastCard">
+          <p style="margin:0;color:var(--muted)">Aún no se ha leído ninguna tarjeta.</p>
+        </div>
+
+        <hr style="border:none;height:12px">
+
+        <label>Detalles / Payload</label>
+        <pre id="details">—</pre>
+
+        <hr style="border:none;height:12px">
+
+        <label>Entrada de usuario (opcional)</label>
+        <input id="noteInput" type="text" placeholder="Etiqueta / Set (guardada con cada registro)">
+        <p class="small">El texto que introduzcas se guardará junto con cada lectura en el historial.</p>
+      </section>
+
+      <aside class="card">
+        <label>Historial de lecturas (más reciente arriba)</label>
+        <div style="max-height:380px;overflow:auto;padding-right:6px">
+          <ul id="historyList"></ul>
+        </div>
+        <hr style="border:none;height:10px">
+        <label>Exportar / Descargar</label>
+        <div style="display:flex;gap:8px">
+          <button id="btnExport">Exportar JSON</button>
+          <button id="btnCopy">Copiar al portapapeles</button>
+        </div>
+      </aside>
+    </div>
+
+    <footer>
+      <div id="notes" class="small"></div>
+    </footer>
+  </main>
+
+<script>
+(function(){
+  const statusEl = document.getElementById('status');
+  const supportChip = document.getElementById('supportChip');
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  const btnClear = document.getElementById('btnClear');
+  const lastCard = document.getElementById('lastCard');
+  const details = document.getElementById('details');
+  const historyList = document.getElementById('historyList');
+  const noteInput = document.getElementById('noteInput');
+  const btnExport = document.getElementById('btnExport');
+  const btnCopy = document.getElementById('btnCopy');
+  let ndef = null;
+  let scanning = false;
+  let history = [];
+
+  // Feature detection
+  function setSupport(ok){
+    supportChip.textContent = ok ? 'Web NFC disponible' : 'Web NFC no disponible';
+    supportChip.style.background = ok ? 'rgba(79,209,197,0.08)' : 'rgba(255,107,107,0.06)';
+    supportChip.style.color = ok ? 'var(--accent)' : 'var(--danger)';
+  }
+
+  function updateStatus(msg, danger=false){
+    statusEl.textContent = msg;
+    statusEl.className = danger ? 'status danger' : 'status';
+  }
+
+  function renderHistory(){
+    historyList.innerHTML = '';
+    for (let i=0;i<history.length;i++){
+      const item = history[i];
+      const li = document.createElement('li');
+      li.innerHTML = `<strong>${item.time}</strong> — <em>${escapeHtml(item.tagType||'NDEF')}</em><br>
+        ${escapeHtml(item.text || JSON.stringify(item.records||item.payload||{}))}<br>
+        <small style="color:var(--muted)">${escapeHtml(item.note||'')}</small>`;
+      historyList.appendChild(li);
+    }
+  }
+
+  function addHistory(record){
+    history.unshift(record); // más reciente primero
+    if (history.length>200) history.pop();
+    renderHistory();
+  }
+
+  function escapeHtml(s){
+    if(!s) return '';
+    return String(s).replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; });
+  }
+
+  // Export / copy
+  btnExport.addEventListener('click', ()=>{
+    const blob = new Blob([JSON.stringify(history, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'nfc-history.json'; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  btnCopy.addEventListener('click', async ()=>{
+    try{
+      await navigator.clipboard.writeText(JSON.stringify(history, null, 2));
+      updateStatus('Historial copiado al portapapeles.');
+    }catch(e){
+      updateStatus('Error al copiar: ' + (e.message || e), true);
+    }
+  });
+
+  btnClear.addEventListener('click', ()=>{
+    if (!confirm('¿Borrar todo el historial?')) return;
+    history = [];
+    renderHistory();
+    updateStatus('Historial limpiado.');
+  });
+
+  // Main NFC handlers
+  async function startScan(){
+    if (scanning) return;
+    if (!('NDEFReader' in window)) {
+      updateStatus('Web NFC no está disponible en este navegador.', true);
+      return;
+    }
+
+    try{
+      ndef = new NDEFReader();
+      updateStatus('Solicitando permiso para NFC...');
+      // Opciones: mode implicit; puedes pasar {signal: controller.signal} para cancelarlo con AbortController
+      await ndef.scan();
+      scanning = true;
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+      updateStatus('Escaneando… acerca la tarjeta al dispositivo.');
+      ndef.onreading = event => {
+        const now = new Date();
+        const timestamp = now.toLocaleString();
+        const note = (noteInput.value || '').trim();
+        // Extraer registros NDEF
+        const records = [];
+        for (const rec of event.message.records){
+          const recObj = {
+            recordType: rec.recordType,
+            mediaType: rec.mediaType || null,
+            id: rec.id || null,
+            data: null,
+            text: null
+          };
+          try{
+            // Intento leer como texto si aplica
+            if (rec.recordType === 'text') {
+              const textDecoder = new TextDecoder(rec.encoding || 'utf-8');
+              recObj.text = textDecoder.decode(rec.data);
+              recObj.data = recObj.text;
+            } else if (rec.recordType === 'url') {
+              const td = new TextDecoder();
+              recObj.text = td.decode(rec.data);
+              recObj.data = recObj.text;
+            } else {
+              // fallback: ArrayBuffer -> hex
+              const arr = new Uint8Array(rec.data || new ArrayBuffer(0));
+              recObj.data = Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('');
+            }
+          }catch(e){
+            recObj.data = '[error decoding]';
+          }
+          records.push(recObj);
+        }
+
+        const entry = {
+          time: timestamp,
+          tagType: event.serialNumber || 'NDEF',
+          records,
+          note
+        };
+
+        // Mostrar en UI
+        lastCard.innerHTML = `<div><strong>${escapeHtml(entry.tagType)}</strong><div style="color:var(--muted);font-size:.95rem">${escapeHtml(entry.time)}</div></div>`;
+        details.textContent = JSON.stringify(records, null, 2);
+        addHistory(entry);
+        updateStatus('Lectura exitosa: ' + (records.length ? (records[0].text || records[0].data) : 'sin registros legibles'));
+      };
+
+      ndef.onreadingerror = (err) => {
+        updateStatus('Error de lectura NFC: ' + (err?.message || 'desconocido'), true);
+      };
+
+    }catch(err){
+      updateStatus('No se pudo iniciar el escaneo: ' + (err?.message || err), true);
+    }
+  }
+
+  function stopScan(){
+    // La especificación actual no expone un stop() universal; se sugiere usar AbortController al llamar a scan().
+    // Aquí intentamos eliminar handlers y marcar estado.
+    if (!scanning) return;
+    try{
+      if (ndef){
+        ndef.onreading = null;
+        ndef.onreadingerror = null;
+      }
+    }catch(e){}
+    scanning = false;
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    updateStatus('Escaneo detenido.');
+  }
+
+  // Inicialización
+  (function init(){
+    const supported = ('NDEFReader' in window);
+    setSupport(supported);
+    if (!supported){
+      updateStatus('Tu navegador no soporta Web NFC. Prueba Chrome/Opera/Samsung en Android y asegúrate de usar HTTPS o localhost.', true);
+      btnStart.disabled = true;
+      return;
+    }
+    // Indicar seguridad/https
+    if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'){
+      updateStatus('Listo. Pulsa "Iniciar escaneo" y acerca la tarjeta NFC.');
+    } else {
+      updateStatus('Atención: Web NFC requiere HTTPS (o localhost). Si ves problemas, sirve esta página mediante HTTPS o usa localhost durante el desarrollo.', true);
+    }
+  })();
+
+  // Eventos UI
+  btnStart.addEventListener('click', startScan);
+  btnStop.addEventListener('click', stopScan);
+
+})();
+</script>
+</body>
+</html>
