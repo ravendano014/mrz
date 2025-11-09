@@ -1,0 +1,636 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ID Document OCR Assistant</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+      "react": "https://esm.sh/react@18.2.0",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
+    }
+  }
+  </script>
+</head>
+<body class="bg-slate-900">
+  <div id="root"></div>
+
+  <script type="module">
+    import { GoogleGenAI } from "@google/genai";
+    import React, { useState, useCallback, useRef, useEffect } from 'react';
+    import ReactDOM from 'react-dom/client';
+
+    // ========= TYPES =========
+    /**
+     * @typedef {object} BoundingBox
+     * @property {number} x
+     * @property {number} y
+     * @property {number} w
+     * @property {number} h
+     */
+
+    /**
+     * @typedef {object} ExtractedFields
+     * @property {string} country_assumed
+     * @property {string|null} dui_number
+     * @property {string|null} doc_serial_number
+     * @property {string|null} nombres
+     * @property {string|null} primer_apellido
+     * @property {string|null} segundo_apellido
+     * @property {string|null} apellidos
+     * @property {string|null} conocido_por
+     * @property {'M'|'F'|null} sexo
+     * @property {string|null} fecha_nacimiento
+     * @property {string|null} nacionalidad
+     * @property {string|null} lugar_expedicion
+     * @property {string|null} fecha_emision
+     * @property {string|null} fecha_expiracion
+     * @property {string|null} lugar_nacimiento
+     * @property {string|null} departamento
+     * @property {string|null} municipio
+     * @property {string|null} domicilio
+     * @property {string|null} residencia
+     * @property {string|null} profesion
+     * @property {string|null} estado_familiar
+     * @property {string|null} tipo_sangre
+     * @property {string|null} nit
+     * @property {string|null} nombre_madre
+     * @property {string|null} nombre_padre
+     * @property {string|null} codigo_zona
+     * @property {string|null} emisor
+     * @property {string|null} observaciones
+     */
+
+    /**
+     * @typedef {object} MrzData
+     * @property {boolean} found
+     * @property {string} raw
+     * @property {string} type
+     * @property {object} parsed
+     * @property {string} [parsed.document_number]
+     * @property {string} [parsed.dob]
+     * @property {string} [parsed.expiry]
+     * @property {string} [parsed.given_names]
+     * @property {string} [parsed.surname]
+     * @property {string} [parsed.nationality]
+     * @property {'M'|'F'} [parsed.sex]
+     * @property {boolean} check_digits_valid
+     * @property {number} confidence
+     */
+    
+    /**
+     * @typedef {object} IdDocumentData
+     * @property {boolean} document_detected
+     * @property {{document_bbox: BoundingBox, photo_bbox: BoundingBox, signature_bbox: BoundingBox, pdf417_bbox: BoundingBox, mrz_bbox: BoundingBox}} detections
+     * @property {{photo_crop_b64: string|null, signature_crop_b64: string|null}} images
+     * @property {ExtractedFields} extracted_fields
+     * @property {{pdf417: {found: boolean}, mrz: MrzData}} codes
+     * @property {number} confidence_overall
+     * @property {string[]} warnings
+     * @property {string} [scanDate]
+     * @property {string} [imagePreviewUrl]
+     * @property {string} [deviceInfo]
+     */
+
+
+    // ========= ICONS =========
+    const CameraIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" }), React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M15 13a3 3 0 11-6 0 3 3 0 016 0z" }));
+    const CloseIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M6 18L18 6M6 6l12 12" }));
+    const SpinnerIcon = ({ className }) => React.createElement("svg", { className: className, xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24" }, React.createElement("circle", { className: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", strokeWidth: "4" }), React.createElement("path", { className: "opacity-75", fill: "currentColor", d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" }));
+    const WarningIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement("path", { fillRule: "evenodd", d: "M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.21 3.03-1.742 3.03H4.42c-1.532 0-2.492-1.696-1.742-3.03l5.58-9.92zM10 13a1 1 0 110-2 1 1 0 010 2zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z", clipRule: "evenodd" }));
+    const ProfileIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement("path", { fillRule: "evenodd", d: "M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z", clipRule: "evenodd" }));
+    const CheckIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M5 13l4 4L19 7" }));
+    const MismatchIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M6 18L18 6M6 6l12 12" }));
+    const QuestionIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" }));
+    const HistoryIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" }));
+    const TrashIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }));
+    const BackIcon = ({ className }) => React.createElement("svg", { xmlns: "http://www.w3.org/2000/svg", className: className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M10 19l-7-7m0 0l7-7m-7 7h18" }));
+    
+    // ========= LOCAL STORAGE HOOK =========
+    function useLocalStorage(key, initialValue) {
+      const [storedValue, setStoredValue] = useState(() => {
+        try {
+          const item = window.localStorage.getItem(key);
+          return item ? JSON.parse(item) : initialValue;
+        } catch (error) {
+          console.error(error);
+          return initialValue;
+        }
+      });
+
+      const setValue = (value) => {
+        try {
+          const valueToStore = value instanceof Function ? value(storedValue) : value;
+          setStoredValue(valueToStore);
+          window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        } catch (error) {
+          console.error(error);
+        }
+      };
+      
+      useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === key) {
+                try {
+                    setStoredValue(e.newValue ? JSON.parse(e.newValue) : initialValue);
+                } catch (error) {
+                    console.error(error);
+                    setStoredValue(initialValue);
+                }
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+      }, [key]);
+
+      return [storedValue, setValue];
+    }
+
+    // ========= GEMINI SERVICE =========
+    const getPrompt = () => {
+      return `Eres un asistente de visión-OCR especializado en documentos de identidad. A partir de una imagen de un Documento Único de Identidad (DUI) de El Salvador, realiza las siguientes tareas y devuelve únicamente un objeto JSON válido con la estructura especificada. No incluyas bloques de código markdown \`\`\`json ni la palabra "json".
+
+1.  **Detección y Preprocesamiento**: Detecta el documento, corrige su perspectiva y recorta las zonas clave: fotografía, firma, código PDF417 y la Zona de Lectura Mecánica (MRZ). Devuelve las coordenadas relativas (bounding boxes) de cada zona.
+
+2.  **Decodificación y OCR**:
+    *   Decodifica el código de barras PDF417 si está presente.
+    *   Lee e interpreta las tres líneas de la MRZ (formato TD1).
+    *   Realiza un OCR de alta precisión sobre todo el texto visible en el anverso y reverso del documento.
+
+3.  **Extracción y Normalización de Campos**: Extrae y formatea la siguiente información, cruzando datos entre el texto visible, la MRZ y el PDF417 para máxima precisión.
+    *   \`dui_number\`: Número de DUI (formato NNNNNNNN-N).
+    *   \`doc_serial_number\`: Número de serie del documento, usualmente vertical.
+    *   \`nombres\`: Nombres de pila.
+    *   \`primer_apellido\`, \`segundo_apellido\`, \`apellidos\`: Apellidos.
+    *   \`conocido_por\`: Campo "Conocido por".
+    *   \`sexo\`: 'M' o 'F'.
+    *   \`fecha_nacimiento\`, \`fecha_emision\`, \`fecha_expiracion\`: Fechas en formato YYYY-MM-DD.
+    *   \`nacionalidad\`.
+    *   \`lugar_nacimiento\`.
+    *   \`lugar_expedicion\`: Lugar de expedición.
+    *   \`departamento\`, \`municipio\`: Del reverso.
+    *   \`domicilio\`, \`residencia\`: Dirección de residencia.
+    *   \`profesion\`.
+    *   \`estado_familiar\`.
+    *   \`tipo_sangre\`.
+    *   \`nit\`.
+    *   \`nombre_madre\`, \`nombre_padre\`: Nombres completos de los padres, si están presentes.
+    *   \`codigo_zona\`: Código de zona, si está presente.
+    *   \`emisor\`: Entidad emisora (ej. "RNPN").
+
+4.  **Estructura de Salida JSON (Obligatoria)**: Devuelve un único objeto JSON con esta estructura exacta. Si un campo no se encuentra, su valor debe ser \`null\`.
+    \`\`\`
+    {
+      "document_detected": boolean,
+      "detections": { "document_bbox": {}, "photo_bbox": {}, "signature_bbox": {}, "pdf417_bbox": {}, "mrz_bbox": {} },
+      "images": { "photo_crop_b64": "base64_string | null", "signature_crop_b64": "base64_string | null" },
+      "extracted_fields": {
+        "country_assumed": "SV", "dui_number": "string | null", "doc_serial_number": "string | null", "nombres": "string | null", "primer_apellido": "string | null", "segundo_apellido": "string | null", "apellidos": "string | null", "conocido_por": "string | null", "sexo": "M | F | null", "fecha_nacimiento": "string | null", "nacionalidad": "string | null", "lugar_expedicion": "string | null", "fecha_emision": "string | null", "fecha_expiracion": "string | null", "lugar_nacimiento": "string | null", "departamento": "string | null", "municipio": "string | null", "domicilio": "string | null", "residencia": "string | null", "profesion": "string | null", "estado_familiar": "string | null", "tipo_sangre": "string | null", "nit": "string | null", "nombre_madre": "string | null", "nombre_padre": "string | null", "codigo_zona": "string | null", "emisor": "string | null", "observaciones": "string | null"
+      },
+      "codes": { "pdf417": { "found": boolean }, "mrz": { "found": boolean, "raw": "", "type": "", "parsed": {}, "check_digits_valid": boolean, "confidence": 0.0 } },
+      "confidence_overall": 0.0,
+      "warnings": ["string"]
+    }
+    \`\`\`
+5. **Reglas Adicionales**:
+    * Añade \`warnings\` si la calidad de la imagen es baja, hay reflejos, o los checksums de la MRZ son inválidos.
+    * No inventes datos. La precisión es crucial.`;
+    };
+
+    const fileToGenerativePart = (file) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            const [, data] = reader.result.split(',');
+            if (data) {
+                resolve({ inlineData: { data, mimeType: file.type } });
+            } else {
+                reject(new Error("Error reading file data."));
+            }
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    };
+
+    const analyzeIdDocument = async (file) => {
+      const apiKey = 'AIzaSyAN_DJ2M5ECe6g3vQdOUQ0JDngHD_o_1Mw';
+      const ai = new GoogleGenAI({ apiKey });
+
+      const imagePart = await fileToGenerativePart(file);
+      const textPrompt = getPrompt();
+
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: { parts: [imagePart, { text: textPrompt }] },
+          config: { responseMimeType: "application/json" },
+        });
+
+        const rawText = response.text;
+        if (!rawText) {
+          throw new Error("La API devolvió una respuesta vacía.");
+        }
+
+        const cleanedText = rawText.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
+        const parsedJson = JSON.parse(cleanedText);
+
+        if (!parsedJson.document_detected) {
+            throw new Error("No se pudo detectar un documento de identidad en la imagen.");
+        }
+
+        return parsedJson;
+      } catch (error) {
+        console.error("Error al procesar la respuesta de la API:", error);
+        if (error instanceof SyntaxError) {
+            throw new Error("La API devolvió un JSON inválido. Inténtelo de nuevo.");
+        }
+        throw new Error("No se pudo analizar la respuesta de la API. Revisa la consola para más detalles.");
+      }
+    };
+
+    // ========= COMPONENTS =========
+    const IdleView = ({ onScan, onUpload, onViewHistory, error, clearError }) => {
+      const fileInputRef = useRef(null);
+      const handleFileChange = (event) => {
+        const files = event.target.files;
+        if (files && files.length > 0) {
+          clearError();
+          onUpload(files[0]);
+        }
+      };
+      return React.createElement("div", { className: "flex flex-col items-center justify-center h-full p-8 text-center bg-slate-800" },
+        React.createElement("h1", { className: "text-3xl font-bold text-white mb-2" }, "Verificación de Documentos"),
+        React.createElement("p", { className: "text-slate-400 mb-6 max-w-sm" }, "Capture una foto de un documento de identidad para extraer y verificar la información automáticamente."),
+        error && React.createElement("div", { className: "bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-6", role: "alert" },
+          React.createElement("strong", { className: "font-bold" }, "Error: "),
+          React.createElement("span", { className: "block sm:inline" }, error)
+        ),
+        React.createElement("button", { onClick: onScan, className: "w-full max-w-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg text-lg transition-colors duration-300 flex items-center justify-center space-x-3" },
+          React.createElement(CameraIcon, { className: "h-6 w-6" }),
+          React.createElement("span", null, "Escanear Documento")
+        ),
+        React.createElement("div", { className: "my-4 text-slate-500" }, "o"),
+        React.createElement("label", { htmlFor: "file-upload", className: "w-full max-w-xs bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 cursor-pointer text-center" }, "Subir Archivo"),
+        React.createElement("input", { id: "file-upload", ref: fileInputRef, type: "file", className: "hidden", accept: "image/*", onChange: handleFileChange }),
+        React.createElement("div", { className: "mt-8" },
+          React.createElement("button", { onClick: onViewHistory, className: "text-indigo-400 hover:text-indigo-300 text-sm font-medium flex items-center space-x-2" },
+            React.createElement(HistoryIcon, { className: "h-5 w-5" }),
+            React.createElement("span", null, "Ver Historial")
+          )
+        )
+      );
+    };
+    
+    const CameraView = ({ onCapture, onExit }) => {
+      const videoRef = useRef(null);
+      const canvasRef = useRef(null);
+      const [error, setError] = useState(null);
+      const streamRef = useRef(null);
+
+      useEffect(() => {
+        const startCamera = async () => {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+            });
+            streamRef.current = stream;
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+            }
+            setError(null);
+          } catch (err) {
+            console.error("Error accessing camera:", err);
+            setError("No se pudo acceder a la cámara. Revisa los permisos.");
+          }
+        };
+        startCamera();
+        return () => {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+          }
+        };
+      }, []);
+
+      const handleCaptureClick = () => {
+        if (!videoRef.current || !canvasRef.current) return;
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        if (context) {
+          context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+          canvas.toBlob(blob => {
+            if (blob) {
+              const file = new File([blob], "capture.jpg", { type: "image/jpeg" });
+              onCapture(file);
+            }
+          }, 'image/jpeg', 0.95);
+        }
+      };
+
+      return React.createElement("div", { className: "relative w-full h-full bg-black flex flex-col items-center justify-center" },
+        React.createElement("video", { ref: videoRef, autoPlay: true, playsInline: true, className: "absolute top-0 left-0 w-full h-full object-cover" }),
+        React.createElement("canvas", { ref: canvasRef, className: "hidden" }),
+        React.createElement("div", { className: "absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/70 to-transparent z-10 text-center" },
+          React.createElement("h2", { className: "text-white text-lg font-semibold" }, "Presenta tu documento")
+        ),
+        React.createElement("div", { className: "absolute inset-0 flex items-center justify-center" },
+          React.createElement("div", { className: "w-[90%] aspect-[85.6/54] border-4 border-white/50 rounded-2xl shadow-lg bg-black/20 backdrop-blur-sm pointer-events-none" },
+            React.createElement("div", { className: "relative w-full h-full" },
+              React.createElement("p", { className: "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white font-semibold text-center drop-shadow-md" }, "Alinear documento dentro del marco")
+            )
+          )
+        ),
+        error && React.createElement("div", { className: "absolute top-16 bg-red-600 text-white p-3 rounded-md z-20 text-sm" }, error),
+        React.createElement("div", { className: "absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent z-10 flex items-center justify-around" },
+          React.createElement("button", { onClick: onExit, className: "p-3 text-white", "aria-label": "Cerrar cámara" }, React.createElement(CloseIcon, { className: "h-8 w-8" })),
+          React.createElement("button", { onClick: handleCaptureClick, className: "w-20 h-20 rounded-full bg-white border-4 border-white/50 ring-4 ring-black/30 shadow-lg", "aria-label": "Capturar foto" }),
+          React.createElement("div", { className: "w-14" })
+        )
+      );
+    };
+    
+    const AnalyzingView = () => {
+      return React.createElement("div", { className: "flex flex-col items-center justify-center h-full bg-slate-900 text-white" },
+        React.createElement(SpinnerIcon, { className: "animate-spin h-10 w-10 text-indigo-400 mx-auto" }),
+        React.createElement("p", { className: "mt-4 text-slate-300 text-lg" }, "Procesando documento..."),
+        React.createElement("p", { className: "text-slate-500" }, "Esto puede tardar unos segundos.")
+      );
+    };
+
+    const StatusIcon = ({ status }) => {
+        const iconBaseClasses = "w-6 h-6 rounded-full flex items-center justify-center";
+        const svgBaseClasses = "h-4 w-4 text-white";
+        switch (status) {
+          case 'MATCH': return React.createElement("div", { className: `${iconBaseClasses} bg-green-500`, title: "Coincide" }, React.createElement(CheckIcon, { className: svgBaseClasses }));
+          case 'MISMATCH': return React.createElement("div", { className: `${iconBaseClasses} bg-red-500`, title: "No coincide" }, React.createElement(MismatchIcon, { className: svgBaseClasses }));
+          case 'SINGLE_SOURCE': return React.createElement("div", { className: `${iconBaseClasses} bg-gray-500`, title: "Fuente única" }, React.createElement(QuestionIcon, { className: svgBaseClasses }));
+          default: return React.createElement("div", { className: "w-6 h-6" });
+        }
+    };
+    
+    const createComparisonData = (result) => {
+        const fieldsToCompare = [
+          { key: 'dui_number', name: 'Documento #', mrzKey: 'document_number' }, 
+          { key: 'nombres', name: 'Nombres', mrzKey: 'given_names' }, 
+          { key: 'apellidos', name: 'Apellidos', mrzKey: 'surname' }, 
+          { key: 'fecha_nacimiento', name: 'F. Nacimiento', mrzKey: 'dob' }, 
+          { key: 'fecha_expiracion', name: 'F. Expiración', mrzKey: 'expiry' }, 
+          { key: 'sexo', name: 'Sexo', mrzKey: 'sex' }, 
+          { key: 'nacionalidad', name: 'Nacionalidad', mrzKey: 'nationality' },
+        ];
+        const mrzData = result.codes?.mrz?.parsed || {};
+        const ocrData = result.extracted_fields || {};
+        return fieldsToCompare.map(field => {
+          const ocrValue = ocrData[field.key];
+          const mrzValue = mrzData[field.mrzKey];
+          let status = 'MISSING';
+          const ocrStr = ocrValue ? String(ocrValue).trim().toUpperCase() : null;
+          const mrzStr = mrzValue ? String(mrzValue).trim().toUpperCase().replace(/</g, ' ').trim() : null;
+          if (ocrStr && mrzStr) {
+            status = ocrStr.replace(/-/g, '') === mrzStr.replace(/-/g, '') ? 'MATCH' : 'MISMATCH';
+          } else if (ocrStr || mrzStr) {
+            status = 'SINGLE_SOURCE';
+          }
+          return { name: field.name, ocrValue: ocrValue || 'N/A', mrzValue: mrzStr || 'N/A', status };
+        });
+    };
+    
+    const ResultsView = ({ result, onReset }) => {
+      const [activeTab, setActiveTab] = useState('overall');
+      const { extracted_fields: fields, images } = result;
+      
+      const comparisonData = createComparisonData(result);
+
+      const handleExportJson = useCallback(() => {
+        const dataStr = JSON.stringify(result, null, 2);
+        const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+        const exportFileDefaultName = `doc-data-${fields.dui_number || 'unknown'}.json`;
+
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+      }, [result, fields.dui_number]);
+
+      const InfoPair = ({ label, value, truncate = false }) => React.createElement(React.Fragment, null,
+          React.createElement("div", {className: "text-slate-400"}, label),
+          React.createElement("div", {className: `text-white ${truncate ? 'truncate' : ''}`}, value || 'N/A')
+      );
+      
+      return React.createElement("div", { className: "h-full flex flex-col bg-slate-800" },
+        React.createElement("header", { className: "flex-shrink-0 bg-indigo-700 text-white p-4 shadow-md z-10" },
+          React.createElement("div", { className: "flex items-start" },
+            React.createElement("div", { className: "flex-grow" },
+              React.createElement("h1", { className: "text-xl font-bold" }, `${fields.nombres || ''} ${fields.apellidos || 'Sin nombre'}`.trim()),
+              React.createElement("p", { className: "text-sm text-indigo-200" }, fields.sexo === 'M' ? 'Masculino' : fields.sexo === 'F' ? 'Femenino' : 'Sexo no especificado')
+            ),
+            React.createElement("div", null, 
+              images?.photo_crop_b64 ? 
+                React.createElement("img", { src: `data:image/png;base64,${images.photo_crop_b64}`, alt: "Foto de perfil", className: "w-14 h-14 rounded-full border-2 border-white object-cover" }) :
+                React.createElement("div", { className: "w-14 h-14 rounded-full border-2 border-white bg-indigo-800 flex items-center justify-center" }, React.createElement(ProfileIcon, { className: "h-8 w-8 text-indigo-300" }))
+            )
+          ),
+          React.createElement("nav", { className: "mt-4 flex" },
+            React.createElement("button", { onClick: () => setActiveTab('overall'), className: `px-4 py-2 text-sm font-medium border-b-2 ${activeTab === 'overall' ? 'border-white text-white' : 'border-transparent text-indigo-200 hover:text-white'}` }, "RESULTADO GENERAL"),
+            React.createElement("button", { onClick: () => setActiveTab('textdata'), className: `px-4 py-2 text-sm font-medium border-b-2 ${activeTab === 'textdata' ? 'border-white text-white' : 'border-transparent text-indigo-200 hover:text-white'}` }, "DATOS DE TEXTO")
+          )
+        ),
+        React.createElement("main", { className: "flex-grow overflow-y-auto p-4" },
+          activeTab === 'overall' && React.createElement("section", { className: "space-y-4" },
+            React.createElement("div", { className: "bg-slate-700 p-4 rounded-lg" },
+              React.createElement("h3", { className: "font-semibold text-slate-300 mb-3" }, "Información Personal"),
+              React.createElement("div", { className: "grid grid-cols-2 gap-x-4 gap-y-2 text-sm" },
+                React.createElement(InfoPair, { label: "F. Nacimiento", value: fields.fecha_nacimiento }),
+                React.createElement(InfoPair, { label: "Lugar Nacimiento", value: fields.lugar_nacimiento, truncate: true }),
+                React.createElement(InfoPair, { label: "Nacionalidad", value: fields.nacionalidad }),
+                React.createElement(InfoPair, { label: "Estado Familiar", value: fields.estado_familiar }),
+                React.createElement(InfoPair, { label: "Profesión", value: fields.profesion }),
+                React.createElement("div", { className: "col-span-2 mt-1 border-t border-slate-600/50" }),
+                React.createElement(InfoPair, { label: "Residencia", value: fields.residencia || fields.domicilio, truncate: true }),
+                React.createElement(InfoPair, { label: "Municipio", value: fields.municipio }),
+                React.createElement(InfoPair, { label: "Departamento", value: fields.departamento }),
+                React.createElement(InfoPair, { label: "Código Zona", value: fields.codigo_zona }),
+                React.createElement("div", { className: "col-span-2 mt-1 border-t border-slate-600/50" }),
+                React.createElement(InfoPair, { label: "Madre", value: fields.nombre_madre, truncate: true }),
+                React.createElement(InfoPair, { label: "Padre", value: fields.nombre_padre, truncate: true })
+              )
+            ),
+            React.createElement("div", { className: "bg-slate-700 p-4 rounded-lg" },
+              React.createElement("h3", { className: "font-semibold text-slate-300 mb-3" }, "Información del Documento"),
+              React.createElement("div", { className: "grid grid-cols-2 gap-x-4 gap-y-2 text-sm" },
+                React.createElement("div", { className: "text-slate-400" }, "Documento #"), React.createElement("div", { className: "text-white font-mono" }, fields.dui_number || 'N/A'),
+                React.createElement("div", { className: "text-slate-400" }, "Serial #"), React.createElement("div", { className: "text-white font-mono" }, fields.doc_serial_number || 'N/A'),
+                React.createElement(InfoPair, { label: "Lugar Expedición", value: fields.lugar_expedicion, truncate: true }),
+                React.createElement(InfoPair, { label: "F. Expedición", value: fields.fecha_emision }),
+                React.createElement(InfoPair, { label: "F. Expiración", value: fields.fecha_expiracion }),
+                React.createElement(InfoPair, { label: "Emisor", value: fields.emisor, truncate: true })
+              )
+            ),
+            React.createElement("div", { className: "bg-slate-700 p-4 rounded-lg" },
+                React.createElement("h3", { className: "font-semibold text-slate-300 mb-2" }, "Imagen del Documento"),
+                React.createElement("img", { src: result.imagePreviewUrl, alt: "Documento capturado", className: "w-full rounded-md" }),
+                 React.createElement("button", { onClick: handleExportJson, className: "mt-4 w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2 px-4 rounded-lg transition-colors" }, "Exportar JSON")
+            )
+          ),
+          activeTab === 'textdata' && React.createElement("section", { className: "bg-slate-700 rounded-lg overflow-hidden" },
+            React.createElement("h3", { className: "sr-only" }, "Datos de Texto Comparados"),
+            React.createElement("table", { className: "w-full text-sm text-left" },
+              React.createElement("thead", { className: "bg-slate-600 text-slate-300" },
+                React.createElement("tr", null,
+                  React.createElement("th", { className: "p-3" }, "Campo"),
+                  React.createElement("th", { className: "p-3" }, "MRZ"),
+                  React.createElement("th", { className: "p-3" }, "OCR Visual"),
+                  React.createElement("th", { className: "p-3", "aria-label": "Estado de verificación" })
+                )
+              ),
+              React.createElement("tbody", null,
+                comparisonData.map((item, index) => React.createElement("tr", { key: index, className: "border-b border-slate-600 last:border-0" },
+                  React.createElement("td", { className: "p-3 font-semibold text-white" }, item.name),
+                  React.createElement("td", { className: "p-3 text-slate-300 font-mono" }, item.mrzValue),
+                  React.createElement("td", { className: "p-3 text-slate-300 font-mono" }, item.ocrValue),
+                  React.createElement("td", { className: "p-3" }, React.createElement(StatusIcon, { status: item.status }))
+                ))
+              )
+            )
+          )
+        ),
+        React.createElement("footer", { className: "flex-shrink-0 p-4 bg-slate-900 border-t border-slate-700 flex items-center justify-between" },
+          React.createElement("button", { onClick: onReset, className: "p-3 text-white bg-red-600 rounded-full hover:bg-red-700", "aria-label": "Descartar y empezar de nuevo" }, React.createElement(CloseIcon, { className: "h-6 w-6" })),
+          React.createElement("div", { className: "flex items-center space-x-2 text-yellow-400" },
+            React.createElement(WarningIcon, { className: "h-5 w-5" }),
+            React.createElement("span", { className: "text-sm font-semibold" }, "Revisar detalles")
+          ),
+          React.createElement("button", { onClick: onReset, className: "bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition-colors" }, "Escanear Otro")
+        )
+      );
+    };
+    
+    const HistoryView = ({ history, setHistory, onBack }) => {
+      const handleClearHistory = () => {
+        if (window.confirm("¿Estás seguro de que quieres borrar todo el historial? Esta acción no se puede deshacer.")) {
+          setHistory([]);
+        }
+      };
+
+      return React.createElement("div", { className: "h-full flex flex-col bg-slate-800" },
+        React.createElement("header", { className: "flex-shrink-0 bg-slate-900 text-white p-4 shadow-md z-10 flex items-center justify-between" },
+          React.createElement("button", { onClick: onBack, className: "p-2 -ml-2 text-slate-300 hover:text-white" }, React.createElement(BackIcon, { className: "h-6 w-6" })),
+          React.createElement("h1", { className: "text-xl font-bold" }, "Historial de Escaneos"),
+          React.createElement("button", { onClick: handleClearHistory, disabled: history.length === 0, className: "p-2 text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed", "aria-label": "Limpiar historial" }, React.createElement(TrashIcon, { className: "h-6 w-6" }))
+        ),
+        React.createElement("main", { className: "flex-grow overflow-y-auto p-4" },
+          history.length === 0 ? 
+            React.createElement("div", { className: "flex flex-col items-center justify-center h-full text-slate-500" },
+              React.createElement("p", { className: "text-lg" }, "No hay escaneos guardados."),
+              React.createElement("p", null, "Los documentos que analices aparecerán aquí.")
+            ) :
+            React.createElement("ul", { className: "space-y-3" },
+              history.map((item, index) => React.createElement("li", { key: index, className: "bg-slate-700 p-3 rounded-lg flex items-center space-x-4" },
+                item.images?.photo_crop_b64 ?
+                    React.createElement("img", { src: `data:image/png;base64,${item.images.photo_crop_b64}`, alt: "Foto de perfil", className: "w-12 h-12 rounded-full object-cover flex-shrink-0" }) :
+                    React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center flex-shrink-0" }, React.createElement(ProfileIcon, { className: "h-7 w-7 text-slate-400" })),
+                React.createElement("div", { className: "flex-grow overflow-hidden" },
+                    React.createElement("p", { className: "font-semibold text-white truncate" }, `${item.extracted_fields.nombres || ''} ${item.extracted_fields.apellidos || 'Nombre no encontrado'}`.trim()),
+                    React.createElement("p", { className: "text-sm text-slate-400 font-mono" }, item.extracted_fields.dui_number || 'Sin DUI'),
+                    item.scanDate && React.createElement("p", { className: "text-xs text-slate-500 pt-1" }, new Date(item.scanDate).toLocaleString()),
+                    item.deviceInfo && React.createElement("p", { className: "text-xs text-slate-500 pt-1 truncate", title:item.deviceInfo }, `Dispositivo: ${item.deviceInfo}`)
+                )
+              ))
+            )
+        )
+      );
+    };
+
+    // ========= APP =========
+    const App = () => {
+      const [appState, setAppState] = useState('IDLE');
+      const [error, setError] = useState(null);
+      const [analysisResult, setAnalysisResult] = useState(null);
+      const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+      const [history, setHistory] = useLocalStorage('id-scan-history', []);
+
+      const handleAnalysis = useCallback(async (file) => {
+        setAppState('ANALYZING');
+        setError(null);
+        const previewUrl = URL.createObjectURL(file);
+        setImagePreviewUrl(previewUrl);
+
+        try {
+          const result = await analyzeIdDocument(file);
+          const resultWithMeta = { ...result, scanDate: new Date().toISOString(), imagePreviewUrl: previewUrl, deviceInfo: navigator.userAgent };
+          setAnalysisResult(resultWithMeta);
+          setHistory([resultWithMeta, ...history]);
+          setAppState('RESULTS');
+        } catch (err) {
+          console.error(err);
+          const errorMessage = err instanceof Error ? err.message : "Ocurrió un error inesperado durante el análisis.";
+          setError(errorMessage);
+          URL.revokeObjectURL(previewUrl);
+          setImagePreviewUrl(null);
+          setAppState('IDLE');
+        }
+      }, [history, setHistory]);
+
+      const handleReset = useCallback(() => {
+        if (imagePreviewUrl) {
+          URL.revokeObjectURL(imagePreviewUrl);
+        }
+        setAnalysisResult(null);
+        setImagePreviewUrl(null);
+        setError(null);
+        setAppState('IDLE');
+      }, [imagePreviewUrl]);
+
+      const renderContent = () => {
+        switch (appState) {
+          case 'CAMERA':
+            return React.createElement(CameraView, { onCapture: handleAnalysis, onExit: () => setAppState('IDLE') });
+          case 'ANALYZING':
+            return React.createElement(AnalyzingView, null);
+          case 'RESULTS':
+            return analysisResult && React.createElement(ResultsView, { result: analysisResult, onReset: handleReset });
+          case 'HISTORY':
+            return React.createElement(HistoryView, { history: history, setHistory: setHistory, onBack: () => setAppState('IDLE') });
+          case 'IDLE':
+          default:
+            return React.createElement(IdleView, {
+              onScan: () => setAppState('CAMERA'),
+              onUpload: handleAnalysis,
+              onViewHistory: () => setAppState('HISTORY'),
+              error: error,
+              clearError: () => setError(null)
+            });
+        }
+      };
+
+      return React.createElement("div", { className: "h-screen w-screen bg-slate-900 text-slate-200 overflow-hidden flex items-center justify-center" },
+        React.createElement("div", { className: "h-full w-full max-w-md mx-auto bg-slate-800 shadow-2xl relative" },
+          renderContent()
+        )
+      );
+    };
+
+    // ========= RENDER =========
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(React.createElement(React.StrictMode, null, React.createElement(App, null)));
+  </script>
+</body>
+</html>
