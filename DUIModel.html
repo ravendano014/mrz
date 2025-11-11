@@ -3,13 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>DUI — Detección + OCR + Validación + Plantillas + Export</title>
+<title>DUI — Detección + OCR + Validación + Plantillas + Export (Vista previa separada)</title>
 
 <!-- Libs -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/inferencejs@1.1.3"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<!-- SheetJS para XLSX -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.0/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -33,18 +32,62 @@ html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-se
 .button:disabled{opacity:.5;cursor:not-allowed}
 .button svg{width:16px;height:16px}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;padding:14px}
-@media (max-width:1120px){.layout{grid-template-columns:1fr}}
+
+/* ===== Disposición separada ===== */
+.layout{
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  gap:40px;
+  padding:20px;
+}
+@media (max-width: 1120px){
+  .layout{flex-direction:column; gap:20px;}
+}
 .card{background:#0b1220;border:1px solid var(--muted);border-radius:16px;box-shadow:var(--shadow)}
 .panel{padding:14px}
 .panel h3{margin:0 0 10px 0;font-size:14px;color:var(--sub);font-weight:600}
-.preview-wrap{position:relative;width:min(95vw,1100px);margin-inline:auto;overflow:hidden}
-.aspect{position:relative;width:100%;background:
-  linear-gradient(0deg,transparent 24%,rgba(255,255,255,.02) 25% 26%,transparent 27% 74%,rgba(255,255,255,.02) 75% 76%,transparent 77%),
-  linear-gradient(90deg,transparent 24%,rgba(255,255,255,.02) 25% 26%,transparent 27% 74%,rgba(255,255,255,.02) 75% 76%,transparent 77%),
-  linear-gradient(180deg,#0f172a,#0b0f14);
-  border-radius:16px;border:1px solid var(--muted)}
-video,canvas,img#uploaded{display:block;width:100%;height:auto}
+.preview-panel{
+  flex:0 0 auto;
+  background:var(--panel);
+  padding:20px;
+  border-radius:16px;
+  box-shadow:0 0 25px rgba(0,0,0,.5);
+  min-width: 420px;
+}
+.info-panel{
+  flex:1;
+  min-width: 380px;
+}
+
+/* ===== Vista previa con marco y escala DUI ===== */
+.preview-wrap{
+  position:relative;
+  display:grid;
+  place-items:center;
+  background:#081120;
+  border:2px solid var(--muted);
+  border-radius:14px;
+  padding:14px;
+  overflow:hidden;
+}
+.aspect{
+  position:relative;
+  width:100%;
+  background:
+    linear-gradient(0deg,transparent 24%,rgba(255,255,255,.02) 25% 26%,transparent 27% 74%,rgba(255,255,255,.02) 75% 76%,transparent 77%),
+    linear-gradient(90deg,transparent 24%,rgba(255,255,255,.02) 25% 26%,transparent 27% 74%,rgba(255,255,255,.02) 75% 76%,transparent 77%),
+    linear-gradient(180deg,#0f172a,#0b0f14);
+  border-radius:16px;border:1px solid var(--muted);
+  display:grid;place-items:center;
+}
+/* Escala real del DUI: 8.56 cm × 5.40 cm */
+.aspect.dui-scale{
+  width:8.56cm;
+  height:10.8cm; /* Doble de alto */
+  margin-inline:auto;
+}
+video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:auto}
 #uploaded{display:none}
 #fps{position:absolute;top:10px;left:10px;z-index:10;background:rgba(0,0,0,.55);border:1px solid var(--muted-2);padding:4px 8px;border-radius:8px;font-size:12px}
 .dropzone{margin-top:8px;border:1px dashed var(--muted-2);border-radius:12px;padding:14px;text-align:center;color:var(--sub);user-select:none}
@@ -92,7 +135,8 @@ video,canvas,img#uploaded{display:block;width:100%;height:auto}
 </header>
 
 <main class="layout">
-  <section class="card panel">
+  <section class="card panel preview-panel">
+    <h3 style="text-align:center;margin-bottom:10px;color:var(--sub)">Vista previa del DUI</h3>
     <div class="preview-wrap">
       <div id="fps">0</div>
       <div class="aspect">
@@ -103,7 +147,7 @@ video,canvas,img#uploaded{display:block;width:100%;height:auto}
     <div id="dropzone" class="dropzone">Arrastra una imagen aquí o usa “Subir”.</div>
   </section>
 
-  <aside class="card panel" style="display:flex;flex-direction:column;gap:14px">
+  <aside class="card panel info-panel" style="display:flex;flex-direction:column;gap:14px">
     <section>
       <h3>Estado</h3>
       <div class="kv">
@@ -216,7 +260,6 @@ const normalizers = {
 };
 
 /* ===== Validadores ===== */
-// Algoritmo del dígito verificador del DUI: pesos 9..2 sobre los primeros 8 dígitos; DV = (10 - (suma % 10)) % 10
 function computeDuiCheckDigit(first8){
   const w=[9,8,7,6,5,4,3,2]; let sum=0;
   for(let i=0;i<8;i++){ sum += (+first8[i]) * w[i]; }
@@ -242,13 +285,9 @@ const TEMPLATES = {
   "dui_frente_2022": {
     expected:["nombres","apellidos","dui","fecha_nacimiento","sexo","municipio","departamento"],
     post:(obj)=>{
-      // Nombre completo y mayúsculas acentuadas preservadas
       if(obj.nombres||obj.apellidos) obj.nombre_completo = [obj.apellidos,obj.nombres].filter(Boolean).join(", ");
-      // DUI formateado y validado
       if(obj.dui){ obj.dui = normalizers.dui(obj.dui); const v=validateDUI(obj.dui); obj._val_dui=v.valid; obj._val_dui_msg=v.reason; }
-      // Fechas
       if(obj.fecha_nacimiento){ obj.fecha_nacimiento = normalizers.fecha(obj.fecha_nacimiento); }
-      // Sexo
       if(obj.sexo){ obj.sexo = normalizers.sexo(obj.sexo); }
       return obj;
     }
@@ -257,7 +296,6 @@ const TEMPLATES = {
     expected:["fecha_emision","fecha_expiracion","domicilio","municipio","departamento","mrz","pdf417","firma","foto"],
     post:(obj)=>{
       ["fecha_emision","fecha_expiracion"].forEach(k=>{ if(obj[k]) obj[k]=normalizers.fecha(obj[k]); });
-      // MRZ / PDF417: solo trim en este flujo
       if(obj.mrz) obj.mrz = normalizers.plain(obj.mrz);
       if(obj.pdf417) obj.pdf417 = normalizers.plain(obj.pdf417);
       return obj;
@@ -268,12 +306,12 @@ const TEMPLATES = {
 /* ===== Render helpers ===== */
 function pill(text, type){ const span=document.createElement('span'); span.className=`pill ${type}`; span.textContent=text; return span; }
 function setPillsFrom(normal){
-  $pills.empty();
-  if(normal.dui){ const v=validateDUI(normal.dui); $pills.append(pill(`DUI: ${v.valid?'válido':'inválido'}${v.valid?'':` (${v.reason})`}`, v.valid?'ok':'bad')); }
+  $("#validatePills").empty();
+  if(normal.dui){ const v=validateDUI(normal.dui); $("#validatePills").append(pill(`DUI: ${v.valid?'válido':'inválido'}${v.valid?'':` (${v.reason})`}`, v.valid?'ok':'bad')); }
   ["fecha_nacimiento","fecha_emision","fecha_expiracion"].forEach(k=>{
-    if(normal[k]){ const v=validateDateDDMMYYYY(normal[k]); $pills.append(pill(`${k.replace('fecha_','fecha ')}: ${v.valid?'ok':'inválida'}`, v.valid?'ok':'bad')); }
+    if(normal[k]){ const v=validateDateDDMMYYYY(normal[k]); $("#validatePills").append(pill(`${k.replace('fecha_','fecha ')}: ${v.valid?'ok':'inválida'}`, v.valid?'ok':'bad')); }
   });
-  if(normal.sexo){ const v=validateSexo(normal.sexo); $pills.append(pill(`sexo: ${v.valid?'ok':'inválido'}`, v.valid?'ok':'bad')); }
+  if(normal.sexo){ const v=validateSexo(normal.sexo); $("#validatePills").append(pill(`sexo: ${v.valid?'ok':'inválido'}`, v.valid?'ok':'bad')); }
 }
 
 /* ===== Dibujo/Canvas ===== */
@@ -283,12 +321,23 @@ function videoDimensions(video) {
 }
 function resizeCanvas(){
   $("canvas#overlay").remove();
+  const aspectEl = document.querySelector('.aspect');
+  let targetW = $video.videoWidth, targetH = $video.videoHeight;
+  if(aspectEl && aspectEl.classList.contains('dui-scale')){
+    const rect = aspectEl.getBoundingClientRect();
+    const vr = $video.videoWidth / $video.videoHeight;
+    const er = rect.width / rect.height;
+    if (er > vr){ targetW = rect.height * vr; targetH = rect.height; }
+    else { targetW = rect.width; targetH = rect.width / vr; }
+  }
   canvas = $("<canvas id='overlay'/>"); ctx = canvas[0].getContext("2d");
   canvas[0].width = $video.videoWidth; canvas[0].height = $video.videoHeight;
-  const d = videoDimensions($video);
-  canvas.css({ width:d.width, height:d.height, position:"absolute",
-    left: ($(".preview-wrap").width() - d.width)/2, top: ($(".preview-wrap").height() - d.height)/2 });
-  $(".preview-wrap .aspect").append(canvas);
+  canvas.css({ width:targetW, height:targetH, position:"absolute" });
+  const aspectRect = $(".aspect").get(0).getBoundingClientRect();
+  const left = (aspectRect.width - targetW)/2;
+  const top  = (aspectRect.height - targetH)/2;
+  canvas.css({ left:left+"px", top:top+"px" });
+  $(".aspect").append(canvas);
 }
 function drawRoi(ctx, bbox, label, color="#22d3ee"){
   const {x,y,width,height}=bbox;
@@ -316,6 +365,7 @@ async function startCamera(){
     $video.srcObject = stream;
     $video.onloadeddata = function(){
       $video.play(); $video.style.display = "block"; $img.style.display = "none";
+      setDuiScalePreview();
       resizeCanvas(); detecting = true; detectFrame();
       kvCam.textContent = facingMode === "user" ? "Frontal" : "Trasera";
       kvRes.textContent = `${$video.videoWidth}×${$video.videoHeight}`;
@@ -326,7 +376,7 @@ async function startCamera(){
 }
 function stopCamera(silent=false){
   detecting=false; if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
-  $(".preview-wrap canvas#overlay").remove(); $("#fps").text("0"); kvFps.textContent="0";
+  $("canvas#overlay").remove(); $("#fps").text("0"); kvFps.textContent="0";
   $video.style.display="none"; $video.srcObject=null; if(!silent) toast("Cámara detenida","ok"); $("#btnStop").prop("disabled", true);
 }
 async function detectFrame(){
@@ -342,10 +392,12 @@ async function detectFrame(){
   requestAnimationFrame(detectFrame);
 }
 async function detectOnImageElement(img){
-  stopCamera(true); $(".preview-wrap canvas#overlay").remove(); if(imgCanvas) imgCanvas.remove();
+  stopCamera(true); $("canvas#overlay").remove(); if(imgCanvas) imgCanvas.remove();
+  setDuiScalePreview();
   imgCanvas = document.createElement("canvas"); imgCanvas.width=img.naturalWidth; imgCanvas.height=img.naturalHeight;
-  imgCanvas.style.width="100%"; imgCanvas.style.height="auto"; imgCtx=imgCanvas.getContext("2d"); imgCtx.drawImage(img,0,0);
-  $(".preview-wrap .aspect").append(imgCanvas);
+  imgCanvas.style.maxWidth="100%"; imgCanvas.style.maxHeight="100%"; imgCanvas.style.height="auto";
+  imgCtx=imgCanvas.getContext("2d"); imgCtx.drawImage(img,0,0);
+  $(".aspect").append(imgCanvas);
   if(!workerId || !inferEngine){ toast("Modelo aún no listo","warn"); return; }
   try{
     let source = imgCanvas; if(typeof createImageBitmap==="function"){ try{ source=await createImageBitmap(imgCanvas);}catch(_){ } }
@@ -451,10 +503,18 @@ $("#btnApplyTpl").on("click", ()=>{
   const id=$("#templateSel").val(); if(id==="none") { toast("Selecciona una plantilla","warn"); return; }
   const tpl=TEMPLATES[id]; if(!tpl){ toast("Plantilla no encontrada","bad"); return; }
   normalized = tpl.post({...normalized});
-  // Completar expected vacíos con ""
   tpl.expected.forEach(k=>{ if(!(k in normalized)) normalized[k]=""; });
   renderNormalizedTable(); setPillsFrom(normalized); toast("Plantilla aplicada","ok");
 });
+
+/* ===== DUI: marco a escala ===== */
+function setDuiScalePreview(){
+  const aspect = document.querySelector('.aspect');
+  if (!aspect.classList.contains('dui-scale')){
+    aspect.classList.add('dui-scale');
+    toast("Vista previa ajustada al tamaño de un DUI salvadoreño (8.56 × 5.40 cm)", "ok");
+  }
+}
 
 /* ===== Boot del modelo ===== */
 async function startWorkerCompat(engine, MODEL_ID, VERSION, API_KEY) {
@@ -474,25 +534,26 @@ async function startWorkerCompat(engine, MODEL_ID, VERSION, API_KEY) {
     const { InferenceEngine } = inferencejs; inferEngine = new InferenceEngine();
     if(!hasWebGL2()) throw new Error("WebGL2 no disponible; intentando WASM/CPU…");
     workerId = await startWorkerCompat(inferEngine,"idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-    kvBackend.textContent = "GPU / WebGL2"; toast("Modelo cargado (GPU)","ok");
+    document.getElementById("kv-backend").textContent = "GPU / WebGL2"; toast("Modelo cargado (GPU)","ok");
   }catch(e){
     console.warn("[inference] GPU falló, probando WASM/CPU…", e);
     try{
       if(typeof inferEngine?.startWorkerWasm==="function"){
         workerId = await inferEngine.startWorkerWasm("idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-        kvBackend.textContent = "WASM (CPU)"; toast("Modelo cargado (WASM)","ok");
+        document.getElementById("kv-backend").textContent = "WASM (CPU)"; toast("Modelo cargado (WASM)","ok");
       }else if(typeof inferEngine?.startWorkerCpu==="function"){
         workerId = await inferEngine.startWorkerCpu("idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-        kvBackend.textContent = "CPU"; toast("Modelo cargado (CPU)","ok");
+        document.getElementById("kv-backend").textContent = "CPU"; toast("Modelo cargado (CPU)","ok");
       }else{
         workerId = await startWorkerCompat(inferEngine,"idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-        kvBackend.textContent = "Auto"; toast("Modelo cargado","ok");
+        document.getElementById("kv-backend").textContent = "Auto"; toast("Modelo cargado","ok");
       }
     }catch(e2){ console.error(e2); toast("Error al cargar el modelo","bad"); }
   }finally{
     setBusy(false); const ready=!!workerId;
-    kvModel.textContent = ready?"Listo":"Error";
+    document.getElementById("kv-model").textContent = ready?"Listo":"Error";
     $("#btnStart,#btnDetectImage,#btnOcr").prop("disabled", !ready);
+    setDuiScalePreview();
   }
 })();
 
@@ -502,26 +563,25 @@ $("#btnStop").on("click", ()=>stopCamera(false));
 $("#cameraMode").on("change", ()=>{ if(stream){ stopCamera(true); startCamera(); }});
 $("#fileInput").on("change", (e)=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return; const url=URL.createObjectURL(f);
-  $img.onload=()=>{ $img.style.display="block"; $video.style.display="none"; $("#fps").text("0"); kvRes.textContent=`${$img.naturalWidth}×${$img.naturalHeight}`; $("#btnOcr").prop("disabled", true); };
+  $img.onload=()=>{ $img.style.display="block"; $video.style.display="none"; $("#fps").text("0"); document.getElementById("kv-res").textContent=`${$img.naturalWidth}×${$img.naturalHeight}`; $("#btnOcr").prop("disabled", true); setDuiScalePreview(); };
   $img.src=url; toast("Imagen cargada","ok");
 });
 $("#btnDetectImage").on("click", ()=>{ if($img.src) detectOnImageElement($img); else toast("Sube una imagen primero","warn"); });
 $("#btnOcr").on("click", runOcrOnRois);
 
 // Drag & drop
-['dragenter','dragover'].forEach(ev=> $drop.on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $drop.addClass('drag'); }));
-['dragleave','drop'].forEach(ev=> $drop.on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $drop.removeClass('drag'); }));
-$drop.on('drop', e=>{
+['dragenter','dragover'].forEach(ev=> $("#dropzone").on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $("#dropzone").addClass('drag'); }));
+['dragleave','drop'].forEach(ev=> $("#dropzone").on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $("#dropzone").removeClass('drag'); }));
+$("#dropzone").on('drop', e=>{
   const dt=e.originalEvent.dataTransfer;
   if(dt && dt.files && dt.files[0]){
     const f=dt.files[0]; if(!f.type.startsWith('image/')){ toast("Arrastra una imagen","warn"); return; }
     const url=URL.createObjectURL(f);
-    $img.onload=()=>{ $img.style.display="block"; $video.style.display="none"; $("#fps").text("0"); kvRes.textContent=`${$img.naturalWidth}×${$img.naturalHeight}`; $("#btnOcr").prop("disabled", true); };
+    $img.onload=()=>{ $img.style.display="block"; $video.style.display="none"; $("#fps").text("0"); document.getElementById("kv-res").textContent=`${$img.naturalWidth}×${$img.naturalHeight}`; $("#btnOcr").prop("disabled", true); setDuiScalePreview(); };
     $img.src=url; toast("Imagen cargada (drag & drop)","ok");
   }
 });
-// KPI mini
-setInterval(()=>{ kvFps.textContent = $("#fps").text(); }, 500);
+setInterval(()=>{ document.getElementById("kv-fps").textContent = $("#fps").text(); }, 500);
 </script>
 </body>
 </html>
