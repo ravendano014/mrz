@@ -3,218 +3,460 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Detección por Cámara o Imagen — idslv-0mjeo v6</title>
+<title>DUI — Detección + OCR + Validación + Plantillas + Export</title>
 
+<!-- Libs -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.20/lodash.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/async/3.2.0/async.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/inferencejs@1.1.3"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<!-- SheetJS para XLSX -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.0/dist/xlsx.full.min.js"></script>
 
 <style>
-/* ====== Dark theme base ====== */
-:root {
-  color-scheme: dark;
+:root{
+  color-scheme:dark;
+  --bg:#0b0f14; --panel:#0f172a; --muted:#1f2937; --muted-2:#334155;
+  --text:#e5e7eb; --sub:#cbd5e1; --accent:#22d3ee; --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
+  --chip:#0b1220; --shadow: 0 10px 30px rgba(0,0,0,.35);
 }
-html, body {
-  margin: 0;
-  padding: 0;
-  background: #0b0f14;
-  color: #e5e7eb;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji';
-}
-.header {
-  position: sticky;
-  top: 0;
-  background: #0f172a;
-  border-bottom: 1px solid #1f2937;
-  padding: 10px 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  z-index: 10;
-}
-.header h1 {
-  font-size: 16px;
-  margin: 0 8px 0 0;
-  color: #cbd5e1;
-  font-weight: 600;
-}
-.header .spacer { flex: 1; }
-.button {
-  background: #111827;
-  border: 1px solid #374151;
-  color: #e5e7eb;
-  padding: 8px 10px;
-  border-radius: 10px;
-  cursor: pointer;
-}
-.button:hover { background: #1f2937; }
-/* Estilo para deshabilitado (opcional, para feedback visual) */
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-input[type="file"] {
-  display: inline-block;
-  padding: 6px 8px;
-  background: #0b1220;
-  border: 1px solid #334155;
-  border-radius: 10px;
-}
-.select {
-  background: #0b1220;
-  color: #e5e7eb;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 6px 8px;
-}
-.main {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  padding: 12px;
-}
-.preview-wrap {
-  position: relative;
-  width: min(95vw, 900px);
-  margin: 0 auto;
-  border: 1px solid #1f2937;
-  border-radius: 16px;
-  overflow: hidden;
-  background: #0b1220;
-}
-video, canvas, img#uploaded { display: block; width: 100%; height: auto; }
-#uploaded { display: none; }
-#fps {
-  position: absolute;
-  top: 10px; left: 10px;
-  background: rgba(0,0,0,.6);
-  padding: 4px 8px;
-  border-radius: 8px;
-  font-size: 12px;
-  border: 1px solid #334155;
-}
-.badge {
-  font-size: 12px;
-  padding: 4px 8px;
-  border: 1px solid #334155;
-  border-radius: 999px;
-  background: #0b1220;
-}
-
-/* ====== Original sample CSS (subset) ====== */
-/* Se mantiene el CSS original para la experiencia de carga del modelo */
-html,
-body {
-    background-color: black;
-    color: white;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
-        sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-}
-
-body video {
-    transition: filter 250ms linear;
-}
-
-body.loading video {
-    filter: grayscale(1) brightness(0.25);
-}
-
-body.loading:before {
-    content: "Loading Model...";
-    color: white;
-    text-align: center;
-    width: 100%;
-    position: absolute;
-    top: 20px;
-    font-size: 3em;
-    font-weight: bold;
-    z-index: 100;
-}
-/* Aseguramos que la cámara esté oculta por defecto hasta que se inicie */
-video {
-    display: none; 
-}
-
-html,
-body,
-video,
-canvas {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
-}
-
-/* Ajustamos el posicionamiento absoluto/fijo para el nuevo layout */
-video,
-canvas {
-    position: absolute; 
-    top: 0;
-    left: 0;
-}
-
-body:after {
-    content: "";
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 350px;
-    height: 150px;
-    z-index: 1;
-    background-image: url("https://uploads-ssl.webflow.com/5eca8e43c4dfff837f0f6392/5ecad58e650fb5ec53e8b811_roboflow_assets_logo_white.png");
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: bottom right;
-}
-
-#fps {
-    position: absolute; /* Cambiado de fixed a absolute para estar dentro de preview-wrap */
-    bottom: unset; /* Desactivar bottom: 10px */
-    left: 10px;
-    top: 10px;
-    z-index: 20;
-}
-
-#fps:empty {
-    display: none;
-}
-
-#fps:after {
-    content: " fps";
-}
-
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto}
+.header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--panel),#0e1529);border-bottom:1px solid var(--muted);padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.brand{display:flex;align-items:center;gap:10px}
+.brand h1{font-size:16px;margin:0;color:var(--sub);font-weight:600}
+.badge{font-size:12px;padding:4px 10px;border:1px solid var(--muted-2);border-radius:999px;background:var(--chip);color:var(--sub)}
+.spacer{flex:1}
+.select,.input-file,.button{height:36px;border-radius:10px;border:1px solid var(--muted-2);background:#0b1220;color:var(--text);padding:0 10px}
+.input-file{display:flex;align-items:center;gap:8px}
+.button{cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.button:hover{background:#111827}
+.button:disabled{opacity:.5;cursor:not-allowed}
+.button svg{width:16px;height:16px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;padding:14px}
+@media (max-width:1120px){.layout{grid-template-columns:1fr}}
+.card{background:#0b1220;border:1px solid var(--muted);border-radius:16px;box-shadow:var(--shadow)}
+.panel{padding:14px}
+.panel h3{margin:0 0 10px 0;font-size:14px;color:var(--sub);font-weight:600}
+.preview-wrap{position:relative;width:min(95vw,1100px);margin-inline:auto;overflow:hidden}
+.aspect{position:relative;width:100%;background:
+  linear-gradient(0deg,transparent 24%,rgba(255,255,255,.02) 25% 26%,transparent 27% 74%,rgba(255,255,255,.02) 75% 76%,transparent 77%),
+  linear-gradient(90deg,transparent 24%,rgba(255,255,255,.02) 25% 26%,transparent 27% 74%,rgba(255,255,255,.02) 75% 76%,transparent 77%),
+  linear-gradient(180deg,#0f172a,#0b0f14);
+  border-radius:16px;border:1px solid var(--muted)}
+video,canvas,img#uploaded{display:block;width:100%;height:auto}
+#uploaded{display:none}
+#fps{position:absolute;top:10px;left:10px;z-index:10;background:rgba(0,0,0,.55);border:1px solid var(--muted-2);padding:4px 8px;border-radius:8px;font-size:12px}
+.dropzone{margin-top:8px;border:1px dashed var(--muted-2);border-radius:12px;padding:14px;text-align:center;color:var(--sub);user-select:none}
+.dropzone.drag{background:rgba(34,211,238,.08);border-color:var(--accent);color:var(--text)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:8px;font-size:14px}
+.kv .key{color:var(--sub)}
+.table{width:100%;border-collapse:separate;border-spacing:0 8px;font-size:13px}
+.table th{color:var(--sub);text-align:left;font-weight:600}
+.table td,.table th{padding:8px 10px}
+.row{background:#0c1424;border:1px solid var(--muted);border-radius:10px}
+.row td:first-child{border-top-left-radius:10px;border-bottom-left-radius:10px}
+.row td:last-child{border-top-right-radius:10px;border-bottom-right-radius:10px}
+.progress{height:8px;background:#0c1220;border:1px solid var(--muted);border-radius:999px;overflow:hidden}
+.progress > div{height:100%;background:var(--accent);width:0%}
+.badge-mini{font-size:11px;padding:2px 8px;border:1px solid var(--muted-2);border-radius:999px;background:#081120;color:var(--sub)}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12px}
+.pill.ok{border:1px solid var(--ok);color:#d1fae5;background:rgba(16,185,129,.1)}
+.pill.warn{border:1px solid var(--warn);color:#fffbeb;background:rgba(245,158,11,.1)}
+.pill.bad{border:1px solid var(--bad);color:#fee2e2;background:rgba(239,68,68,.1)}
+.toast{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:40}
+.toast .item{background:#0b1220;border:1px solid var(--muted-2);padding:10px 12px;border-radius:12px;min-width:260px;box-shadow:var(--shadow);font-size:14px}
+.loading-overlay{position:fixed;inset:0;display:grid;place-items:center;background:rgba(5,8,12,.6);backdrop-filter:saturate(120%) blur(2px);z-index:50}
+.spinner{width:56px;height:56px;border-radius:50%;border:4px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:sp 1s linear infinite}
+.loading-box{display:flex;flex-direction:column;align-items:center;gap:12px;background:#0b1220;border:1px solid var(--muted);padding:18px 22px;border-radius:14px;box-shadow:var(--shadow)}
+@keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
-<body class="loading">
-  <div class="header">
-    <h1>Detección (Cámara / Imagen)</h1>
-    <span class="badge">Modelo: idslv-0mjeo · v6</span>
-    <div class="spacer"></div>
-    <select id="cameraMode" class="select" title="Cámara">
-      <option value="environment">Cámara trasera</option>
-      <option value="user">Cámara frontal</option>
-    </select>
-    <button id="btnStart" class="button">Iniciar cámara</button>
-    <button id="btnStop" class="button">Detener cámara</button>
-    <input id="fileInput" type="file" accept="image/*" />
-    <button id="btnDetectImage" class="button">Detectar en imagen</button>
-  </div>
+<body>
 
-  <div class="main">
-    <div class="preview-wrap">
-      <video id="video" autoplay muted playsinline></video>
-      <img id="uploaded" alt="Imagen cargada" />
-      <div id="fps">0</div>
-      </div>
+<header class="header">
+  <div class="brand">
+    <h1>DUI — Detección + OCR</h1>
+    <span class="badge">Modelo: idslv-0mjeo · v6</span>
   </div>
+  <div class="spacer"></div>
+
+  <div class="toolbar">
+    <label class="select"><select id="cameraMode"><option value="environment">Cámara trasera</option><option value="user">Cámara frontal</option></select></label>
+    <button id="btnStart" class="button" disabled>Iniciar</button>
+    <button id="btnStop" class="button" disabled>Detener</button>
+    <label class="input-file"><input id="fileInput" type="file" accept="image/*" /></label>
+    <button id="btnDetectImage" class="button" disabled>Detectar</button>
+    <button id="btnOcr" class="button" disabled>OCR (ROIs)</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="card panel">
+    <div class="preview-wrap">
+      <div id="fps">0</div>
+      <div class="aspect">
+        <video id="video" autoplay muted playsinline style="display:none"></video>
+        <img id="uploaded" alt="Imagen cargada" />
+      </div>
+    </div>
+    <div id="dropzone" class="dropzone">Arrastra una imagen aquí o usa “Subir”.</div>
+  </section>
+
+  <aside class="card panel" style="display:flex;flex-direction:column;gap:14px">
+    <section>
+      <h3>Estado</h3>
+      <div class="kv">
+        <div class="key">Modelo</div><div id="kv-model">Cargando…</div>
+        <div class="key">Backend</div><div id="kv-backend">—</div>
+        <div class="key">Resolución</div><div id="kv-res">—</div>
+        <div class="key">FPS</div><div id="kv-fps">0</div>
+        <div class="key">Cámara</div><div id="kv-cam">—</div>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="badge-mini">OCR</span>
+        <label class="select"><select id="ocrLang"><option value="eng+spa">eng+spa</option><option value="spa">spa</option><option value="eng">eng</option></select></label>
+        <label class="select"><select id="ocrPsm"><option value="6" selected>PSM 6 (bloques)</option><option value="7">PSM 7 (línea)</option><option value="11">PSM 11 (palabra)</option></select></label>
+      </div>
+      <div class="progress" title="Progreso OCR" style="margin-top:8px"><div id="ocrProg"></div></div>
+    </section>
+
+    <section>
+      <h3>Plantilla & Post-proceso</h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <label class="select"><select id="templateSel">
+          <option value="none">— Sin plantilla —</option>
+          <option value="dui_frente_2022">DUI Frente 2022</option>
+          <option value="dui_dorso_2022">DUI Dorso 2022</option>
+        </select></label>
+        <button id="btnApplyTpl" class="button" disabled>Aplicar plantilla</button>
+      </div>
+      <div id="validatePills" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </section>
+
+    <section>
+      <h3>Resultados OCR (ROIs)</h3>
+      <table class="table">
+        <thead><tr class="row"><th>Clase</th><th>Conf.</th><th>Texto</th></tr></thead>
+        <tbody id="ocrBody"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h3>Campos normalizados</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0">
+        <button id="btnExportJSON" class="button" disabled>Exportar JSON</button>
+        <button id="btnExportCSV" class="button" disabled>Exportar CSV</button>
+        <button id="btnExportXLSX" class="button" disabled>Exportar XLSX</button>
+        <span class="badge-mini">Las celdas son editables</span>
+      </div>
+      <table class="table">
+        <thead><tr class="row"><th>Campo</th><th>Valor</th></tr></thead>
+        <tbody id="normBody"></tbody>
+      </table>
+    </section>
+  </aside>
+</main>
+
+<div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
+<div id="loading" class="loading-overlay"><div class="loading-box"><div class="spinner"></div><div>Cargando modelo…</div><div style="font-size:12px;color:var(--sub)">Puede tardar la primera vez.</div></div></div>
 
 <script>
-/* ====== Código base del adjunto (adaptado y modificado para no iniciar cámara) ====== */
+/* ===== Utilidades UI ===== */
+function toast(msg, type="info"){
+  const box = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = 'item';
+  el.textContent = msg;
+  if(type==="ok") el.style.borderColor = "var(--ok)";
+  if(type==="warn") el.style.borderColor = "var(--warn)";
+  if(type==="bad") el.style.borderColor = "var(--bad)";
+  box.appendChild(el);
+  setTimeout(()=>{ el.style.opacity=.0; el.style.transition="opacity .4s"; setTimeout(()=>el.remove(), 400)}, 2600);
+}
+function setBusy(b){ document.getElementById('loading').style.display = b ? "grid" : "none"; }
+function hasWebGL2(){ try{ const c=document.createElement('canvas'); return !!c.getContext('webgl2',{antialias:false}); }catch(e){ return false; } }
 
-// Universal starter that tries multiple known signatures for InferenceJS
+/* ===== Elementos ===== */
+const $video = $("#video")[0]; const $img = $("#uploaded")[0]; const $drop=$("#dropzone");
+const $ocrBody = $("#ocrBody"); const $ocrProg = $("#ocrProg"); const $normBody = $("#normBody");
+const kvModel = document.getElementById("kv-model"), kvBackend = document.getElementById("kv-backend");
+const kvRes = document.getElementById("kv-res"), kvFps = document.getElementById("kv-fps"), kvCam = document.getElementById("kv-cam");
+const $pills = $("#validatePills");
+
+/* ===== Estado ===== */
+let inferEngine, workerId=null, detecting=false, stream=null;
+let canvas, ctx, prevTime, pastFrameTimes=[];
+let lastPreds=[], ocrRows=[], normalized={}, imgCanvas=null, imgCtx=null;
+
+/* ===== Mapeo clases → campos ===== */
+const CLASS_TO_FIELD = {
+  "nombres":"nombres","apellidos":"apellidos","nombre":"nombres","apellido":"apellidos",
+  "primer_nombre":"nombres","segundo_nombre":"nombres",
+  "dui":"dui","numero_dui":"dui","no_dui":"dui",
+  "nacimiento":"fecha_nacimiento","fecha_nacimiento":"fecha_nacimiento",
+  "emision":"fecha_emision","fecha_emision":"fecha_emision",
+  "expiracion":"fecha_expiracion","fecha_expiracion":"fecha_expiracion",
+  "sexo":"sexo","genero":"sexo",
+  "nacionalidad":"nacionalidad","lugar_nacimiento":"lugar_nacimiento",
+  "domicilio":"domicilio","direccion":"domicilio",
+  "municipio":"municipio","departamento":"departamento",
+  "mrz":"mrz","pdf417":"pdf417","firma":"firma","foto":"foto",
+  "ocr_misc":"otros"
+};
+
+/* ===== Normalizadores ===== */
+const normalizers = {
+  plain: (t)=> t.replace(/\s+/g," ").trim(),
+  nombre: (t)=> t.replace(/\s+/g," ").trim().toLowerCase().replace(/(^|\s)\p{L}/gu, m=>m.toUpperCase()),
+  dui: (t)=>{ const d=(t.match(/\d/g)||[]).join(""); return d.length===9? d.slice(0,8)+"-"+d.slice(8):d; },
+  fecha: (t)=>{ t=t.replace(/[O]/g,"0").replace(/[Il]/g,"1"); const m=t.match(/(\d{1,2})[^\d](\d{1,2})[^\d](\d{2,4})/); if(!m) return t.trim();
+               let d=m[1].padStart(2,"0"), mo=m[2].padStart(2,"0"), y=m[3]; if(y.length===2) y = (+y>30?"19":"20")+y; return `${d}/${mo}/${y}`; },
+  sexo: (t)=>{ t=t.trim().toUpperCase(); if(/F(EM)?/.test(t)) return "F"; if(/M(ALE)?/.test(t)||t==="H"||t==="V") return "M"; return t; }
+};
+
+/* ===== Validadores ===== */
+// Algoritmo del dígito verificador del DUI: pesos 9..2 sobre los primeros 8 dígitos; DV = (10 - (suma % 10)) % 10
+function computeDuiCheckDigit(first8){
+  const w=[9,8,7,6,5,4,3,2]; let sum=0;
+  for(let i=0;i<8;i++){ sum += (+first8[i]) * w[i]; }
+  return (10 - (sum % 10)) % 10;
+}
+function validateDUI(s){
+  const digits=(s.match(/\d/g)||[]).join("");
+  if(digits.length!==9) return {valid:false, reason:"Longitud ≠ 9"};
+  const dv=+digits[8]; const calc=computeDuiCheckDigit(digits.slice(0,8));
+  return {valid: dv===calc, reason: dv===calc?"OK":`DV esperado ${calc}`};
+}
+function validateDateDDMMYYYY(s){
+  const m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(!m) return {valid:false, reason:"Formato"};
+  const d=+m[1], mo=+m[2], y=+m[3];
+  const dt=new Date(y,mo-1,d);
+  const ok= dt.getFullYear()===y && (dt.getMonth()+1)===mo && dt.getDate()===d && y>=1900 && y<=2100;
+  return {valid:ok, reason: ok?"OK":"Fecha inválida"};
+}
+function validateSexo(s){ return {valid: s==="M"||s==="F", reason: (s==="M"||s==="F")?"OK":"Use M/F"}; }
+
+/* ===== Plantillas y post-proceso ===== */
+const TEMPLATES = {
+  "dui_frente_2022": {
+    expected:["nombres","apellidos","dui","fecha_nacimiento","sexo","municipio","departamento"],
+    post:(obj)=>{
+      // Nombre completo y mayúsculas acentuadas preservadas
+      if(obj.nombres||obj.apellidos) obj.nombre_completo = [obj.apellidos,obj.nombres].filter(Boolean).join(", ");
+      // DUI formateado y validado
+      if(obj.dui){ obj.dui = normalizers.dui(obj.dui); const v=validateDUI(obj.dui); obj._val_dui=v.valid; obj._val_dui_msg=v.reason; }
+      // Fechas
+      if(obj.fecha_nacimiento){ obj.fecha_nacimiento = normalizers.fecha(obj.fecha_nacimiento); }
+      // Sexo
+      if(obj.sexo){ obj.sexo = normalizers.sexo(obj.sexo); }
+      return obj;
+    }
+  },
+  "dui_dorso_2022": {
+    expected:["fecha_emision","fecha_expiracion","domicilio","municipio","departamento","mrz","pdf417","firma","foto"],
+    post:(obj)=>{
+      ["fecha_emision","fecha_expiracion"].forEach(k=>{ if(obj[k]) obj[k]=normalizers.fecha(obj[k]); });
+      // MRZ / PDF417: solo trim en este flujo
+      if(obj.mrz) obj.mrz = normalizers.plain(obj.mrz);
+      if(obj.pdf417) obj.pdf417 = normalizers.plain(obj.pdf417);
+      return obj;
+    }
+  }
+};
+
+/* ===== Render helpers ===== */
+function pill(text, type){ const span=document.createElement('span'); span.className=`pill ${type}`; span.textContent=text; return span; }
+function setPillsFrom(normal){
+  $pills.empty();
+  if(normal.dui){ const v=validateDUI(normal.dui); $pills.append(pill(`DUI: ${v.valid?'válido':'inválido'}${v.valid?'':` (${v.reason})`}`, v.valid?'ok':'bad')); }
+  ["fecha_nacimiento","fecha_emision","fecha_expiracion"].forEach(k=>{
+    if(normal[k]){ const v=validateDateDDMMYYYY(normal[k]); $pills.append(pill(`${k.replace('fecha_','fecha ')}: ${v.valid?'ok':'inválida'}`, v.valid?'ok':'bad')); }
+  });
+  if(normal.sexo){ const v=validateSexo(normal.sexo); $pills.append(pill(`sexo: ${v.valid?'ok':'inválido'}`, v.valid?'ok':'bad')); }
+}
+
+/* ===== Dibujo/Canvas ===== */
+function videoDimensions(video) {
+  const vr = video.videoWidth / video.videoHeight; let w = video.offsetWidth, h = video.offsetHeight;
+  const er = w / h; if (er > vr) w = h * vr; else h = w / vr; return { width:w, height:h };
+}
+function resizeCanvas(){
+  $("canvas#overlay").remove();
+  canvas = $("<canvas id='overlay'/>"); ctx = canvas[0].getContext("2d");
+  canvas[0].width = $video.videoWidth; canvas[0].height = $video.videoHeight;
+  const d = videoDimensions($video);
+  canvas.css({ width:d.width, height:d.height, position:"absolute",
+    left: ($(".preview-wrap").width() - d.width)/2, top: ($(".preview-wrap").height() - d.height)/2 });
+  $(".preview-wrap .aspect").append(canvas);
+}
+function drawRoi(ctx, bbox, label, color="#22d3ee"){
+  const {x,y,width,height}=bbox;
+  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(x-width/2,y-height/2,width,height);
+  const txt = label; ctx.font = "16px sans-serif"; const tw = ctx.measureText(txt).width;
+  ctx.fillStyle = color; ctx.fillRect(x-width/2, y-height/2-20, tw+8, 18);
+  ctx.fillStyle = "#000"; ctx.fillText(txt, x-width/2+4, y-height/2-6);
+}
+function renderPredictions(preds){
+  ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+  lastPreds = preds.map(p => ({...p}));
+  preds.forEach(p=>{
+    const label = p.class + (p.confidence? (" "+(p.confidence*100).toFixed(1)+"%"):"");
+    drawRoi(ctx, p.bbox, label, p.color || "#22d3ee");
+  });
+}
+
+/* ===== Cámara & Detección ===== */
+async function startCamera(){
+  if(!workerId){ toast("El modelo aún se carga…","warn"); return; }
+  try{
+    if(imgCanvas) imgCanvas.remove();
+    const facingMode = $("#cameraMode").val();
+    stream = await navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode}});
+    $video.srcObject = stream;
+    $video.onloadeddata = function(){
+      $video.play(); $video.style.display = "block"; $img.style.display = "none";
+      resizeCanvas(); detecting = true; detectFrame();
+      kvCam.textContent = facingMode === "user" ? "Frontal" : "Trasera";
+      kvRes.textContent = `${$video.videoWidth}×${$video.videoHeight}`;
+      toast("Cámara iniciada","ok");
+    };
+    $("#btnStop").prop("disabled", false);
+  }catch(err){ console.error(err); toast("No se pudo iniciar la cámara","bad"); }
+}
+function stopCamera(silent=false){
+  detecting=false; if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  $(".preview-wrap canvas#overlay").remove(); $("#fps").text("0"); kvFps.textContent="0";
+  $video.style.display="none"; $video.srcObject=null; if(!silent) toast("Cámara detenida","ok"); $("#btnStop").prop("disabled", true);
+}
+async function detectFrame(){
+  if(!workerId || !detecting){ return requestAnimationFrame(detectFrame); }
+  try{
+    const preds = await inferEngine.infer(workerId, $video);
+    renderPredictions(preds);
+    if(prevTime){ pastFrameTimes.push(Date.now()-prevTime); if(pastFrameTimes.length>30) pastFrameTimes.shift();
+      const total = pastFrameTimes.reduce((a,t)=>a+t/1000,0); const fps = pastFrameTimes.length/total;
+      $("#fps").text(Math.round(fps)); kvFps.textContent = Math.round(fps); }
+    prevTime = Date.now();
+  }catch(e){ console.warn(e); }
+  requestAnimationFrame(detectFrame);
+}
+async function detectOnImageElement(img){
+  stopCamera(true); $(".preview-wrap canvas#overlay").remove(); if(imgCanvas) imgCanvas.remove();
+  imgCanvas = document.createElement("canvas"); imgCanvas.width=img.naturalWidth; imgCanvas.height=img.naturalHeight;
+  imgCanvas.style.width="100%"; imgCanvas.style.height="auto"; imgCtx=imgCanvas.getContext("2d"); imgCtx.drawImage(img,0,0);
+  $(".preview-wrap .aspect").append(imgCanvas);
+  if(!workerId || !inferEngine){ toast("Modelo aún no listo","warn"); return; }
+  try{
+    let source = imgCanvas; if(typeof createImageBitmap==="function"){ try{ source=await createImageBitmap(imgCanvas);}catch(_){ } }
+    const preds = await inferEngine.infer(workerId, source); if(source && source.close) try{source.close()}catch(_){}
+    imgCtx.drawImage(img,0,0); lastPreds = preds.map(p=>({...p}));
+    preds.forEach(p=> drawRoi(imgCtx, p.bbox, p.class + (p.confidence? (" "+(p.confidence*100).toFixed(1)+"%"):""), p.color||"#22d3ee") );
+    toast("Detección en imagen completa","ok"); $("#btnOcr").prop("disabled", lastPreds.length===0);
+  }catch(err){ console.error(err); toast("Error en detección","bad"); }
+}
+
+/* ===== OCR sobre ROIs ===== */
+function bboxToRect(b){ return { x: Math.max(0, Math.round(b.x - b.width/2)), y: Math.max(0, Math.round(b.y - b.height/2)),
+                                  w: Math.round(b.width), h: Math.round(b.height) }; }
+function cropFromCanvas(sourceCanvas, r){ const c=document.createElement('canvas'); c.width=Math.max(1,r.w); c.height=Math.max(1,r.h);
+  c.getContext('2d').drawImage(sourceCanvas, r.x, r.y, r.w, r.h, 0,0,r.w,r.h); return c; }
+function clearOcrTable(){ $ocrBody.empty(); ocrRows=[]; }
+function pushOcrRow(cls, conf, text){ const tr=document.createElement('tr'); tr.className='row';
+  const td1=document.createElement('td'); td1.textContent=cls;
+  const td2=document.createElement('td'); td2.textContent=conf!=null?(conf*100).toFixed(1)+'%':'—';
+  const td3=document.createElement('td'); td3.textContent=(text||'').trim();
+  tr.append(td1,td2,td3); $ocrBody.append(tr); ocrRows.push({cls,conf,text:(text||'').trim()}); }
+function setOcrProgress(p){ $ocrProg[0].style.width = (Math.max(0,Math.min(1,p))*100).toFixed(0)+'%'; }
+
+async function runOcrOnRois(){
+  if(!lastPreds || lastPreds.length===0){ toast("No hay ROIs. Detecta primero.","warn"); return; }
+  let srcCanvas=null;
+  if(imgCanvas){ srcCanvas=imgCanvas; }
+  else if($video && $video.srcObject){ const c=document.createElement('canvas'); c.width=$video.videoWidth; c.height=$video.videoHeight; c.getContext('2d').drawImage($video,0,0); srcCanvas=c; }
+  else { toast("No hay imagen ni video.","warn"); return; }
+
+  clearOcrTable(); setOcrProgress(0); $("#btnOcr").prop("disabled", true);
+  const langs=$("#ocrLang").val()||"eng+spa"; const psm=$("#ocrPsm").val()||"6";
+  toast("OCR en curso…","ok");
+  try{
+    for(let i=0;i<lastPreds.length;i++){
+      const p=lastPreds[i]; const rect=bboxToRect(p.bbox); const crop=cropFromCanvas(srcCanvas, rect);
+      const { data } = await Tesseract.recognize(crop, langs, { logger:m=>{
+        if(m.status==='recognizing text' && m.progress!=null){ const base=i/lastPreds.length, span=1/lastPreds.length; setOcrProgress(base+span*m.progress); }
+      }, tessedit_pageseg_mode:Number(psm) });
+      pushOcrRow(p.class, p.confidence ?? null, (data&&data.text)||'');
+    }
+    setOcrProgress(1); toast("OCR completado","ok"); buildNormalized();
+  }catch(err){ console.error(err); toast("Error durante OCR","bad"); }
+  finally{ $("#btnOcr").prop("disabled", false); }
+}
+
+/* ===== Normalización ===== */
+function fieldForClass(cls){ const k=(cls||"").toLowerCase().trim(); return CLASS_TO_FIELD[k] || k; }
+function normalizeByField(field, raw){
+  const t=(raw||"").replace(/\s+/g," ").trim(); if(!t) return "";
+  switch(field){
+    case "nombres": case "apellidos": return normalizers.nombre(t);
+    case "dui": return normalizers.dui(t);
+    case "fecha_nacimiento": case "fecha_emision": case "fecha_expiracion": return normalizers.fecha(t);
+    case "sexo": return normalizers.sexo(t);
+    default: return normalizers.plain(t);
+  }
+}
+function buildNormalized(){
+  normalized={};
+  for(const row of ocrRows){
+    const field=fieldForClass(row.cls); const clean=normalizeByField(field, row.text);
+    if(!clean) continue;
+    if(normalized[field]){ if(clean.length > normalized[field].length) normalized[field]=clean; }
+    else normalized[field]=clean;
+  }
+  renderNormalizedTable(); setPillsFrom(normalized);
+}
+function renderNormalizedTable(){
+  $normBody.empty();
+  const keys=Object.keys(normalized);
+  if(keys.length===0){ const tr=document.createElement('tr'); tr.className="row"; const td=document.createElement('td'); td.colSpan=2; td.textContent="(Sin datos normalizados)"; tr.append(td); $normBody.append(tr);
+    $("#btnExportJSON,#btnExportCSV,#btnExportXLSX,#btnApplyTpl").prop("disabled", true); return; }
+  keys.forEach(k=>{
+    const tr=document.createElement('tr'); tr.className="row";
+    const td1=document.createElement('td'); td1.textContent=k;
+    const td2=document.createElement('td'); const input=document.createElement('input'); input.value=normalized[k];
+    Object.assign(input.style,{width:"100%",height:"32px",background:"#0b1220",color:"var(--text)",border:"1px solid var(--muted-2)",borderRadius:"8px"});
+    input.addEventListener('change',()=>{ normalized[k]=input.value; setPillsFrom(normalized); });
+    td2.appendChild(input); tr.append(td1,td2); $normBody.append(tr);
+  });
+  $("#btnExportJSON,#btnExportCSV,#btnExportXLSX,#btnApplyTpl").prop("disabled", false);
+}
+
+/* ===== Export ===== */
+function download(filename, mime, text){
+  const blob = new Blob([text], {type:mime}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+function toCSV(obj){ const keys=Object.keys(obj); const vals=keys.map(k=> String(obj[k]).replace(/"/g,'""')); return keys.join(",")+"\n"+vals.map(v=>`"${v}"`).join(","); }
+$("#btnExportJSON").on("click", ()=>{ if(!Object.keys(normalized).length) return; download("dui_normalizado.json","application/json;charset=utf-8", JSON.stringify(normalized,null,2)); toast("Exportado JSON","ok"); });
+$("#btnExportCSV").on("click", ()=>{ if(!Object.keys(normalized).length) return; download("dui_normalizado.csv","text/csv;charset=utf-8", toCSV(normalized)); toast("Exportado CSV","ok"); });
+$("#btnExportXLSX").on("click", ()=>{
+  if(!Object.keys(normalized).length) return;
+  const ws = XLSX.utils.json_to_sheet([normalized]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "DUI");
+  XLSX.writeFile(wb, "dui_normalizado.xlsx"); toast("Exportado XLSX","ok");
+});
+
+/* ===== Aplicar plantilla ===== */
+$("#btnApplyTpl").on("click", ()=>{
+  const id=$("#templateSel").val(); if(id==="none") { toast("Selecciona una plantilla","warn"); return; }
+  const tpl=TEMPLATES[id]; if(!tpl){ toast("Plantilla no encontrada","bad"); return; }
+  normalized = tpl.post({...normalized});
+  // Completar expected vacíos con ""
+  tpl.expected.forEach(k=>{ if(!(k in normalized)) normalized[k]=""; });
+  renderNormalizedTable(); setPillsFrom(normalized); toast("Plantilla aplicada","ok");
+});
+
+/* ===== Boot del modelo ===== */
 async function startWorkerCompat(engine, MODEL_ID, VERSION, API_KEY) {
   const attempts = [
     () => engine.startWorker(MODEL_ID, VERSION, API_KEY),
@@ -223,417 +465,63 @@ async function startWorkerCompat(engine, MODEL_ID, VERSION, API_KEY) {
     () => engine.startWorker?.({ modelId: MODEL_ID, modelVersion: VERSION, apiKey: API_KEY }),
     () => engine.startWorker?.({ id: MODEL_ID, version: VERSION, apiKey: API_KEY }),
   ];
-
-  const errors = [];
-  for (const makeCall of attempts) {
-    try {
-      const id = await makeCall();
-      if (id != null) return id;
-    } catch (e) {
-      errors.push(e);
-      // If error mentions spread/iterator, keep trying next signature
-      continue;
-    }
-  }
-  // Nothing worked; throw the last error for visibility
-  const err = errors.length ? errors[errors.length - 1] : new Error("No compatible startWorker signature");
-  throw err;
+  for (const call of attempts){ try{ const id=await call(); if(id!=null) return id; }catch(e){ } }
+  throw new Error("No compatible startWorker signature");
 }
-
-
-// Probe for WebGL2 availability
-function hasWebGL2() {
-  try {
-    const c = document.createElement('canvas');
-    const gl2 = c.getContext('webgl2', { antialias: false, preserveDrawingBuffer: false });
-    return !!gl2;
-  } catch (e) {
-    return false;
-  }
-}
-
-/*jshint esversion:6*/
-
-$(function () {
-    const { InferenceEngine } = inferencejs;
-    // Hacemos inferEngine global para las extensiones
-    window.inferEngine = new InferenceEngine(); 
-    
-    const video = $("#video")[0];
-
-    var workerId;
-    // Hacemos workerId global para las extensiones
-    window.workerId = workerId; 
-    
-    // Eliminamos startVideoStreamPromise para evitar el inicio automático.
-
-    const loadModelPromise = new Promise(function (resolve, reject) {
-        (async () => {
-            try {
-                if (!hasWebGL2()) {
-                    throw new Error("WebGL2 is not available. Trying non-GPU fallback…");
-                }
-                const id = await startWorkerCompat(inferEngine, "idslv-0mjeo", "6", "rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-                workerId = id;
-                window.workerId = id;
-                resolve();
-            } catch (eWebgl) {
-                console.warn("[inference] GPU path failed, trying WASM/CPU fallback…", eWebgl);
-                try {
-                    if (typeof inferEngine.startWorkerWasm === "function") {
-                        const id2 = await inferEngine.startWorkerWasm("idslv-0mjeo", "6", "rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-                        workerId = id2;
-                        window.workerId = id2;
-                        resolve();
-                    } else if (typeof inferEngine.startWorkerCpu === "function") {
-                        const id3 = await inferEngine.startWorkerCpu("idslv-0mjeo", "6", "rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-                        workerId = id3;
-                        window.workerId = id3;
-                        resolve();
-                    } else {
-                        // Try a non-GPU start with the same compat shim (some builds auto-select backend)
-                        const id4 = await startWorkerCompat(inferEngine, "idslv-0mjeo", "6", "rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
-                        workerId = id4;
-                        window.workerId = id4;
-                        resolve();
-                    }
-                } catch (eFallback) {
-                    reject(eFallback);
-                }
-            }
-        })();
-    });
-
-    // Solo esperamos la carga del modelo.
-    loadModelPromise.then(function () {
-        $("body").removeClass("loading");
-        
-        // Habilitar el botón de detección de imagen una vez que el modelo esté cargado
-        $("#btnDetectImage").prop("disabled", false); 
-        console.log("Modelo de inferencia cargado. Listo para detección.");
-        
-    }).catch(function(e) {
-        console.error("Error al cargar el modelo:", e);
-    });
-    
-    // Deshabilitar detección de imagen hasta que el modelo esté listo
-    $("#btnDetectImage").prop("disabled", true);
-
-
-    // Secciones para Canvas y Detección (mantienen su función, solo se llaman de forma diferente)
-    var canvas, ctx;
-    const font = "16px sans-serif";
-    
-    function videoDimensions(video) {
-        // Ratio of the video's intrisic dimensions
-        var videoRatio = video.videoWidth / video.videoHeight;
-        // The width and height of the video element
-        var width = video.offsetWidth,
-            height = video.offsetHeight;
-        // The ratio of the element's width to its height
-        var elementRatio = width / height;
-
-        // If the video element is short and wide
-        if (elementRatio > videoRatio) {
-            width = height * videoRatio;
-        } else {
-            // It must be tall and thin, or exactly equal to the original ratio
-            height = width / videoRatio;
-        }
-        return { width: width, height: height };
-    }
-
-    $(window).resize(function () {
-        // Solo redimensionar si el video está visible (cámara activa)
-        if ($("#video").is(":visible") && video.srcObject) {
-            resizeCanvas();
-        }
-    });
-
-    // Hacemos global para las extensiones
-    window.resizeCanvas = function () { 
-        $("canvas").remove();
-        canvas = $("<canvas/>");
-        ctx = canvas[0].getContext("2d");
-
-        var dimensions = videoDimensions(video);
-        
-        canvas[0].width = video.videoWidth;
-        canvas[0].height = video.videoHeight;
-
-        canvas.css({
-            width: dimensions.width,
-            height: dimensions.height,
-            // Ajuste de posicionamiento relativo al preview-wrap
-            left: ($(".preview-wrap").width() - dimensions.width) / 2, 
-            top: ($(".preview-wrap").height() - dimensions.height) / 2
-        });
-
-        $(".preview-wrap").append(canvas); // Insertar dentro de preview-wrap
-    };
-
-    const renderPredictions = function (predictions) { 
-        var scale = 1;
-
-        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
-        predictions.forEach(function (prediction) {
-            const x = prediction.bbox.x;
-            const y = prediction.bbox.y;
-
-            const width = prediction.bbox.width;
-            const height = prediction.bbox.height;
-
-            // Draw the bounding box.
-            ctx.strokeStyle = prediction.color;
-            ctx.lineWidth = 4;
-            ctx.strokeRect(
-                (x - width / 2) / scale,
-                (y - height / 2) / scale,
-                width / scale,
-                height / scale
-            );
-
-            // Draw the label background.
-            ctx.fillStyle = prediction.color;
-            const textWidth = ctx.measureText(prediction.class).width;
-            const textHeight = parseInt(font, 10); // base 10
-            ctx.fillRect(
-                (x - width / 2) / scale,
-                (y - height / 2) / scale,
-                textWidth + 8,
-                textHeight + 4
-            );
-        });
-
-        predictions.forEach(function (prediction) {
-            const x = prediction.bbox.x;
-            const y = prediction.bbox.y;
-
-            const width = prediction.bbox.width;
-            const height = prediction.bbox.height;
-
-            // Draw the text last to ensure it's on top.
-            ctx.font = font;
-            ctx.textBaseline = "top";
-            ctx.fillStyle = "#000000";
-            ctx.fillText(
-                prediction.class,
-                (x - width / 2) / scale + 4,
-                (y - height / 2) / scale + 1
-            );
-        });
-    };
-
-    var prevTime;
-    var pastFrameTimes = [];
-    // Bandera para controlar el loop de detección
-    window.detecting = false; 
-    
-    // Hacemos global para poder llamarlo desde startCamera
-    window.detectFrame = function () { 
-        if (!workerId || !window.detecting) {
-             return requestAnimationFrame(detectFrame);
-        }
-
-        const image = video;
-        inferEngine
-            .infer(workerId, image)
-            .then(function (predictions) {
-                requestAnimationFrame(detectFrame);
-                renderPredictions(predictions);
-
-                if (prevTime) {
-                    pastFrameTimes.push(Date.now() - prevTime);
-                    if (pastFrameTimes.length > 30) pastFrameTimes.shift();
-
-                    var total = 0;
-                    _.each(pastFrameTimes, function (t) {
-                        total += t / 1000;
-                    });
-
-                    var fps = pastFrameTimes.length / total;
-                    $("#fps").text(Math.round(fps));
-                }
-                prevTime = Date.now();
-            })
-            .catch(function (e) {
-                console.log("CAUGHT", e);
-                // Si hay un error, intentamos seguir el loop
-                requestAnimationFrame(detectFrame);
-            });
-    };
-});
-
-
-/* ====== Extensiones para subir imagen y detectar (Ajustadas para globals) ====== */
-(function(){
-  const $video = $("#video")[0];
-  const $img   = $("#uploaded")[0];
-  const $wrap  = $(".preview-wrap");
-  let imgCanvas = null, imgCtx = null;
-  let stream = null;
-
-  // Utilidades para dibujar predicciones sobre un canvas arbitrario
-  function drawPredictionsOn(ctx, predictions) {
-    if (!predictions) return;
-    ctx.lineWidth = 4;
-    predictions.forEach(p => {
-      const x = p.bbox.x, y = p.bbox.y, w = p.bbox.width, h = p.bbox.height;
-      ctx.strokeStyle = p.color || "#22d3ee";
-      ctx.strokeRect(x - w/2, y - h/2, w, h);
-
-      const label = p.class + (p.confidence ? (" " + (p.confidence*100).toFixed(1) + "%") : "");
-      const font = "16px sans-serif";
-      ctx.font = font;
-      const tw = ctx.measureText(label).width;
-      ctx.fillStyle = p.color || "#22d3ee";
-      ctx.fillRect(x - w/2, y - h/2 - 18, tw + 8, 18);
-      ctx.fillStyle = "#000";
-      ctx.fillText(label, x - w/2 + 4, y - h/2 - 16 + 14);
-    });
-  }
-
-  // Función para detectar sobre una imagen subida
-  async function detectOnImageElement(img) {
-    // detener cámara si está activa
-    stopCamera();
-    
-    // Eliminar canvas de video si existe
-    $(".preview-wrap canvas").remove();
-
-    // preparar canvas del tamaño de la imagen
-    if (imgCanvas) imgCanvas.remove();
-    imgCanvas = document.createElement("canvas");
-    imgCanvas.width  = img.naturalWidth;
-    imgCanvas.height = img.naturalHeight;
-    imgCanvas.style.width = "100%";
-    imgCanvas.style.height = "auto";
-    imgCtx = imgCanvas.getContext("2d");
-    imgCtx.drawImage(img, 0, 0);
-
-    // insertar canvas en la UI (sobre la vista previa)
-    $wrap.append(imgCanvas);
-
-    // crear CVImage desde el canvas y ejecutar inferencia
-    const imageInput = imgCanvas;
-    try {
-      // Usamos las variables globales
-      if (!window.workerId || !window.inferEngine) {
-        console.warn("Modelo aún no cargado...");
-        return;
+(async function boot(){
+  setBusy(true);
+  try{
+    const { InferenceEngine } = inferencejs; inferEngine = new InferenceEngine();
+    if(!hasWebGL2()) throw new Error("WebGL2 no disponible; intentando WASM/CPU…");
+    workerId = await startWorkerCompat(inferEngine,"idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+    kvBackend.textContent = "GPU / WebGL2"; toast("Modelo cargado (GPU)","ok");
+  }catch(e){
+    console.warn("[inference] GPU falló, probando WASM/CPU…", e);
+    try{
+      if(typeof inferEngine?.startWorkerWasm==="function"){
+        workerId = await inferEngine.startWorkerWasm("idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+        kvBackend.textContent = "WASM (CPU)"; toast("Modelo cargado (WASM)","ok");
+      }else if(typeof inferEngine?.startWorkerCpu==="function"){
+        workerId = await inferEngine.startWorkerCpu("idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+        kvBackend.textContent = "CPU"; toast("Modelo cargado (CPU)","ok");
+      }else{
+        workerId = await startWorkerCompat(inferEngine,"idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+        kvBackend.textContent = "Auto"; toast("Modelo cargado","ok");
       }
-      const _bm = await makeBitmapFrom(imageInput);
-      const preds = await inferEngine.infer(window.workerId, _bm || imageInput);
-      if (_bm && _bm.close) { try { _bm.close(); } catch(_){} }
-      // volver a dibujar la imagen (limpia)
-      imgCtx.drawImage(img, 0, 0);
-      drawPredictionsOn(imgCtx, preds);
-    } catch (err) {
-      console.error("Error en detección de imagen:", err);
-    }
+    }catch(e2){ console.error(e2); toast("Error al cargar el modelo","bad"); }
+  }finally{
+    setBusy(false); const ready=!!workerId;
+    kvModel.textContent = ready?"Listo":"Error";
+    $("#btnStart,#btnDetectImage,#btnOcr").prop("disabled", !ready);
   }
-
-  // Cargar imagen desde input
-  $("#fileInput").on("change", (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    $img.onload = () => {
-      $img.style.display = "block";
-      $video.style.display = "none";
-      $("#fps").text("0"); // Limpiar FPS
-    };
-    $img.src = url;
-  });
-
-  // Botón "Detectar en imagen"
-  $("#btnDetectImage").on("click", () => {
-    if ($img.src) detectOnImageElement($img);
-  });
-
-  // Controles de cámara
-  async function startCamera() {
-    if (!window.workerId) {
-        alert("El modelo aún se está cargando. Por favor, espera un momento.");
-        return;
-    }
-    try {
-      // detener detección de imagen
-      if (imgCanvas) imgCanvas.remove();
-      
-      const facingMode = $("#cameraMode").val();
-      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode } });
-      $video.srcObject = stream;
-      
-      // Esperar a que el video esté listo para la detección y el canvas
-      $video.onloadeddata = function() {
-          $video.play();
-          $video.style.display = "block";
-          $img.style.display = "none";
-          
-          // forzar redibujado de canvas del demo original
-          if (typeof resizeCanvas === "function") window.resizeCanvas();
-
-          // Iniciar el ciclo de detección
-          window.detecting = true;
-          window.detectFrame();
-      };
-      
-    } catch (err) {
-      console.error("No se pudo iniciar la cámara:", err);
-      alert("No se pudo iniciar la cámara. Revisa permisos y disponibilidad.");
-    }
-  }
-  function stopCamera() {
-    window.detecting = false; // Detener el loop de detección
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
-    }
-    // Eliminar el canvas de las detecciones de video
-    $(".preview-wrap canvas").remove();
-    $("#fps").text("0"); // Limpiar FPS
-    $video.style.display = "none"; // Ocultar el elemento de video
-    $video.srcObject = null;
-  }
-
-  $("#btnStart").on("click", startCamera);
-  $("#btnStop").on("click", stopCamera);
-
 })();
-</script>
 
-<script>
-// --- Added helper: create a transferable ImageBitmap from various sources
-async function makeBitmapFrom(source) {
-  // If it's already an ImageBitmap, return it
-  if (typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap) return source;
+/* ===== UI eventos ===== */
+$("#btnStart").on("click", startCamera);
+$("#btnStop").on("click", ()=>stopCamera(false));
+$("#cameraMode").on("change", ()=>{ if(stream){ stopCamera(true); startCamera(); }});
+$("#fileInput").on("change", (e)=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return; const url=URL.createObjectURL(f);
+  $img.onload=()=>{ $img.style.display="block"; $video.style.display="none"; $("#fps").text("0"); kvRes.textContent=`${$img.naturalWidth}×${$img.naturalHeight}`; $("#btnOcr").prop("disabled", true); };
+  $img.src=url; toast("Imagen cargada","ok");
+});
+$("#btnDetectImage").on("click", ()=>{ if($img.src) detectOnImageElement($img); else toast("Sube una imagen primero","warn"); });
+$("#btnOcr").on("click", runOcrOnRois);
 
-  // If it's a canvas-like or video/image element, we can create an ImageBitmap directly
-  if (typeof createImageBitmap === "function") {
-    try {
-      return await createImageBitmap(source);
-    } catch (e) {
-      // Fallback: draw to a temporary canvas then createImageBitmap
-      try {
-        const w = source.videoWidth || source.naturalWidth || source.width;
-        const h = source.videoHeight || source.naturalHeight || source.height;
-        const tmp = document.createElement("canvas");
-        tmp.width = w; tmp.height = h;
-        const ctx = tmp.getContext("2d");
-        ctx.drawImage(source, 0, 0, w, h);
-        return await createImageBitmap(tmp);
-      } catch (e2) {
-        console.warn("[makeBitmapFrom] createImageBitmap failed; trying ImageData fallback", e2);
-      }
-    }
+// Drag & drop
+['dragenter','dragover'].forEach(ev=> $drop.on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $drop.addClass('drag'); }));
+['dragleave','drop'].forEach(ev=> $drop.on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $drop.removeClass('drag'); }));
+$drop.on('drop', e=>{
+  const dt=e.originalEvent.dataTransfer;
+  if(dt && dt.files && dt.files[0]){
+    const f=dt.files[0]; if(!f.type.startsWith('image/')){ toast("Arrastra una imagen","warn"); return; }
+    const url=URL.createObjectURL(f);
+    $img.onload=()=>{ $img.style.display="block"; $video.style.display="none"; $("#fps").text("0"); kvRes.textContent=`${$img.naturalWidth}×${$img.naturalHeight}`; $("#btnOcr").prop("disabled", true); };
+    $img.src=url; toast("Imagen cargada (drag & drop)","ok");
   }
-
-  // Ultimate fallback: return null and let caller handle ImageData path
-  return null;
-}
+});
+// KPI mini
+setInterval(()=>{ kvFps.textContent = $("#fps").text(); }, 500);
 </script>
-
 </body>
 </html>
