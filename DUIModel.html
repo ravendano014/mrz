@@ -120,7 +120,7 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
 <header class="header">
   <div class="brand">
     <h1>DUI — Detección + OCR</h1>
-    <span class="badge">Modelo: idslv-0mjeo · v6</span>
+    <span class="badge">Modelo: dui-bms4n · v1</span>
   </div>
   <div class="spacer"></div>
 
@@ -533,19 +533,19 @@ async function startWorkerCompat(engine, MODEL_ID, VERSION, API_KEY) {
   try{
     const { InferenceEngine } = inferencejs; inferEngine = new InferenceEngine();
     if(!hasWebGL2()) throw new Error("WebGL2 no disponible; intentando WASM/CPU…");
-    workerId = await startWorkerCompat(inferEngine,"idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+    workerId = await startWorkerCompat(inferEngine,"dui-bms4n","1","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
     document.getElementById("kv-backend").textContent = "GPU / WebGL2"; toast("Modelo cargado (GPU)","ok");
   }catch(e){
     console.warn("[inference] GPU falló, probando WASM/CPU…", e);
     try{
       if(typeof inferEngine?.startWorkerWasm==="function"){
-        workerId = await inferEngine.startWorkerWasm("idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+        workerId = await inferEngine.startWorkerWasm("dui-bms4n","1","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
         document.getElementById("kv-backend").textContent = "WASM (CPU)"; toast("Modelo cargado (WASM)","ok");
       }else if(typeof inferEngine?.startWorkerCpu==="function"){
-        workerId = await inferEngine.startWorkerCpu("idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+        workerId = await inferEngine.startWorkerCpu("dui-bms4n","1","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
         document.getElementById("kv-backend").textContent = "CPU"; toast("Modelo cargado (CPU)","ok");
       }else{
-        workerId = await startWorkerCompat(inferEngine,"idslv-0mjeo","6","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
+        workerId = await startWorkerCompat(inferEngine,"dui-bms4n","1","rf_hHUmNcZwoGhdPO3kyAlI6YY4R4m2");
         document.getElementById("kv-backend").textContent = "Auto"; toast("Modelo cargado","ok");
       }
     }catch(e2){ console.error(e2); toast("Error al cargar el modelo","bad"); }
@@ -585,3 +585,4 @@ setInterval(()=>{ document.getElementById("kv-fps").textContent = $("#fps").text
 </script>
 </body>
 </html>
+
