@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CamCapture Pro — DUI Ready (ROI Sliders)</title>
+<title>CamCapture Pro — DUI Ready (Atajos teclado)</title>
 <style>
   :root{
     color-scheme: dark;
@@ -21,7 +21,7 @@
          box-shadow:var(--shadow)}
   header h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.3px}
   header small{color:var(--muted)}
-  .wrap{display:grid;grid-template-columns: 440px 1fr; gap:18px; padding:18px;}
+  .wrap{display:grid;grid-template-columns: 470px 1fr; gap:18px; padding:18px;}
   @media (max-width:1100px){.wrap{grid-template-columns:1fr}}
   .panel{background:var(--panel);border:1px solid #1f2937;border-radius:16px;padding:16px;box-shadow:var(--shadow)}
   .row{display:grid;grid-template-columns:1fr 180px;gap:10px;align-items:center;margin:10px 0}
@@ -78,7 +78,7 @@
   <header>
     <div>
       <h1>📸 CamCapture Pro — DUI Ready</h1>
-      <small>ROI rectangular con tiradores, sliders de alto/ancho y captura “solo ROI”.</small>
+      <small>ROI con tiradores, sliders (X/Y/W/H), “solo ROI” y atajos de teclado.</small>
     </div>
     <div class="status"><span id="stDot" class="dot idle"></span><span id="stText" class="hint">Cámara inactiva</span></div>
   </header>
@@ -233,7 +233,12 @@
       </div>
 
       <div class="row">
-        <label>Modo de estirado</label>
+        <label>Sliders independientes (ignoran bloqueo)</label>
+        <div class="switch"><input type="checkbox" id="chkIndep"></div>
+      </div>
+
+      <div class="row">
+        <label>Modo de estirado (tiradores)</label>
         <select id="selStretch">
           <option value="free" selected>Libre</option>
           <option value="h">Horizontal</option>
@@ -241,7 +246,7 @@
         </select>
       </div>
 
-      <!-- NUEVOS SLIDERS ROI -->
+      <!-- SLIDERS ROI (TAMAÑO) -->
       <div class="panel" style="background:#0e1628;border-radius:12px">
         <div class="grid2">
           <div>
@@ -255,10 +260,27 @@
             <div class="hint"><span id="roiHVal">50%</span></div>
           </div>
         </div>
-        <div class="hint">Con el bloqueo activo, ancho/alto mantienen la proporción ID-1.</div>
+        <div class="hint">Con “independientes” activo, estos sliders estiran solo una dimensión.</div>
       </div>
 
-      <div class="hint">Tip: En móvil 1 dedo mueve; 2 dedos amplían. Para “estirar”, usa tiradores o sliders.</div>
+      <!-- SLIDERS ROI (POSICIÓN) -->
+      <div class="panel" style="background:#0e1628;border-radius:12px">
+        <div class="grid2">
+          <div>
+            <label class="hint">Posición X (% desde la izquierda)</label>
+            <input id="rngRoiX" type="range" min="0" max="100" step="1" value="10">
+            <div class="hint">X: <span id="roiXVal">10%</span> • X máx: <span id="roiXMax">20%</span></div>
+          </div>
+          <div>
+            <label class="hint">Posición Y (% desde arriba)</label>
+            <input id="rngRoiY" type="range" min="0" max="100" step="1" value="25">
+            <div class="hint">Y: <span id="roiYVal">25%</span> • Y máx: <span id="roiYMax">50%</span></div>
+          </div>
+        </div>
+        <div class="hint">Atajos: ←/→ mover X, ↑/↓ mover Y, Shift+←/→ ancho, Alt+↑/↓ alto.</div>
+      </div>
+
+      <div class="hint">En móvil: 1 dedo mueve; 2 dedos amplían (según bloqueo). Teclado: ver atajos arriba.</div>
     </section>
 
     <!-- ESCENA -->
@@ -312,6 +334,7 @@
   const btnDownload = $('#btnDownload');
   const btnAf = $('#btnAf'), btnLock = $('#btnLock'), btnUnlock = $('#btnUnlock');
   const btnCrop = $('#btnCrop'), chkLockAR = $('#chkLockAR'), chkOnlyROI = $('#chkOnlyROI');
+  const chkIndep = $('#chkIndep'); // Sliders independientes
   const selStretch = $('#selStretch');
 
   const rngZoom = $('#rngZoom'), rngFocus = $('#rngFocus'), rngExpo = $('#rngExpo');
@@ -320,9 +343,12 @@
 
   const rngUpscale = $('#rngUpscale'), selSharp = $('#selSharp'), selFmt = $('#selFmt'), rngQ = $('#rngQ');
 
-  // NUEVOS sliders ROI
+  // Sliders ROI tamaño
   const rngRoiW = $('#rngRoiW'), rngRoiH = $('#rngRoiH');
   const roiWVal = $('#roiWVal'), roiHVal = $('#roiHVal');
+  // Sliders ROI posición
+  const rngRoiX = $('#rngRoiX'), rngRoiY = $('#rngRoiY');
+  const roiXVal = $('#roiXVal'), roiYVal = $('#roiYVal'), roiXMax = $('#roiXMax'), roiYMax = $('#roiYMax');
 
   const video = $('#video'), canvas = $('#canvas'), viewport = $('#viewport'), grid = $('#grid');
   const lastImg = $('#lastImg'), lastMeta = $('#lastMeta');
@@ -465,7 +491,7 @@
   const ID1_AR = 85.60/53.98; // ≈ 1.586 (ancho/alto)
   const INIT_MARGIN = 0.05;   // 5% por lado
 
-  let dragging=null, roiEnabled=true, roiRect={x:0.1,y:0.1,w:0.8,h:0.8/ID1_AR}; // recalculado en init
+  let dragging=null, roiEnabled=true, roiRect={x:0.1,y:0.25,w:0.8,h:0.8/ID1_AR}; // recalculado en init
   let lockAspect = true;
   let stretchMode = 'free'; // 'free' | 'h' | 'v'
 
@@ -493,6 +519,9 @@
     viewport.addEventListener('touchmove', onTouchMove, {passive:false});
     viewport.addEventListener('touchend', onTouchEnd, {passive:false});
     viewport.addEventListener('touchcancel', onTouchEnd, {passive:false});
+
+    // Teclado
+    window.addEventListener('keydown', onKeyAdjust);
 
     // Inicializar sliders con el ROI inicial
     syncRoiSliders();
@@ -534,7 +563,6 @@
       });
     }
     updateRoiInfo();
-    // Mantener sliders sincronizados con cambios por tiradores/multitouch
     syncRoiSliders();
   }
 
@@ -557,7 +585,7 @@
     if(dragging==='move'){
       x=clamp(rx-w/2,0,1-w); y=clamp(ry-h/2,0,1-h);
     } else {
-      const mode = stretchMode; // 'free', 'h', 'v'
+      const mode = stretchMode;
       const keepAR = lockAspect && mode==='free';
 
       let x2=x, y2=y, w2=w, h2=h;
@@ -568,7 +596,6 @@
       const applyEast  = dragging.includes('e');
 
       if(keepAR){
-        // Escalado uniforme
         const centerX = x + w/2, centerY = y + h/2;
         const dx = (rx - (applyWest? x : (x+w)));
         const dy = (ry - (applyNorth? y : (y+h)));
@@ -585,7 +612,6 @@
         x2 = clamp(centerX - w2/2, 0, 1-w2);
         y2 = clamp(centerY - h2/2, 0, 1-h2);
       }else{
-        // Estirado dirigido
         if(mode==='h' || mode==='free'){
           if(applyWest){  const xN=clamp(rx,0,x+w-minW); w2=(x+w)-xN; x2=xN; }
           if(applyEast){  const wN=clamp(rx-x,minW,1-x); w2=wN; }
@@ -623,27 +649,36 @@
     roiInfo.style.top  = (yPx - 8) + 'px';
   }
 
-  // ===== Sliders ROI =====
+  // ===== Sliders ROI (tamaño + posición) =====
+  function updateXYMaxHints(){
+    const xMax = Math.round((1 - roiRect.w) * 100);
+    const yMax = Math.round((1 - roiRect.h) * 100);
+    roiXMax.textContent = xMax + '%';
+    roiYMax.textContent = yMax + '%';
+    rngRoiX.max = String(xMax);
+    rngRoiY.max = String(yMax);
+  }
+
   function syncRoiSliders(){
-    // Expresar ancho/alto como % del viewport
     const wP = Math.round(roiRect.w * 100);
     const hP = Math.round(roiRect.h * 100);
     if(+rngRoiW.value !== wP) rngRoiW.value = wP;
     if(+rngRoiH.value !== hP) rngRoiH.value = hP;
     roiWVal.textContent = wP + '%';
     roiHVal.textContent = hP + '%';
+    const xP = Math.round(roiRect.x * 100);
+    const yP = Math.round(roiRect.y * 100);
+    if(+rngRoiX.value !== xP) rngRoiX.value = xP;
+    if(+rngRoiY.value !== yP) rngRoiY.value = yP;
+    roiXVal.textContent = xP + '%';
+    roiYVal.textContent = yP + '%';
+    updateXYMaxHints();
   }
 
   function onRoiWChange(){
-    const vp=viewport.getBoundingClientRect();
+    const effectiveLock = chkIndep.checked ? false : lockAspect;
     let w = clamp((+rngRoiW.value)/100, 0.10, 1);
-    let h = lockAspect ? (w / ID1_AR) : roiRect.h;
-    if(!lockAspect){
-      // si solo horizontal, respetar modo; pero el slider es dominante
-      // mantén h actual salvo que exceda bordes
-      h = clamp(h, 0.06, 1);
-    }
-    // re-centrar alrededor del centro actual
+    let h = effectiveLock ? (w / ID1_AR) : clamp(roiRect.h, 0.06, 1);
     const cx = roiRect.x + roiRect.w/2;
     const cy = roiRect.y + roiRect.h/2;
     let x = clamp(cx - w/2, 0, 1 - w);
@@ -653,11 +688,9 @@
   }
 
   function onRoiHChange(){
+    const effectiveLock = chkIndep.checked ? false : lockAspect;
     let h = clamp((+rngRoiH.value)/100, 0.06, 1);
-    let w = lockAspect ? (h * ID1_AR) : roiRect.w;
-    if(!lockAspect){
-      w = clamp(w, 0.10, 1);
-    }
+    let w = effectiveLock ? (h * ID1_AR) : clamp(roiRect.w, 0.10, 1);
     const cx = roiRect.x + roiRect.w/2;
     const cy = roiRect.y + roiRect.h/2;
     let x = clamp(cx - w/2, 0, 1 - w);
@@ -666,8 +699,23 @@
     setRoiRect(roiRect);
   }
 
+  function onRoiXChange(){
+    let x = clamp((+rngRoiX.value)/100, 0, 1 - roiRect.w);
+    roiRect = { ...roiRect, x };
+    setRoiRect(roiRect);
+  }
+
+  function onRoiYChange(){
+    let y = clamp((+rngRoiY.value)/100, 0, 1 - roiRect.h);
+    roiRect = { ...roiRect, y };
+    setRoiRect(roiRect);
+  }
+
   rngRoiW.addEventListener('input', onRoiWChange);
   rngRoiH.addEventListener('input', onRoiHChange);
+  rngRoiX.addEventListener('input', onRoiXChange);
+  rngRoiY.addEventListener('input', onRoiYChange);
+  chkIndep.addEventListener('change', ()=>syncRoiSliders());
 
   // ===== Multitouch (móvil): 1 dedo mueve, 2 dedos escala =====
   function getTouchPoint(t){ const rect=viewport.getBoundingClientRect(); return {x:(t.clientX-rect.left)/rect.width, y:(t.clientY-rect.top)/rect.height}; }
@@ -716,6 +764,83 @@
     if(e.touches.length===0) { touchMode=null; }
     else if(e.touches.length===1){ touchMode='move'; touchStartPoint = getTouchPoint(e.touches[0]); touchStartRect = {...roiRect}; }
     e.preventDefault();
+  }
+
+  // ===== Atajos de teclado =====
+  function nudgeRoi({dx=0, dy=0, dw=0, dh=0}){
+    const step = 0.01; // 1% del viewport
+    let x = clamp(roiRect.x + dx*step, 0, 1 - roiRect.w);
+    let y = clamp(roiRect.y + dy*step, 0, 1 - roiRect.h);
+
+    let w = roiRect.w, h = roiRect.h;
+
+    if(dw !== 0 || dh !== 0){
+      // Si modificamos tamaño, respetar bloqueo de proporción
+      if(dw !== 0){
+        let newW = clamp(w + dw*step, 0.10, 1);
+        if(lockAspect){ // teclado respeta el bloqueo
+          let newH = newW / ID1_AR;
+          // Centrar manteniendo el centro
+          const cx = x + w/2, cy = y + h/2;
+          w = newW; h = newH;
+          x = clamp(cx - w/2, 0, 1 - w);
+          y = clamp(cy - h/2, 0, 1 - h);
+        } else {
+          // libre en ancho
+          const cx = x + w/2;
+          w = newW;
+          x = clamp(cx - w/2, 0, 1 - w);
+        }
+      }
+      if(dh !== 0){
+        let newH = clamp(h + dh*step, 0.06, 1);
+        if(lockAspect){ // teclado respeta el bloqueo
+          let newW = newH * ID1_AR;
+          const cx = x + w/2, cy = y + h/2;
+          h = newH; w = newW;
+          x = clamp(cx - w/2, 0, 1 - w);
+          y = clamp(cy - h/2, 0, 1 - h);
+        } else {
+          // libre en alto
+          const cy = y + h/2;
+          h = newH;
+          y = clamp(cy - h/2, 0, 1 - h);
+        }
+      }
+    }
+
+    roiRect = {x,y,w,h};
+    setRoiRect(roiRect);
+  }
+
+  function onKeyAdjust(e){
+    if(!roiEnabled) return;
+    // Evitar que la página haga scroll con las flechas
+    const keys = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
+    if(!keys.includes(e.key)) return;
+
+    // Si el foco está en un input/select, no interferir
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if(['INPUT','SELECT','TEXTAREA'].includes(tag)) return;
+
+    let handled = false;
+
+    if(e.shiftKey){ // ancho con Shift + ←/→
+      if(e.key==='ArrowLeft'){ nudgeRoi({dw:-1}); handled=true; }
+      if(e.key==='ArrowRight'){ nudgeRoi({dw:+1}); handled=true; }
+      if(e.key==='ArrowUp' || e.key==='ArrowDown'){ /* sin acción con Shift */ }
+    } else if(e.altKey){ // alto con Alt + ↑/↓
+      if(e.key==='ArrowUp'){ nudgeRoi({dh:-1}); handled=true; }
+      if(e.key==='ArrowDown'){ nudgeRoi({dh:+1}); handled=true; }
+      if(e.key==='ArrowLeft' || e.key==='ArrowRight'){ /* sin acción con Alt */ }
+    } else { // mover
+      if(e.key==='ArrowLeft'){ nudgeRoi({dx:-1}); handled=true; }
+      if(e.key==='ArrowRight'){ nudgeRoi({dx:+1}); handled=true; }
+      if(e.key==='ArrowUp'){ nudgeRoi({dy:-1}); handled=true; }
+      if(e.key==='ArrowDown'){ nudgeRoi({dy:+1}); handled=true; }
+    }
+
+    if(handled){ e.preventDefault(); e.stopPropagation(); }
   }
 
   // ===== Captura =====
@@ -833,6 +958,7 @@
 
   chkLockAR?.addEventListener('change', ()=>{ lockAspect = chkLockAR.checked; updateRoiInfo(); syncRoiSliders(); });
   selStretch?.addEventListener('change', ()=>{ stretchMode = selStretch.value; updateRoiInfo(); });
+  chkIndep?.addEventListener('change', ()=>{ /* sliders ya lo ignoran en sus handlers */ });
 
   btnAf?.addEventListener('click', refocus);
   btnLock?.addEventListener('click', ()=>lockAEAF(true));
