@@ -67,7 +67,7 @@
     }
     .row{
       display:grid;
-      grid-template-columns: 1.1fr 1.5fr;
+      grid-template-columns:1.1fr 1.5fr;
       gap:8px;
       align-items:center;
       margin:6px 0;
@@ -150,7 +150,7 @@
       overflow:hidden;
       border:1px solid #111827;
       min-height:260px;
-      touch-action:none;
+      touch-action:none; /* importante para gestos táctiles */
     }
     video{
       width:100%;
@@ -159,6 +159,7 @@
       display:block;
       filter:var(--vf,none);
       transform:var(--vscale,scale(1));
+      touch-action:none;
     }
     .overlay-grid{
       position:absolute;
@@ -179,6 +180,7 @@
       box-shadow:0 0 0 1px rgba(15,23,42,.8),0 0 24px rgba(56,189,248,.35);
       cursor:move;
       display:none;
+      touch-action:none; /* que no haga scroll en móvil */
     }
     .roi-handle{
       position:absolute;
@@ -187,6 +189,7 @@
       background:var(--accent);
       border-radius:4px;
       border:2px solid #020617;
+      touch-action:none;
     }
     .h-nw{top:-8px;left:-8px;cursor:nwse-resize}
     .h-ne{top:-8px;right:-8px;cursor:nesw-resize}
@@ -252,7 +255,6 @@
     .thumb img{width:100%;display:block}
     .thumb span{display:block;font-size:10px;color:var(--muted);padding:2px 4px}
   </style>
-  <!-- jsPDF para exportar a PDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
@@ -400,7 +402,7 @@
       <button id="btnPdf" class="ghost">Exportar a PDF</button>
     </div>
     <p class="hint" style="margin-top:6px">
-      El ROI está pensado para recortar exactamente el documento y ampliarlo (250% o más) antes de enviarlo a OCR.
+      En móviles, puedes mover y redimensionar el ROI con los dedos (arrastrar el rectángulo o las esquinas).
     </p>
   </section>
 
@@ -456,7 +458,6 @@
 </main>
 
 <script>
-  // ===== utilidades =====
   const $ = (s) => document.querySelector(s);
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -530,17 +531,16 @@
   let roiEnabled = false;
   // ROI en coordenadas relativas [0,1]
   let roiRect = { x:0.15, y:0.15, w:0.7, h:0.7 };
-  let draggingHandle = null;
+  let draggingHandle = null; // 'move' o el propio elemento de handle
 
-  let lastBlob = null;        // última captura (full o ROI)
-  let lastBlobIsRoi = false;  // para PDF/info
+  let lastBlob = null;
+  let lastBlobIsRoi = false;
 
   function setStatus(kind, text){
     stDot.className = 'dot ' + (kind || 'idle');
     stText.textContent = text || '';
   }
 
-  // ===== dispositivos =====
   async function listDevices(){
     try{
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -616,7 +616,6 @@
     }
   }
 
-  // ===== cámara =====
   async function startCamera(){
     try{
       await stopCamera();
@@ -681,7 +680,6 @@
     const caps = track.getCapabilities ? track.getCapabilities() : {};
     const sets = track.getSettings ? track.getSettings() : {};
 
-    // Zoom
     if(caps.zoom){
       setupRange(rngZoom, caps.zoom.min, caps.zoom.max, caps.zoom.step || 0.01, sets.zoom || caps.zoom.min);
       setRangeEnabled(rngZoom, true);
@@ -692,7 +690,6 @@
       zoomVal.textContent = '1.00×';
     }
 
-    // Enfoque
     if(caps.focusDistance){
       setupRange(rngFocus, caps.focusDistance.min, caps.focusDistance.max, caps.focusDistance.step || 0.01, sets.focusDistance || caps.focusDistance.min);
       setRangeEnabled(rngFocus, true);
@@ -703,7 +700,6 @@
       focusVal.textContent = 'auto';
     }
 
-    // Exposición
     if(caps.exposureCompensation){
       setupRange(rngExpo, caps.exposureCompensation.min, caps.exposureCompensation.max, caps.exposureCompensation.step || 0.1, sets.exposureCompensation || 0);
       setRangeEnabled(rngExpo, true);
@@ -714,7 +710,6 @@
       expoVal.textContent = 'N/D';
     }
 
-    // WB
     if(caps.whiteBalanceMode){
       selWb.disabled = false;
       if(caps.colorTemperature){
@@ -731,10 +726,8 @@
       wbVal.textContent = 'auto';
     }
 
-    // Torch
     btnTorch.disabled = !caps.torch;
 
-    // grid + filtro
     grid.hidden = selGrid.value !== 'on';
     updatePreviewFilter();
   }
@@ -834,13 +827,11 @@
       if(imageCapture && imageCapture.takePhoto){
         const blob = await imageCapture.takePhoto();
         const bmp = await createImageBitmap(blob);
-        // adaptar al tamaño del video para que ROI coincida
         ctx.drawImage(bmp, 0, 0, w, h);
       } else {
         ctx.drawImage(video, 0, 0, w, h);
       }
 
-      // Filtros "reales" para salida:
       if(selFilter.value === 'grayscale'){
         applyGrayscale(ctx, w, h);
       } else if(selFilter.value === 'bw'){
@@ -891,7 +882,6 @@
   async function captureFull(){
     const base = await captureBaseFrame();
     if(!base) return;
-    // copiar base a canvas principal
     canvas.width  = base.width;
     canvas.height = base.height;
     const ctx = canvas.getContext('2d', { alpha:false });
@@ -925,7 +915,6 @@
     const bw = base.width;
     const bh = base.height;
 
-    // ROI en coords de video → usamos porcentajes
     const r = roiRect;
     const sx = Math.round(r.x * bw);
     const sy = Math.round(r.y * bh);
@@ -1002,7 +991,6 @@
     const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     const imgBitmap = await createImageBitmap(lastBlob);
 
-    // Ajustar a A4 manteniendo aspecto
     const pw = 210, ph = 297;
     const margin = 10;
     let w = pw - margin*2;
@@ -1032,7 +1020,7 @@
     pdf.save(lastBlobIsRoi ? 'captura_roi.pdf' : 'captura_full.pdf');
   }
 
-  // ===== ROI en viewport =====
+  // ===== ROI (mouse + touch) =====
   function updateRoiElement(){
     const rect = viewport.getBoundingClientRect();
     const x = roiRect.x * rect.width;
@@ -1054,30 +1042,51 @@
     }
   }
 
+  function getPoint(evt){
+    if(evt.touches && evt.touches.length){
+      return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+    }
+    if(evt.changedTouches && evt.changedTouches.length){
+      return { x: evt.changedTouches[0].clientX, y: evt.changedTouches[0].clientY };
+    }
+    return { x: evt.clientX, y: evt.clientY };
+  }
+
   function startRoiDrag(e){
     if(!roiEnabled) return;
     e.preventDefault();
     const target = e.target;
     if(target.classList.contains('roi-handle')){
-      // redimensionar
-      draggingHandle = target;
+      draggingHandle = target; // resize
     } else if(target === roiEl){
-      draggingHandle = 'move';
+      draggingHandle = 'move'; // move
     } else {
       draggingHandle = null;
     }
   }
 
+  function viewportDown(e){
+    if(!roiEnabled) return;
+    if(e.target !== viewport) return;
+    e.preventDefault();
+    const {x:mx,y:my} = getPoint(e);
+    const rect = viewport.getBoundingClientRect();
+    const nx = clamp((mx - rect.left)/rect.width, 0, 1);
+    const ny = clamp((my - rect.top)/rect.height, 0, 1);
+    roiRect.x = clamp(nx - roiRect.w/2, 0, 1 - roiRect.w);
+    roiRect.y = clamp(ny - roiRect.h/2, 0, 1 - roiRect.h);
+    updateRoiElement();
+  }
+
   function onRoiMove(e){
     if(!roiEnabled || !draggingHandle) return;
     e.preventDefault();
+    const {x:mx,y:my} = getPoint(e);
     const rect = viewport.getBoundingClientRect();
     const vx = rect.left;
     const vy = rect.top;
     const vw = rect.width;
     const vh = rect.height;
-    const mx = e.clientX;
-    const my = e.clientY;
 
     const nx = clamp((mx - vx)/vw, 0, 1);
     const ny = clamp((my - vy)/vh, 0, 1);
@@ -1087,7 +1096,6 @@
     const minH = 0.1;
 
     if(draggingHandle === 'move'){
-      // mover ROI
       const cx = x + w/2;
       const cy = y + h/2;
       const dx = nx - cx;
@@ -1156,26 +1164,23 @@
 
   btnToggleRoi.addEventListener('click', () => enableRoi(!roiEnabled));
 
+  // Mouse
   roiEl.addEventListener('mousedown', startRoiDrag);
-  viewport.addEventListener('mousedown', (e) => {
-    if(e.target === viewport && roiEnabled){
-      // clic en fondo: centrar ROI donde se clicó
-      const rect = viewport.getBoundingClientRect();
-      const nx = clamp((e.clientX - rect.left)/rect.width, 0, 1);
-      const ny = clamp((e.clientY - rect.top)/rect.height, 0, 1);
-      roiRect.x = clamp(nx - roiRect.w/2, 0, 1 - roiRect.w);
-      roiRect.y = clamp(ny - roiRect.h/2, 0, 1 - roiRect.h);
-      updateRoiElement();
-    }
-  });
+  viewport.addEventListener('mousedown', viewportDown);
   window.addEventListener('mousemove', onRoiMove);
   window.addEventListener('mouseup', stopRoiDrag);
+
+  // Touch
+  roiEl.addEventListener('touchstart', startRoiDrag, {passive:false});
+  viewport.addEventListener('touchstart', viewportDown, {passive:false});
+  window.addEventListener('touchmove', onRoiMove, {passive:false});
+  window.addEventListener('touchend', stopRoiDrag);
+  window.addEventListener('touchcancel', stopRoiDrag);
 
   window.addEventListener('resize', () => {
     if(roiEnabled) updateRoiElement();
   });
 
-  // teclado rápido: C para ROI, F para full, R para ROI ON/OFF
   window.addEventListener('keydown', (e) => {
     if(e.key === 'c' || e.key === 'C'){
       captureROI();
@@ -1186,7 +1191,6 @@
     }
   });
 
-  // ===== init =====
   (async function init(){
     parseRes();
     roiScaleVal.textContent = `${parseFloat(rngRoiScale.value).toFixed(2)}× (${Math.round(parseFloat(rngRoiScale.value)*100)}%)`;
@@ -1199,4 +1203,3 @@
 </script>
 </body>
 </html>
-
