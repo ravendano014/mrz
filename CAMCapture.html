@@ -3,123 +3,153 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CamCapture DUI — HD + ROI</title>
+  <title>CamCapture Pro — Alta definición para documentos</title>
   <style>
     :root{
       color-scheme: dark;
       --bg:#020617;
-      --panel:#020617;
+      --panel:#0b1120;
       --ink:#e5e7eb;
       --muted:#9ca3af;
-      --accent:#3b82f6;
+      --accent:#38bdf8;
       --ok:#22c55e;
       --bad:#ef4444;
-      --chip:#111827;
-      --border:#1f2933;
-      --shadow:0 12px 40px rgba(0,0,0,.55);
+      --warn:#facc15;
     }
-    *{box-sizing:border-box}
-    html,body{height:100%}
+    *{box-sizing:border-box;margin:0;padding:0}
     body{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,sans-serif;
-      background:radial-gradient(circle at top,#020617,#020617 40%,#020617);
+      min-height:100vh;
+      background:radial-gradient(circle at top,#020617 0,#020617 35%,#020617 100%);
       color:var(--ink);
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     }
     header{
-      position:sticky;top:0;z-index:10;
-      padding:14px 18px;
-      background:#020617ee;
-      backdrop-filter:blur(10px);
-      display:flex;justify-content:space-between;align-items:center;
-      box-shadow:var(--shadow);
-      border-bottom:1px solid var(--border);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:12px 18px;
+      background:#020617;
+      border-bottom:1px solid #111827;
+      position:sticky;
+      top:0;
+      z-index:10;
     }
-    header h1{margin:0;font-size:17px}
-    header small{display:block;color:var(--muted);font-size:12px}
-    .status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
-    .dot{width:10px;height:10px;border-radius:50%;background:#4b5563}
+    header h1{font-size:16px;font-weight:600}
+    header small{display:block;font-size:11px;color:var(--muted)}
+    .status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+    .dot{width:9px;height:9px;border-radius:999px;background:#4b5563}
     .dot.ok{background:var(--ok)}
     .dot.bad{background:var(--bad)}
-    .main{
-      padding:16px;
+    .dot.warn{background:var(--warn)}
+    .dot.idle{background:#4b5563}
+
+    main{
+      padding:14px;
       display:grid;
-      grid-template-columns:340px minmax(0,1fr);
-      gap:16px;
+      grid-template-columns: 360px minmax(0,1fr);
+      gap:14px;
     }
     @media (max-width:900px){
-      .main{grid-template-columns:1fr}
+      main{grid-template-columns:1fr}
     }
     .panel{
       background:var(--panel);
-      border-radius:16px;
-      border:1px solid var(--border);
-      box-shadow:var(--shadow);
-      padding:14px;
+      border:1px solid #111827;
+      border-radius:14px;
+      padding:12px;
+      box-shadow:0 18px 40px rgba(0,0,0,.6);
     }
     .panel h2{
-      margin:0 0 8px 0;
-      font-size:14px;
-      color:var(--muted);
-      text-transform:uppercase;
-      letter-spacing:.08em;
+      font-size:13px;
+      font-weight:600;
+      margin-bottom:6px;
+      color:#e5e7eb;
     }
     .row{
       display:grid;
-      grid-template-columns:1fr 150px;
-      gap:10px;
+      grid-template-columns: 1.1fr 1.5fr;
+      gap:8px;
       align-items:center;
       margin:6px 0;
     }
-    label{font-size:12px;color:var(--muted)}
-    select,input[type="number"],input[type="text"],button{
+    .row label{
+      font-size:11px;
+      color:var(--muted);
+    }
+    select,input[type="number"],input[type="text"],input[type="range"]{
       width:100%;
-      padding:8px 10px;
+      padding:6px 8px;
+      font-size:12px;
       border-radius:10px;
-      border:1px solid var(--border);
+      border:1px solid #1f2937;
       background:#020617;
       color:var(--ink);
-      font-size:13px;
       outline:none;
     }
-    input[type="number"]{appearance:textfield}
-    input[type="number"]::-webkit-outer-spin-button,
-    input[type="number"]::-webkit-inner-spin-button{appearance:none;margin:0}
-    input[type="range"]{width:100%}
+    input[type="range"]{
+      padding:0;
+      height:20px;
+    }
     button{
-      cursor:pointer;
+      display:inline-flex;
+      justify-content:center;
+      align-items:center;
+      gap:6px;
+      padding:7px 10px;
+      border-radius:999px;
+      border:1px solid #1f2937;
       background:#020617;
-      transition:background .15s,border-color .15s,transform .1s;
+      color:var(--ink);
+      cursor:pointer;
+      font-size:12px;
     }
     button.primary{
-      background:linear-gradient(180deg,#1d4ed8,#1e40af);
-      border-color:#1e3a8a;
+      background:linear-gradient(135deg,#1d4ed8,#0ea5e9);
+      border-color:#2563eb;
     }
     button.ok{
-      background:linear-gradient(180deg,#15803d,#166534);
-      border-color:#15803d;
+      background:linear-gradient(135deg,#15803d,#22c55e);
+      border-color:#16a34a;
     }
-    button:active{transform:scale(.97)}
-    .hint{font-size:11px;color:var(--muted)}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-    .chip{
-      display:inline-flex;align-items:center;gap:6px;
+    button.bad{
+      background:linear-gradient(135deg,#b91c1c,#ef4444);
+      border-color:#dc2626;
+    }
+    button.ghost{
+      background:#020617;
+      border-style:dashed;
+      color:var(--muted);
+    }
+    button:disabled{
+      opacity:.4;
+      cursor:not-allowed;
+    }
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .hint{font-size:11px;color:var(--muted);margin-top:2px}
+
+    /* Escena */
+    .stage{
+      display:grid;
+      grid-template-rows:auto minmax(260px,430px) auto;
+      gap:10px;
+    }
+    .tags{display:flex;flex-wrap:wrap;gap:6px;font-size:11px}
+    .tag{
       padding:4px 8px;
       border-radius:999px;
-      font-size:11px;
-      background:var(--chip);
-      border:1px solid var(--border);
-      color:var(--muted);
+      background:#020617;
+      border:1px solid #1e293b;
+      color:#e5e7eb;
     }
 
     .viewport{
       position:relative;
       background:#000;
-      border-radius:16px;
-      border:1px solid var(--border);
+      border-radius:14px;
       overflow:hidden;
-      min-height:330px;
+      border:1px solid #111827;
+      min-height:260px;
       touch-action:none;
     }
     video{
@@ -127,379 +157,496 @@
       height:100%;
       object-fit:contain;
       display:block;
-      transform-origin:center center;
+      filter:var(--vf,none);
+      transform:var(--vscale,scale(1));
     }
-    .grid-overlay{
-      position:absolute;inset:0;
-      background:
-        linear-gradient(transparent 96%,rgba(148,163,184,.25) 96%),
-        linear-gradient(90deg,transparent 96%,rgba(148,163,184,.25) 96%);
-      background-size:5% 5%;
+    .overlay-grid{
+      position:absolute;
+      inset:0;
       pointer-events:none;
-      opacity:.6;
+      background:
+        linear-gradient(transparent 95%,rgba(148,163,184,.25) 95%),
+        linear-gradient(90deg,transparent 95%,rgba(148,163,184,.25) 95%);
+      background-size:5% 5%;
+      opacity:.7;
     }
+
     /* ROI */
     #roi{
       position:absolute;
-      border:2px solid var(--accent);
-      border-radius:10px;
-      box-shadow:0 0 0 1px rgba(15,23,42,.9),0 0 20px rgba(37,99,235,.65);
+      border:2px dashed var(--accent);
+      border-radius:8px;
+      box-shadow:0 0 0 1px rgba(15,23,42,.8),0 0 24px rgba(56,189,248,.35);
       cursor:move;
+      display:none;
     }
-    #roiInfo{
+    .roi-handle{
       position:absolute;
-      transform:translate(0,-100%);
-      background:rgba(15,23,42,.92);
-      border-radius:10px;
-      border:1px solid var(--border);
-      padding:4px 8px;
-      font-size:11px;
-      color:var(--muted);
-      pointer-events:none;
-      white-space:nowrap;
+      width:12px;
+      height:12px;
+      background:var(--accent);
+      border-radius:4px;
+      border:2px solid #020617;
     }
+    .h-nw{top:-8px;left:-8px;cursor:nwse-resize}
+    .h-ne{top:-8px;right:-8px;cursor:nesw-resize}
+    .h-sw{bottom:-8px;left:-8px;cursor:nesw-resize}
+    .h-se{bottom:-8px;right:-8px;cursor:nwse-resize}
+    .h-n{top:-8px;left:calc(50% - 6px);cursor:ns-resize}
+    .h-s{bottom:-8px;left:calc(50% - 6px);cursor:ns-resize}
+    .h-w{left:-8px;top:calc(50% - 6px);cursor:ew-resize}
+    .h-e{right:-8px;top:calc(50% - 6px);cursor:ew-resize}
+
     .hud{
       position:absolute;
-      left:10px;
-      bottom:10px;
+      left:8px;
+      bottom:8px;
       display:flex;
       flex-wrap:wrap;
       gap:6px;
+      font-size:11px;
     }
-    .hud button{
+    .chip{
       padding:4px 8px;
       border-radius:999px;
-      font-size:11px;
-      border:1px solid var(--border);
-      background:rgba(15,23,42,.85);
-      color:var(--muted);
-      backdrop-filter:blur(10px);
+      border:1px solid #1e293b;
+      background:rgba(15,23,42,.9);
+      backdrop-filter:blur(8px);
+      cursor:pointer;
     }
 
-    .preview-grid{
+    /* Previews */
+    .previews{
       display:grid;
-      grid-template-columns:repeat(3,minmax(0,1fr));
+      grid-template-columns: minmax(0,1fr) minmax(0,1fr);
       gap:10px;
     }
-    @media (max-width:1100px){
-      .preview-grid{grid-template-columns:1fr}
+    @media (max-width:1000px){
+      .previews{grid-template-columns:1fr}
     }
-    .preview-card{
+    .previewCard{
       background:#020617;
       border-radius:12px;
-      border:1px solid var(--border);
+      border:1px solid #111827;
       padding:8px;
-      font-size:11px;
-      color:var(--muted);
     }
-    .preview-card img{
+    .previewCard img{
       width:100%;
-      border-radius:10px;
-      border:1px solid var(--border);
-      display:block;
-      margin-top:4px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+      display:none;
     }
+    .meta{font-size:10px;color:var(--muted);margin-top:4px}
+    .thumbs{
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
+      gap:6px;
+      margin-top:6px;
+    }
+    .thumb{
+      border-radius:10px;
+      border:1px solid #1f2937;
+      overflow:hidden;
+      background:#020617;
+    }
+    .thumb img{width:100%;display:block}
+    .thumb span{display:block;font-size:10px;color:var(--muted);padding:2px 4px}
   </style>
+  <!-- jsPDF para exportar a PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
 <header>
   <div>
-    <h1>📸 CamCapture DUI — HD + ROI</h1>
-    <small>Captura de cámara, recorte por ROI con proporción de DUI y ampliaciones 100% / 250% / 400%</small>
+    <h1>📸 CamCapture Pro</h1>
+    <small>Alta definición para documentos · Captura completa o ROI ampliado (250%+)</small>
   </div>
   <div class="status">
-    <span id="stDot" class="dot"></span>
-    <span id="stMsg">Cámara inactiva</span>
+    <span id="stDot" class="dot idle"></span>
+    <span id="stText">Cámara inactiva</span>
   </div>
 </header>
 
-<main class="main">
+<main>
   <!-- CONTROLES -->
   <section class="panel">
-    <h2>Cámara</h2>
-
+    <h2>Dispositivo y calidad</h2>
     <div class="row">
-      <label>Dispositivo</label>
+      <label>Cámara</label>
       <select id="selDevice"></select>
     </div>
-
-    <div class="grid2">
-      <div class="row">
-        <label>Resolución</label>
-        <select id="selRes">
-          <option value="1280x720" selected>HD 1280×720</option>
-          <option value="1920x1080">Full HD 1920×1080</option>
-          <option value="640x480">640×480</option>
-          <option value="custom">Personalizada…</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>FPS</label>
-        <select id="selFps">
-          <option value="30">30</option>
-          <option value="60" selected>60</option>
-        </select>
-      </div>
+    <div class="row">
+      <label>Resolución objetivo</label>
+      <select id="selRes">
+        <option value="3840x2160">4K UHD (3840×2160)</option>
+        <option value="2560x1440">QHD (2560×1440)</option>
+        <option value="1920x1080" selected>FHD (1920×1080)</option>
+        <option value="1280x720">HD (1280×720)</option>
+        <option value="custom">Personalizada…</option>
+      </select>
     </div>
-
-    <div id="customRes" class="grid2" style="display:none">
-      <div class="row">
-        <label>Ancho (px)</label>
+    <div id="customRes" class="row" style="display:none">
+      <label>Personalizada (ancho×alto)</label>
+      <div class="grid2">
         <input id="numW" type="number" min="320" value="1280" />
-      </div>
-      <div class="row">
-        <label>Alto (px)</label>
         <input id="numH" type="number" min="240" value="720" />
       </div>
     </div>
-
-    <div class="grid2" style="margin-top:8px">
+    <div class="row">
+      <label>FPS objetivo</label>
+      <select id="selFps">
+        <option>30</option>
+        <option selected>60</option>
+      </select>
+    </div>
+    <div class="grid3" style="margin-top:6px">
       <button id="btnStart" class="primary">Iniciar cámara</button>
-      <button id="btnStop">Detener</button>
+      <button id="btnStop" class="bad">Detener</button>
+      <button id="btnTorch" class="ghost">🔦 Lámpara</button>
     </div>
 
-    <div style="margin-top:12px">
-      <label class="hint">Zoom de previsualización (no afecta a la captura)</label>
-      <input id="rngPreviewZoom" type="range" min="1" max="3" step="0.01" value="1">
-      <div class="hint">Zoom: <span id="lblPreviewZoom">100%</span></div>
+    <h2 style="margin-top:10px">Controles avanzados</h2>
+    <div class="row">
+      <label>Zoom óptico</label>
+      <div>
+        <input id="rngZoom" type="range" min="1" max="1" step="0.01" value="1" />
+        <div class="hint">Valor: <span id="zoomVal">1.00×</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <label>Enfoque</label>
+      <div>
+        <input id="rngFocus" type="range" min="0" max="1" step="0.01" value="0" />
+        <div class="hint">Distancia: <span id="focusVal">auto</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <label>Exposición</label>
+      <div>
+        <input id="rngExpo" type="range" min="-2" max="2" step="0.1" value="0" />
+        <div class="hint">Comp: <span id="expoVal">0.0</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <label>Balance de blancos</label>
+      <div class="grid2">
+        <select id="selWb">
+          <option value="auto" selected>Auto</option>
+          <option value="manual">Manual (K)</option>
+        </select>
+        <div>
+          <input id="rngWb" type="range" min="2500" max="7500" step="100" value="5000" />
+          <div class="hint"><span id="wbVal">5000K</span></div>
+        </div>
+      </div>
     </div>
 
-    <div style="margin-top:12px">
-      <span class="chip">Solicitado: <span id="lblReq">—</span></span>
-      <span class="chip">Real: <span id="lblReal">—</span></span>
+    <h2 style="margin-top:10px">Preview y filtro</h2>
+    <div class="row">
+      <label>Filtro de vista</label>
+      <select id="selFilter">
+        <option value="none">Sin filtro</option>
+        <option value="grayscale">Escala de grises</option>
+        <option value="bw">Blanco y negro (umbral)</option>
+        <option value="contrast">Alto contraste</option>
+      </select>
     </div>
+    <div class="row">
+      <label>Umbral B/N</label>
+      <div>
+        <input id="rngThresh" type="range" min="60" max="220" step="1" value="180" />
+        <div class="hint">Valor: <span id="thVal">180</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <label>Zoom de previsualización</label>
+      <div>
+        <input id="rngPreviewScale" type="range" min="1" max="3" step="0.01" value="1" />
+        <div class="hint">Hasta 300% (solo vista previa)</div>
+      </div>
+    </div>
+    <div class="row">
+      <label>Cuadrícula</label>
+      <select id="selGrid">
+        <option value="off">Oculta</option>
+        <option value="on">Regla 5%</option>
+      </select>
+    </div>
+
+    <h2 style="margin-top:10px">Salida</h2>
+    <div class="row">
+      <label>Escalado ROI (salida)</label>
+      <div>
+        <input id="rngRoiScale" type="range" min="1" max="4" step="0.1" value="2.5" />
+        <div class="hint">Factor: <span id="roiScaleVal">2.5× (250%)</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <label>Formato / calidad</label>
+      <div class="grid2">
+        <select id="selFmt">
+          <option value="image/png">PNG</option>
+          <option value="image/jpeg" selected>JPEG</option>
+        </select>
+        <input id="rngQ" type="range" min="0.6" max="1" step="0.05" value="0.9" />
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:6px">
+      <button id="btnCaptureFull" class="primary">Capturar encuadre completo</button>
+      <button id="btnCaptureROI" class="ok">Capturar solo ROI</button>
+    </div>
+    <div class="grid2" style="margin-top:6px">
+      <button id="btnDownloadLast" class="ghost">Descargar última captura</button>
+      <button id="btnPdf" class="ghost">Exportar a PDF</button>
+    </div>
+    <p class="hint" style="margin-top:6px">
+      El ROI está pensado para recortar exactamente el documento y ampliarlo (250% o más) antes de enviarlo a OCR.
+    </p>
   </section>
 
-  <!-- VIDEO + ROI + PREVIEWS -->
-  <section class="panel">
-    <h2>Vista previa y ROI</h2>
+  <!-- ESCENA / PREVIEWS -->
+  <section class="panel stage">
+    <div class="tags">
+      <span class="tag">Solicitado: <span id="metaReq">—</span></span>
+      <span class="tag">Real: <span id="metaReal">—</span></span>
+      <span class="tag">Dispositivo: <span id="metaDev">—</span></span>
+    </div>
 
     <div class="viewport" id="viewport">
-      <video id="video" playsinline muted></video>
-      <div class="grid-overlay"></div>
-      <div id="roi"></div>
-      <div id="roiInfo"></div>
-
+      <video id="video" playsinline autoplay muted></video>
+      <div class="overlay-grid" id="grid" hidden></div>
+      <div id="roi">
+        <div class="roi-handle h-nw"></div>
+        <div class="roi-handle h-ne"></div>
+        <div class="roi-handle h-sw"></div>
+        <div class="roi-handle h-se"></div>
+        <div class="roi-handle h-n"></div>
+        <div class="roi-handle h-s"></div>
+        <div class="roi-handle h-w"></div>
+        <div class="roi-handle h-e"></div>
+      </div>
       <div class="hud">
-        <button id="btnToggleRoi">🟦 ROI ON/OFF</button>
-        <button id="btnCenterRoi">Centrar ROI</button>
-        <button id="btnSnapFull">Capturar completo</button>
-        <button id="btnSnapRoi">Capturar ROI</button>
+        <button class="chip" id="btnToggleRoi">🟦 ROI</button>
+        <button class="chip" id="btnAf">AF</button>
+        <button class="chip" id="btnLock">🔒 AE/AF</button>
+        <button class="chip" id="btnUnlock">🔓 Auto</button>
       </div>
     </div>
 
-    <!-- Controles ROI debajo del área de imagen -->
-    <div style="margin-top:12px">
-      <div class="grid2">
-        <div>
-          <label class="hint">Ancho ROI (% del viewport)</label>
-          <input id="rngRoiW" type="range" min="10" max="100" step="1" value="80">
-          <div class="hint"><span id="lblRoiW">80%</span></div>
-        </div>
-        <div>
-          <label class="hint">Alto ROI (% del viewport)</label>
-          <input id="rngRoiH" type="range" min="10" max="100" step="1" value="50">
-          <div class="hint"><span id="lblRoiH">50%</span></div>
-        </div>
+    <div class="previews">
+      <div class="previewCard">
+        <div class="hint">Última captura completa</div>
+        <img id="imgFull" alt="Captura completa" />
+        <div class="meta" id="metaFull"></div>
       </div>
-
-      <div class="grid2" style="margin-top:8px">
-        <div>
-          <label class="hint">Posición X (izq-der, %)</label>
-          <input id="rngRoiX" type="range" min="0" max="100" step="1" value="10">
-          <div class="hint"><span id="lblRoiX">10%</span></div>
-        </div>
-        <div>
-          <label class="hint">Posición Y (arr-abajo, %)</label>
-          <input id="rngRoiY" type="range" min="0" max="100" step="1" value="25">
-          <div class="hint"><span id="lblRoiY">25%</span></div>
-        </div>
-      </div>
-
-      <div style="margin-top:6px">
-        <label style="font-size:11px">
-          <input type="checkbox" id="chkLockAspect" checked>
-          Mantener proporción tipo DUI (ID-1) al cambiar tamaño
-        </label>
-      </div>
-
-      <div class="hint" style="margin-top:4px">
-        Atajos: flechas (mover ROI), Shift+flechas (cambiar ancho), Alt+flechas (cambiar alto), C (capturar ROI), R (mostrar/ocultar ROI)
+      <div class="previewCard">
+        <div class="hint">Última captura de ROI (ampliada)</div>
+        <img id="imgRoi" alt="Captura ROI" />
+        <div class="meta" id="metaRoi"></div>
       </div>
     </div>
 
-    <div style="margin-top:14px">
-      <h2>Vistas de captura</h2>
-      <div class="preview-grid">
-        <div class="preview-card">
-          Completa (encuadre)
-          <img id="imgFull" alt="Captura completa" style="display:none">
-          <div id="metaFull" class="hint"></div>
-        </div>
-        <div class="preview-card">
-          ROI 100% y 250%
-          <img id="imgRoi100" alt="ROI 100%" style="display:none">
-          <div id="metaRoi100" class="hint"></div>
-          <img id="imgRoi250" alt="ROI 250%" style="display:none;margin-top:4px">
-          <div id="metaRoi250" class="hint"></div>
-        </div>
-        <div class="preview-card">
-          ROI 400%
-          <img id="imgRoi400" alt="ROI 400%" style="display:none">
-          <div id="metaRoi400" class="hint"></div>
-        </div>
-      </div>
+    <div class="previewCard" style="margin-top:6px">
+      <div class="hint">Tira de capturas</div>
+      <div id="thumbs" class="thumbs"></div>
     </div>
+
+    <canvas id="canvas" style="display:none"></canvas>
   </section>
 </main>
 
-<canvas id="offscreen" style="display:none"></canvas>
-
 <script>
-  const $  = s => document.querySelector(s);
+  // ===== utilidades =====
+  const $ = (s) => document.querySelector(s);
+  const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
   const selDevice = $('#selDevice');
-  const selRes    = $('#selRes');
-  const selFps    = $('#selFps');
-  const numW      = $('#numW');
-  const numH      = $('#numH');
+  const selRes = $('#selRes');
+  const selFps = $('#selFps');
   const customRes = $('#customRes');
+  const numW = $('#numW');
+  const numH = $('#numH');
 
-  const btnStart  = $('#btnStart');
-  const btnStop   = $('#btnStop');
+  const btnStart = $('#btnStart');
+  const btnStop  = $('#btnStop');
+  const btnTorch = $('#btnTorch');
 
-  const rngPreviewZoom = $('#rngPreviewZoom');
-  const lblPreviewZoom = $('#lblPreviewZoom');
+  const rngZoom = $('#rngZoom');
+  const zoomVal = $('#zoomVal');
+  const rngFocus = $('#rngFocus');
+  const focusVal = $('#focusVal');
+  const rngExpo = $('#rngExpo');
+  const expoVal = $('#expoVal');
 
-  const lblReq = $('#lblReq');
-  const lblReal = $('#lblReal');
+  const selWb = $('#selWb');
+  const rngWb = $('#rngWb');
+  const wbVal = $('#wbVal');
+
+  const selFilter = $('#selFilter');
+  const rngThresh = $('#rngThresh');
+  const thVal = $('#thVal');
+  const rngPreviewScale = $('#rngPreviewScale');
+  const selGrid = $('#selGrid');
+
+  const rngRoiScale = $('#rngRoiScale');
+  const roiScaleVal = $('#roiScaleVal');
+  const selFmt = $('#selFmt');
+  const rngQ = $('#rngQ');
+
+  const btnCaptureFull = $('#btnCaptureFull');
+  const btnCaptureROI  = $('#btnCaptureROI');
+  const btnDownloadLast = $('#btnDownloadLast');
+  const btnPdf = $('#btnPdf');
+
+  const video = $('#video');
+  const viewport = $('#viewport');
+  const grid = $('#grid');
+  const roiEl = $('#roi');
+
+  const btnToggleRoi = $('#btnToggleRoi');
+  const btnAf = $('#btnAf');
+  const btnLock = $('#btnLock');
+  const btnUnlock = $('#btnUnlock');
+
+  const imgFull = $('#imgFull');
+  const metaFull = $('#metaFull');
+  const imgRoi = $('#imgRoi');
+  const metaRoi = $('#metaRoi');
+  const thumbs = $('#thumbs');
 
   const stDot = $('#stDot');
-  const stMsg = $('#stMsg');
+  const stText = $('#stText');
+  const metaReq = $('#metaReq');
+  const metaReal = $('#metaReal');
+  const metaDev  = $('#metaDev');
 
-  const viewport = $('#viewport');
-  const video    = $('#video');
-
-  const roi      = $('#roi');
-  const roiInfo  = $('#roiInfo');
-  const btnToggleRoi = $('#btnToggleRoi');
-  const btnCenterRoi = $('#btnCenterRoi');
-  const btnSnapFull  = $('#btnSnapFull');
-  const btnSnapRoi   = $('#btnSnapRoi');
-
-  const rngRoiW = $('#rngRoiW');
-  const rngRoiH = $('#rngRoiH');
-  const rngRoiX = $('#rngRoiX');
-  const rngRoiY = $('#rngRoiY');
-  const lblRoiW = $('#lblRoiW');
-  const lblRoiH = $('#lblRoiH');
-  const lblRoiX = $('#lblRoiX');
-  const lblRoiY = $('#lblRoiY');
-  const chkLockAspect = $('#chkLockAspect');
-
-  const imgFull   = $('#imgFull');
-  const metaFull  = $('#metaFull');
-  const imgRoi100 = $('#imgRoi100');
-  const imgRoi250 = $('#imgRoi250');
-  const imgRoi400 = $('#imgRoi400');
-  const metaRoi100 = $('#metaRoi100');
-  const metaRoi250 = $('#metaRoi250');
-  const metaRoi400 = $('#metaRoi400');
-
-  const canvas = $('#offscreen');
+  const canvas = $('#canvas');
 
   let stream = null;
-  let track  = null;
+  let track = null;
+  let imageCapture = null;
 
-  const ID1_AR = 85.60 / 53.98; // proporción aproximada de un DUI
-  let roiEnabled = true;
-  let roiRect = {x:0.10, y:0.25, w:0.80, h:0.80/ID1_AR}; // fracciones [0..1]
+  let locked = false;
+  let roiEnabled = false;
+  // ROI en coordenadas relativas [0,1]
+  let roiRect = { x:0.15, y:0.15, w:0.7, h:0.7 };
+  let draggingHandle = null;
 
-  function setStatus(kind, msg){
-    stDot.className = 'dot' + (kind ? ' '+kind : '');
-    stMsg.textContent = msg || '';
+  let lastBlob = null;        // última captura (full o ROI)
+  let lastBlobIsRoi = false;  // para PDF/info
+
+  function setStatus(kind, text){
+    stDot.className = 'dot ' + (kind || 'idle');
+    stText.textContent = text || '';
   }
 
+  // ===== dispositivos =====
   async function listDevices(){
     try{
-      const devs = await navigator.mediaDevices.enumerateDevices();
-      const cams = devs.filter(d => d.kind === 'videoinput');
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
       selDevice.innerHTML = '';
       if(!cams.length){
         const opt = document.createElement('option');
-        opt.textContent = 'No hay cámaras';
+        opt.textContent = 'No hay cámaras disponibles';
         selDevice.appendChild(opt);
         return;
       }
-      cams.forEach((c,i)=>{
+      cams.forEach((c, i) => {
         const opt = document.createElement('option');
         opt.value = c.deviceId;
         opt.textContent = c.label || `Cámara ${i+1}`;
         selDevice.appendChild(opt);
       });
-    }catch(err){
-      console.warn('enumerateDevices:', err);
+    }catch(e){
+      console.error(e);
     }
   }
 
   function parseRes(){
     let w,h;
     if(selRes.value === 'custom'){
-      w = parseInt(numW.value,10)||0;
-      h = parseInt(numH.value,10)||0;
-    }else{
-      [w,h] = selRes.value.split('x').map(n => parseInt(n,10));
+      w = parseInt(numW.value || '0',10);
+      h = parseInt(numH.value || '0',10);
+    } else {
+      const parts = selRes.value.split('x');
+      w = parseInt(parts[0],10);
+      h = parseInt(parts[1],10);
     }
-    lblReq.textContent = `${w||'?'}×${h||'?'} @${selFps.value}fps`;
-    return {w,h};
+    const fps = selFps.value;
+    metaReq.textContent = `${w}×${h} @ ${fps}fps`;
+    return {w,h,fps:parseInt(fps,10)};
   }
 
-  selRes.addEventListener('change', ()=>{
-    customRes.style.display = selRes.value === 'custom' ? 'grid' : 'none';
+  selRes.addEventListener('change', () => {
+    customRes.style.display = selRes.value === 'custom' ? 'block' : 'none';
     parseRes();
   });
-  [numW,numH,selFps].forEach(el=>{
-    el.addEventListener('input', parseRes);
+  [numW, numH, selFps].forEach(el => el && el.addEventListener('input', parseRes));
+
+  selGrid.addEventListener('change', () => {
+    grid.hidden = selGrid.value !== 'on';
   });
 
-  rngPreviewZoom.addEventListener('input', ()=>{
-    const z = parseFloat(rngPreviewZoom.value)||1;
-    video.style.transform = `scale(${z})`;
-    lblPreviewZoom.textContent = `${Math.round(z*100)}%`;
+  selFilter.addEventListener('change', updatePreviewFilter);
+  rngThresh.addEventListener('input', () => {
+    thVal.textContent = rngThresh.value;
   });
 
+  rngPreviewScale.addEventListener('input', () => {
+    const s = parseFloat(rngPreviewScale.value) || 1;
+    video.style.setProperty('--vscale', `scale(${s})`);
+  });
+
+  rngRoiScale.addEventListener('input', () => {
+    const f = parseFloat(rngRoiScale.value) || 1;
+    roiScaleVal.textContent = `${f.toFixed(2)}× (${Math.round(f*100)}%)`;
+  });
+
+  function updatePreviewFilter(){
+    const f = selFilter.value;
+    if(f === 'grayscale'){
+      video.style.setProperty('--vf', 'grayscale(100%)');
+    } else if(f === 'bw'){
+      video.style.setProperty('--vf', 'grayscale(100%) contrast(160%) brightness(110%)');
+    } else if(f === 'contrast'){
+      video.style.setProperty('--vf', 'contrast(160%) brightness(110%)');
+    } else {
+      video.style.setProperty('--vf', 'none');
+    }
+  }
+
+  // ===== cámara =====
   async function startCamera(){
     try{
       await stopCamera();
-      setStatus('', 'Solicitando permisos…');
-
-      const {w,h} = parseRes();
-      const fps = parseInt(selFps.value,10)||30;
-
+      setStatus('warn','Solicitando permisos…');
+      const {w,h,fps} = parseRes();
+      const devId = selDevice.value || undefined;
       const constraints = {
         audio:false,
         video:{
-          width:{ideal:w},
-          height:{ideal:h},
-          frameRate:{ideal:fps,max:fps},
-          deviceId: selDevice.value ? {exact:selDevice.value} : undefined,
+          deviceId: devId ? { exact:devId } : undefined,
+          width:{ ideal:w },
+          height:{ ideal:h },
+          frameRate:{ ideal:fps, max:fps },
+          focusMode:'continuous',
           facingMode:'environment'
         }
       };
-
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
-      await video.play();
-
       track = stream.getVideoTracks()[0];
+      imageCapture = ('ImageCapture' in window) ? new ImageCapture(track) : null;
       const s = track.getSettings();
-      lblReal.textContent = `${s.width||'?'}×${s.height||'?'} @${s.frameRate||'?'}fps`;
-
+      metaReal.textContent = `${s.width || '?'}×${s.height || '?'} @ ${s.frameRate ? Math.round(s.frameRate) : '?'}fps`;
+      metaDev.textContent  = track.label || '—';
       setStatus('ok','Cámara lista');
-    }catch(err){
-      console.error(err);
+      applyCapabilities();
+    }catch(e){
+      console.error(e);
       setStatus('bad','Error al iniciar');
-      alert('No se pudo iniciar la cámara: ' + err.message);
+      alert('No se pudo iniciar la cámara: ' + e.message);
     }
   }
 
@@ -509,300 +656,547 @@
         stream.getTracks().forEach(t => t.stop());
       }
     }catch(e){
-      console.warn(e);
+      console.error(e);
     }finally{
       stream = null;
-      track  = null;
-      video.srcObject = null;
-      setStatus('', 'Cámara inactiva');
+      track = null;
+      imageCapture = null;
+      setStatus('idle','Cámara inactiva');
     }
   }
 
-  function clamp(v,min,max){
-    return Math.min(max, Math.max(min,v));
+  function setupRange(r, min, max, step, value){
+    r.min = String(min);
+    r.max = String(max);
+    r.step = String(step);
+    r.value = String(value);
+  }
+  function setRangeEnabled(r, enabled){
+    r.disabled = !enabled;
+    r.style.opacity = enabled ? '1' : '0.4';
   }
 
-  function updateRoiElement(){
-    const vp = viewport.getBoundingClientRect();
-    const xPx = roiRect.x * vp.width;
-    const yPx = roiRect.y * vp.height;
-    const wPx = roiRect.w * vp.width;
-    const hPx = roiRect.h * vp.height;
+  function applyCapabilities(){
+    if(!track) return;
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    const sets = track.getSettings ? track.getSettings() : {};
 
-    roi.style.left   = xPx + 'px';
-    roi.style.top    = yPx + 'px';
-    roi.style.width  = wPx + 'px';
-    roi.style.height = hPx + 'px';
-    roi.style.display = roiEnabled ? 'block' : 'none';
+    // Zoom
+    if(caps.zoom){
+      setupRange(rngZoom, caps.zoom.min, caps.zoom.max, caps.zoom.step || 0.01, sets.zoom || caps.zoom.min);
+      setRangeEnabled(rngZoom, true);
+      zoomVal.textContent = `${(+rngZoom.value).toFixed(2)}×`;
+    } else {
+      setupRange(rngZoom, 1, 1, 0.01, 1);
+      setRangeEnabled(rngZoom, false);
+      zoomVal.textContent = '1.00×';
+    }
 
-    const areaPct = (roiRect.w*roiRect.h*100).toFixed(1);
+    // Enfoque
+    if(caps.focusDistance){
+      setupRange(rngFocus, caps.focusDistance.min, caps.focusDistance.max, caps.focusDistance.step || 0.01, sets.focusDistance || caps.focusDistance.min);
+      setRangeEnabled(rngFocus, true);
+      focusVal.textContent = (+rngFocus.value).toFixed(2);
+    } else {
+      setupRange(rngFocus, 0, 1, 0.01, 0);
+      setRangeEnabled(rngFocus, false);
+      focusVal.textContent = 'auto';
+    }
 
-    roiInfo.style.left = xPx + 'px';
-    roiInfo.style.top  = (yPx - 4) + 'px';
-    roiInfo.textContent =
-      `x:${roiRect.x.toFixed(2)} y:${roiRect.y.toFixed(2)} `+
-      `w:${roiRect.w.toFixed(2)} h:${roiRect.h.toFixed(2)} · área:${areaPct}%`;
-    roiInfo.style.display = roiEnabled ? 'block' : 'none';
+    // Exposición
+    if(caps.exposureCompensation){
+      setupRange(rngExpo, caps.exposureCompensation.min, caps.exposureCompensation.max, caps.exposureCompensation.step || 0.1, sets.exposureCompensation || 0);
+      setRangeEnabled(rngExpo, true);
+      expoVal.textContent = rngExpo.value;
+    } else {
+      setupRange(rngExpo, -2, 2, 0.1, 0);
+      setRangeEnabled(rngExpo, false);
+      expoVal.textContent = 'N/D';
+    }
 
-    const wP = Math.round(roiRect.w*100);
-    const hP = Math.round(roiRect.h*100);
-    const xP = Math.round(roiRect.x*100);
-    const yP = Math.round(roiRect.y*100);
-    rngRoiW.value = wP; lblRoiW.textContent = wP+'%';
-    rngRoiH.value = hP; lblRoiH.textContent = hP+'%';
-    rngRoiX.value = xP; lblRoiX.textContent = xP+'%';
-    rngRoiY.value = yP; lblRoiY.textContent = yP+'%';
-  }
-
-  function centerRoi(){
-    const w = roiRect.w;
-    const h = roiRect.h;
-    roiRect.x = (1 - w)/2;
-    roiRect.y = (1 - h)/2;
-    updateRoiElement();
-  }
-
-  function onRoiSizeFromSliders(){
-    let w = clamp(parseInt(rngRoiW.value,10)/100, 0.1, 1);
-    let h = clamp(parseInt(rngRoiH.value,10)/100, 0.1, 1);
-
-    if(chkLockAspect.checked){
-      const newH = w / ID1_AR;
-      if(newH <= 1){
-        h = newH;
-      }else{
-        h = 0.9;
-        w = h * ID1_AR;
+    // WB
+    if(caps.whiteBalanceMode){
+      selWb.disabled = false;
+      if(caps.colorTemperature){
+        setRangeEnabled(rngWb, true);
+        setupRange(rngWb, caps.colorTemperature.min, caps.colorTemperature.max, caps.colorTemperature.step || 50, sets.colorTemperature || 5000);
+        wbVal.textContent = `${rngWb.value}K`;
+      } else {
+        setRangeEnabled(rngWb, false);
+        wbVal.textContent = 'auto';
       }
+    } else {
+      selWb.disabled = true;
+      setRangeEnabled(rngWb, false);
+      wbVal.textContent = 'auto';
     }
 
-    roiRect.w = w;
-    roiRect.h = h;
-    updateRoiElement();
+    // Torch
+    btnTorch.disabled = !caps.torch;
+
+    // grid + filtro
+    grid.hidden = selGrid.value !== 'on';
+    updatePreviewFilter();
   }
 
-  function onRoiPosFromSliders(){
-    const maxX = 1 - roiRect.w;
-    const maxY = 1 - roiRect.h;
-    roiRect.x = clamp(parseInt(rngRoiX.value,10)/100, 0, maxX);
-    roiRect.y = clamp(parseInt(rngRoiY.value,10)/100, 0, maxY);
-    updateRoiElement();
+  async function onZoomChange(){
+    if(!track) return;
+    try{
+      const z = parseFloat(rngZoom.value);
+      await track.applyConstraints({ advanced:[{ zoom:z }] });
+      zoomVal.textContent = `${z.toFixed(2)}×`;
+    }catch(e){ console.warn('zoom',e.message); }
+  }
+  async function onFocusChange(){
+    if(!track) return;
+    try{
+      const d = parseFloat(rngFocus.value);
+      await track.applyConstraints({ advanced:[{ focusMode:'manual', focusDistance:d }] });
+      focusVal.textContent = d.toFixed(2);
+    }catch(e){ console.warn('focus',e.message); }
+  }
+  async function onExpoChange(){
+    if(!track) return;
+    try{
+      const c = parseFloat(rngExpo.value);
+      await track.applyConstraints({ advanced:[{ exposureCompensation:c }] });
+      expoVal.textContent = c.toFixed(1);
+    }catch(e){ console.warn('expo',e.message); }
+  }
+  async function onWbModeChange(){
+    if(!track) return;
+    try{
+      const mode = selWb.value;
+      const cons = { advanced:[{ whiteBalanceMode:mode }] };
+      if(mode === 'manual' && !rngWb.disabled){
+        cons.advanced[0].colorTemperature = parseInt(rngWb.value,10);
+      }
+      await track.applyConstraints(cons);
+    }catch(e){ console.warn('wbMode',e.message); }
+  }
+  async function onWbTempChange(){
+    if(!track) return;
+    try{
+      const k = parseInt(rngWb.value,10);
+      wbVal.textContent = `${k}K`;
+      await track.applyConstraints({ advanced:[{ whiteBalanceMode:'manual', colorTemperature:k }] });
+    }catch(e){ console.warn('wbTemp',e.message); }
   }
 
-  rngRoiW.addEventListener('input', onRoiSizeFromSliders);
-  rngRoiH.addEventListener('input', onRoiSizeFromSliders);
-  rngRoiX.addEventListener('input', onRoiPosFromSliders);
-  rngRoiY.addEventListener('input', onRoiPosFromSliders);
-
-  btnToggleRoi.addEventListener('click', ()=>{
-    roiEnabled = !roiEnabled;
-    updateRoiElement();
-  });
-
-  btnCenterRoi.addEventListener('click', centerRoi);
-
-  let dragging = false;
-  let dragStart = null;
-  let roiStart  = null;
-
-  viewport.addEventListener('mousedown', e=>{
-    if(!roiEnabled) return;
-    if(e.button !== 0) return;
-    const r = roi.getBoundingClientRect();
-    if(e.clientX < r.left || e.clientX > r.right ||
-       e.clientY < r.top  || e.clientY > r.bottom){
-      return;
+  async function toggleTorch(){
+    if(!track) return;
+    try{
+      const caps = track.getCapabilities();
+      if(!caps.torch){
+        alert('La lámpara no está soportada en esta cámara.');
+        return;
+      }
+      const s = track.getSettings();
+      const on = !s.torch;
+      await track.applyConstraints({ advanced:[{ torch:on }] });
+      btnTorch.textContent = on ? '🔦 Lámpara (ON)' : '🔦 Lámpara';
+    }catch(e){
+      alert('No se pudo cambiar la lámpara: ' + e.message);
     }
-    dragging = true;
-    dragStart = {x:e.clientX,y:e.clientY};
-    roiStart  = {...roiRect};
-    e.preventDefault();
-  });
-
-  window.addEventListener('mousemove', e=>{
-    if(!dragging) return;
-    const vp = viewport.getBoundingClientRect();
-    const dx = (e.clientX - dragStart.x)/vp.width;
-    const dy = (e.clientY - dragStart.y)/vp.height;
-    const maxX = 1 - roiRect.w;
-    const maxY = 1 - roiRect.h;
-    roiRect.x = clamp(roiStart.x + dx,0,maxX);
-    roiRect.y = clamp(roiStart.y + dy,0,maxY);
-    updateRoiElement();
-  });
-  window.addEventListener('mouseup', ()=>{
-    dragging=false;
-  });
-
-  function nudgeRoi(dx,dy){
-    const step = 0.01;
-    const maxX = 1 - roiRect.w;
-    const maxY = 1 - roiRect.h;
-    roiRect.x = clamp(roiRect.x + dx*step,0,maxX);
-    roiRect.y = clamp(roiRect.y + dy*step,0,maxY);
-    updateRoiElement();
-  }
-  function nudgeSize(dw,dh){
-    const step = 0.01;
-    let w = clamp(roiRect.w + dw*step,0.1,1);
-    let h = clamp(roiRect.h + dh*step,0.1,1);
-    if(chkLockAspect.checked){
-      const newH = w / ID1_AR;
-      if(newH <= 1) h = newH;
-      else {h=0.9; w=h*ID1_AR;}
-    }
-    roiRect.w = w;
-    roiRect.h = h;
-    const maxX = 1 - roiRect.w;
-    const maxY = 1 - roiRect.h;
-    roiRect.x = clamp(roiRect.x,0,maxX);
-    roiRect.y = clamp(roiRect.y,0,maxY);
-    updateRoiElement();
   }
 
-  window.addEventListener('keydown', e=>{
-    if(e.key === 'c' || e.key === 'C'){
-      e.preventDefault();
-      captureRoi();
-      return;
-    }
-    if(e.key === 'r' || e.key === 'R'){
-      e.preventDefault();
-      roiEnabled = !roiEnabled;
-      updateRoiElement();
-      return;
-    }
+  async function refocus(){
+    if(!track) return;
+    try{
+      await track.applyConstraints({ advanced:[{ focusMode:'continuous' }] });
+    }catch(e){ console.warn('af',e.message); }
+  }
+  async function lockAEAF(lock){
+    if(!track) return;
+    try{
+      locked = lock;
+      await track.applyConstraints({ advanced:[{
+        exposureMode: lock?'manual':'continuous',
+        focusMode   : lock?'manual':'continuous'
+      }] });
+    }catch(e){ console.warn('lock',e.message); }
+  }
 
-    const keys = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
-    if(!keys.includes(e.key)) return;
-    const tag = (document.activeElement && document.activeElement.tagName)||'';
-    if(['INPUT','SELECT','TEXTAREA'].includes(tag)) return;
-
-    if(e.shiftKey){
-      if(e.key==='ArrowLeft')  nudgeSize(-1,0);
-      if(e.key==='ArrowRight') nudgeSize(+1,0);
-    }else if(e.altKey){
-      if(e.key==='ArrowUp')    nudgeSize(0,-1);
-      if(e.key==='ArrowDown')  nudgeSize(0,+1);
-    }else{
-      if(e.key==='ArrowLeft')  nudgeRoi(-1,0);
-      if(e.key==='ArrowRight') nudgeRoi(+1,0);
-      if(e.key==='ArrowUp')    nudgeRoi(0,-1);
-      if(e.key==='ArrowDown')  nudgeRoi(0,+1);
+  // ===== captura base =====
+  async function captureBaseFrame(){
+    if(!stream || !track){
+      alert('Primero inicia la cámara.');
+      return null;
     }
-    e.preventDefault();
-  });
+    try{
+      let off = document.createElement('canvas');
+      let w = video.videoWidth || 1280;
+      let h = video.videoHeight || 720;
+      off.width = w;
+      off.height = h;
+      const ctx = off.getContext('2d', { alpha:false });
 
-  function drawVideoToCanvas(){
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    if(!vw || !vh) return null;
-    canvas.width = vw;
-    canvas.height = vh;
-    const ctx = canvas.getContext('2d',{alpha:false,desynchronized:true});
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(video,0,0,vw,vh);
-    return {ctx,vw,vh};
+      if(imageCapture && imageCapture.takePhoto){
+        const blob = await imageCapture.takePhoto();
+        const bmp = await createImageBitmap(blob);
+        // adaptar al tamaño del video para que ROI coincida
+        ctx.drawImage(bmp, 0, 0, w, h);
+      } else {
+        ctx.drawImage(video, 0, 0, w, h);
+      }
+
+      // Filtros "reales" para salida:
+      if(selFilter.value === 'grayscale'){
+        applyGrayscale(ctx, w, h);
+      } else if(selFilter.value === 'bw'){
+        applyThreshold(ctx, w, h, parseInt(rngThresh.value,10) || 180);
+      } else if(selFilter.value === 'contrast'){
+        applyContrast(ctx, w, h, 1.4);
+      }
+      return off;
+    }catch(e){
+      console.error(e);
+      alert('Error al capturar: ' + e.message);
+      return null;
+    }
+  }
+
+  function applyGrayscale(ctx,w,h){
+    const imgd = ctx.getImageData(0,0,w,h);
+    const d = imgd.data;
+    for(let i=0;i<d.length;i+=4){
+      const y = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+      d[i]=d[i+1]=d[i+2]=y;
+    }
+    ctx.putImageData(imgd,0,0);
+  }
+  function applyThreshold(ctx,w,h,th){
+    const imgd = ctx.getImageData(0,0,w,h);
+    const d = imgd.data;
+    for(let i=0;i<d.length;i+=4){
+      const y = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+      const v = y >= th ? 255 : 0;
+      d[i]=d[i+1]=d[i+2]=v;
+    }
+    ctx.putImageData(imgd,0,0);
+  }
+  function applyContrast(ctx,w,h,factor){
+    const imgd = ctx.getImageData(0,0,w,h);
+    const d = imgd.data;
+    const f = factor || 1.4;
+    const bias = 128 * (1 - f);
+    for(let i=0;i<d.length;i+=4){
+      d[i]   = clamp(d[i]*f + bias, 0, 255);
+      d[i+1] = clamp(d[i+1]*f + bias, 0, 255);
+      d[i+2] = clamp(d[i+2]*f + bias, 0, 255);
+    }
+    ctx.putImageData(imgd,0,0);
   }
 
   async function captureFull(){
-    if(!stream || !video.videoWidth){
-      alert('Inicia la cámara y espera a que se vea la imagen.');
+    const base = await captureBaseFrame();
+    if(!base) return;
+    // copiar base a canvas principal
+    canvas.width  = base.width;
+    canvas.height = base.height;
+    const ctx = canvas.getContext('2d', { alpha:false });
+    ctx.drawImage(base,0,0);
+
+    const fmt = selFmt.value;
+    const q   = parseFloat(rngQ.value) || 0.9;
+    const blob = await new Promise(res => canvas.toBlob(res, fmt, q));
+    if(!blob){
+      alert('No se pudo generar la imagen.');
       return;
     }
-    const res = drawVideoToCanvas();
-    if(!res) return;
-    const {vw,vh} = res;
+    lastBlob = blob;
+    lastBlobIsRoi = false;
 
-    canvas.toBlob(blob=>{
-      if(!blob) return;
-      const url = URL.createObjectURL(blob);
-      imgFull.src = url;
-      imgFull.style.display = 'block';
-      metaFull.textContent = `Completa · ${vw}×${vh} · ${(blob.size/1024).toFixed(1)} KB`;
-    }, 'image/jpeg', 0.9);
+    const url = URL.createObjectURL(blob);
+    imgFull.src = url;
+    imgFull.style.display = 'block';
+    metaFull.textContent = `${fmt.includes('jpeg')?'JPEG':'PNG'} · ${(blob.size/1024/1024).toFixed(2)} MB · ${canvas.width}×${canvas.height}`;
+    addThumb(url, 'Full');
+    setStatus('ok','Captura completa lista');
   }
 
-  async function captureRoi(){
-    if(!stream || !video.videoWidth){
-      alert('Inicia la cámara primero.');
+  async function captureROI(){
+    if(!roiEnabled){
+      alert('Activa el ROI primero.');
       return;
     }
-    const res = drawVideoToCanvas();
-    if(!res) return;
-    const {vw,vh} = res;
+    const base = await captureBaseFrame();
+    if(!base) return;
+    const bw = base.width;
+    const bh = base.height;
 
-    const x = Math.round(roiRect.x * vw);
-    const y = Math.round(roiRect.y * vh);
-    const w = Math.round(roiRect.w * vw);
-    const h = Math.round(roiRect.h * vh);
+    // ROI en coords de video → usamos porcentajes
+    const r = roiRect;
+    const sx = Math.round(r.x * bw);
+    const sy = Math.round(r.y * bh);
+    const sw = Math.round(r.w * bw);
+    const sh = Math.round(r.h * bh);
 
-    const base = document.createElement('canvas');
-    base.width = w;
-    base.height = h;
-    const bctx = base.getContext('2d',{alpha:false,desynchronized:true});
-    bctx.imageSmoothingEnabled = true;
-    bctx.imageSmoothingQuality = 'high';
-    bctx.drawImage(canvas, x,y,w,h, 0,0,w,h);
+    const roiBase = document.createElement('canvas');
+    roiBase.width = sw;
+    roiBase.height = sh;
+    roiBase.getContext('2d').drawImage(base, sx, sy, sw, sh, 0, 0, sw, sh);
 
-    const c100 = base;
-    const c250 = document.createElement('canvas');
-    c250.width = Math.round(w*2.5);
-    c250.height = Math.round(h*2.5);
-    c250.getContext('2d').drawImage(base,0,0,c250.width,c250.height);
+    const scale = parseFloat(rngRoiScale.value) || 1;
+    const outW = Math.round(sw * scale);
+    const outH = Math.round(sh * scale);
 
-    const c400 = document.createElement('canvas');
-    c400.width = Math.round(w*4);
-    c400.height = Math.round(h*4);
-    c400.getContext('2d').drawImage(base,0,0,c400.width,c400.height);
+    canvas.width  = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d', { alpha:false });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(roiBase, 0, 0, outW, outH);
 
-    c100.toBlob(blob=>{
-      if(!blob) return;
-      const url = URL.createObjectURL(blob);
-      imgRoi100.src = url;
-      imgRoi100.style.display = 'block';
-      metaRoi100.textContent = `ROI 100% · ${c100.width}×${c100.height} · ${(blob.size/1024).toFixed(1)} KB`;
-    }, 'image/jpeg', 0.95);
+    const fmt = selFmt.value;
+    const q   = parseFloat(rngQ.value) || 0.9;
+    const blob = await new Promise(res => canvas.toBlob(res, fmt, q));
+    if(!blob){
+      alert('No se pudo generar la imagen ROI.');
+      return;
+    }
+    lastBlob = blob;
+    lastBlobIsRoi = true;
 
-    c250.toBlob(blob=>{
-      if(!blob) return;
-      const url = URL.createObjectURL(blob);
-      imgRoi250.src = url;
-      imgRoi250.style.display = 'block';
-      metaRoi250.textContent = `ROI 250% · ${c250.width}×${c250.height} · ${(blob.size/1024).toFixed(1)} KB`;
-    }, 'image/jpeg', 0.95);
-
-    c400.toBlob(blob=>{
-      if(!blob) return;
-      const url = URL.createObjectURL(blob);
-      imgRoi400.src = url;
-      imgRoi400.style.display = 'block';
-      metaRoi400.textContent = `ROI 400% · ${c400.width}×${c400.height} · ${(blob.size/1024).toFixed(1)} KB`;
-    }, 'image/jpeg', 0.95);
+    const url = URL.createObjectURL(blob);
+    imgRoi.src = url;
+    imgRoi.style.display = 'block';
+    metaRoi.textContent = `${fmt.includes('jpeg')?'JPEG':'PNG'} · ${(blob.size/1024/1024).toFixed(2)} MB · ${canvas.width}×${canvas.height} · factor ${scale.toFixed(2)}×`;
+    addThumb(url, 'ROI');
+    setStatus('ok','Captura de ROI lista');
   }
 
+  function addThumb(url, label){
+    const div = document.createElement('div');
+    div.className = 'thumb';
+    const img = document.createElement('img');
+    img.src = url;
+    const span = document.createElement('span');
+    span.textContent = label;
+    div.appendChild(img);
+    div.appendChild(span);
+    thumbs.prepend(div);
+  }
+
+  async function downloadLast(){
+    if(!lastBlob){
+      alert('No hay captura todavía.');
+      return;
+    }
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(lastBlob);
+    a.href = url;
+    a.download = lastBlobIsRoi ? 'captura_roi.png' : 'captura_full.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportPdf(){
+    if(!lastBlob){
+      alert('No hay captura para exportar.');
+      return;
+    }
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const imgBitmap = await createImageBitmap(lastBlob);
+
+    // Ajustar a A4 manteniendo aspecto
+    const pw = 210, ph = 297;
+    const margin = 10;
+    let w = pw - margin*2;
+    let h = (imgBitmap.height / imgBitmap.width) * w;
+    if(h > ph - margin*2){
+      h = ph - margin*2;
+      w = (imgBitmap.width / imgBitmap.height) * h;
+    }
+
+    const tmp = document.createElement('canvas');
+    tmp.width = imgBitmap.width;
+    tmp.height = imgBitmap.height;
+    const ctx = tmp.getContext('2d');
+    ctx.drawImage(imgBitmap,0,0);
+    const fmt = selFmt.value;
+    const dataUrl = tmp.toDataURL(fmt.includes('jpeg') ? 'image/jpeg' : 'image/png', 0.95);
+
+    pdf.addImage(
+      dataUrl,
+      fmt.includes('jpeg') ? 'JPEG' : 'PNG',
+      (pw - w)/2,
+      (ph - h)/2,
+      w, h
+    );
+    pdf.setFontSize(8);
+    pdf.text(`CamCapture Pro · ${new Date().toLocaleString()}`, margin, ph-5);
+    pdf.save(lastBlobIsRoi ? 'captura_roi.pdf' : 'captura_full.pdf');
+  }
+
+  // ===== ROI en viewport =====
+  function updateRoiElement(){
+    const rect = viewport.getBoundingClientRect();
+    const x = roiRect.x * rect.width;
+    const y = roiRect.y * rect.height;
+    const w = roiRect.w * rect.width;
+    const h = roiRect.h * rect.height;
+    roiEl.style.left = x + 'px';
+    roiEl.style.top  = y + 'px';
+    roiEl.style.width  = w + 'px';
+    roiEl.style.height = h + 'px';
+  }
+
+  function enableRoi(enabled){
+    roiEnabled = enabled;
+    roiEl.style.display = enabled ? 'block' : 'none';
+    btnToggleRoi.textContent = enabled ? '🟦 ROI (ON)' : '🟦 ROI';
+    if(enabled){
+      updateRoiElement();
+    }
+  }
+
+  function startRoiDrag(e){
+    if(!roiEnabled) return;
+    e.preventDefault();
+    const target = e.target;
+    if(target.classList.contains('roi-handle')){
+      // redimensionar
+      draggingHandle = target;
+    } else if(target === roiEl){
+      draggingHandle = 'move';
+    } else {
+      draggingHandle = null;
+    }
+  }
+
+  function onRoiMove(e){
+    if(!roiEnabled || !draggingHandle) return;
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const vx = rect.left;
+    const vy = rect.top;
+    const vw = rect.width;
+    const vh = rect.height;
+    const mx = e.clientX;
+    const my = e.clientY;
+
+    const nx = clamp((mx - vx)/vw, 0, 1);
+    const ny = clamp((my - vy)/vh, 0, 1);
+
+    let {x,y,w,h} = roiRect;
+    const minW = 0.1;
+    const minH = 0.1;
+
+    if(draggingHandle === 'move'){
+      // mover ROI
+      const cx = x + w/2;
+      const cy = y + h/2;
+      const dx = nx - cx;
+      const dy = ny - cy;
+      x = clamp(x + dx, 0, 1 - w);
+      y = clamp(y + dy, 0, 1 - h);
+    } else {
+      const cls = draggingHandle.classList;
+      const isNW = cls.contains('h-nw');
+      const isNE = cls.contains('h-ne');
+      const isSW = cls.contains('h-sw');
+      const isSE = cls.contains('h-se');
+      const isN  = cls.contains('h-n');
+      const isS  = cls.contains('h-s');
+      const isW  = cls.contains('h-w');
+      const isE  = cls.contains('h-e');
+
+      if(isN || isNW || isNE){
+        const newY = clamp(ny, 0, y + h - minH);
+        h = (y + h) - newY;
+        y = newY;
+      }
+      if(isS || isSW || isSE){
+        const newH = clamp(ny - y, minH, 1 - y);
+        h = newH;
+      }
+      if(isW || isNW || isSW){
+        const newX = clamp(nx, 0, x + w - minW);
+        w = (x + w) - newX;
+        x = newX;
+      }
+      if(isE || isNE || isSE){
+        const newW = clamp(nx - x, minW, 1 - x);
+        w = newW;
+      }
+    }
+
+    roiRect = {x,y,w,h};
+    updateRoiElement();
+  }
+
+  function stopRoiDrag(){
+    draggingHandle = null;
+  }
+
+  // ===== listeners =====
   btnStart.addEventListener('click', startCamera);
   btnStop.addEventListener('click', stopCamera);
-  btnSnapFull.addEventListener('click', captureFull);
-  btnSnapRoi.addEventListener('click', captureRoi);
+  btnTorch.addEventListener('click', toggleTorch);
 
-  (async ()=>{
-    try{
-      await navigator.mediaDevices.getUserMedia({video:true,audio:false})
-        .then(s => s.getTracks().forEach(t=>t.stop()))
-        .catch(()=>{});
-    }catch(e){
-      console.warn(e);
+  rngZoom.addEventListener('input', onZoomChange);
+  rngFocus.addEventListener('input', onFocusChange);
+  rngExpo.addEventListener('input', onExpoChange);
+
+  selWb.addEventListener('change', onWbModeChange);
+  rngWb.addEventListener('input', onWbTempChange);
+
+  btnAf.addEventListener('click', refocus);
+  btnLock.addEventListener('click', () => lockAEAF(true));
+  btnUnlock.addEventListener('click', () => lockAEAF(false));
+
+  btnCaptureFull.addEventListener('click', captureFull);
+  btnCaptureROI.addEventListener('click', captureROI);
+  btnDownloadLast.addEventListener('click', downloadLast);
+  btnPdf.addEventListener('click', exportPdf);
+
+  btnToggleRoi.addEventListener('click', () => enableRoi(!roiEnabled));
+
+  roiEl.addEventListener('mousedown', startRoiDrag);
+  viewport.addEventListener('mousedown', (e) => {
+    if(e.target === viewport && roiEnabled){
+      // clic en fondo: centrar ROI donde se clicó
+      const rect = viewport.getBoundingClientRect();
+      const nx = clamp((e.clientX - rect.left)/rect.width, 0, 1);
+      const ny = clamp((e.clientY - rect.top)/rect.height, 0, 1);
+      roiRect.x = clamp(nx - roiRect.w/2, 0, 1 - roiRect.w);
+      roiRect.y = clamp(ny - roiRect.h/2, 0, 1 - roiRect.h);
+      updateRoiElement();
     }
-    await listDevices();
+  });
+  window.addEventListener('mousemove', onRoiMove);
+  window.addEventListener('mouseup', stopRoiDrag);
+
+  window.addEventListener('resize', () => {
+    if(roiEnabled) updateRoiElement();
+  });
+
+  // teclado rápido: C para ROI, F para full, R para ROI ON/OFF
+  window.addEventListener('keydown', (e) => {
+    if(e.key === 'c' || e.key === 'C'){
+      captureROI();
+    } else if(e.key === 'f' || e.key === 'F'){
+      captureFull();
+    } else if(e.key === 'r' || e.key === 'R'){
+      enableRoi(!roiEnabled);
+    }
+  });
+
+  // ===== init =====
+  (async function init(){
     parseRes();
-    roiRect = {x:0.10,y:0.25,w:0.80,h:0.80/ID1_AR};
-    rngPreviewZoom.value = 1;
-    video.style.transform = 'scale(1)';
-    lblPreviewZoom.textContent = '100%';
-    updateRoiElement();
+    roiScaleVal.textContent = `${parseFloat(rngRoiScale.value).toFixed(2)}× (${Math.round(parseFloat(rngRoiScale.value)*100)}%)`;
+    thVal.textContent = rngThresh.value;
+    grid.hidden = true;
+    updatePreviewFilter();
+    await listDevices();
+    setStatus('idle','Cámara inactiva');
   })();
 </script>
 </body>
 </html>
+
