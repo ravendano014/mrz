@@ -37,7 +37,6 @@
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .seg{display:flex;gap:6px;flex-wrap:wrap}
-  .seg button{flex:1;min-width:90px}
   .tag{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid #334155;color:#cbd5e1;border-radius:999px;padding:6px 10px;font-size:12px}
   .hint{font-size:12px;color:var(--muted)}
   .status{display:flex;gap:10px;align-items:center}
@@ -71,7 +70,6 @@
   .thumb{background:#0b1222;border:1px solid #233044;border-radius:12px;overflow:hidden}
   .thumb img{width:100%;display:block}
   .meta{padding:8px 10px;font-size:11px;color:#9fb0c7}
-  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b1222;border:1px solid #263246;border-radius:6px;padding:2px 6px}
 </style>
 </head>
 <body>
@@ -95,8 +93,8 @@
             <option value="3840x2160">4K UHD (3840×2160)</option>
             <option value="4096x2160">DCI 4K (4096×2160)</option>
             <option value="2560x1440">QHD (2560×1440)</option>
-            <option value="1920x1080" selected>FHD (1920×1080)</option>
-            <option value="1280x720">HD (1280×720)</option>
+            <option value="1920x1080">FHD (1920×1080)</option>
+            <option value="1280x720" selected>HD (1280×720)</option><!-- HD por defecto -->
             <option value="custom">Personalizada…</option>
           </select>
         </div>
@@ -110,8 +108,8 @@
       </div>
 
       <div id="customRes" class="grid2" style="display:none">
-        <div class="row"><label>Ancho (px)</label><input id="numW" type="number" min="320" value="3000"></div>
-        <div class="row"><label>Alto (px)</label><input id="numH" type="number" min="240" value="2000"></div>
+        <div class="row"><label>Ancho (px)</label><input id="numW" type="number" min="320" value="1280"></div>
+        <div class="row"><label>Alto (px)</label><input id="numH" type="number" min="240" value="720"></div>
       </div>
 
       <div class="grid3">
@@ -174,7 +172,8 @@
           </div>
           <div>
             <label class="hint">Zoom de previsualización</label>
-            <input id="rngPreviewScale" type="range" min="1" max="3" step="0.01" value="2.5">
+            <!-- Zoom inicial al 100% -->
+            <input id="rngPreviewScale" type="range" min="1" max="3" step="0.01" value="1">
             <div class="hint">Hasta 300% (solo preview)</div>
           </div>
           <div>
@@ -235,6 +234,7 @@
       <div class="viewport" id="viewport">
         <video id="video" playsinline autoplay muted></video>
         <div class="overlay-grid" id="grid" hidden></div>
+
         <!-- ROI y etiqueta -->
         <div id="roi" hidden></div>
         <div id="roiInfo" hidden></div>
@@ -265,494 +265,169 @@
 
 <script>
   const $ = sel => document.querySelector(sel);
-  const $$ = sel => document.querySelectorAll(sel);
 
-  const selDevice = $('#selDevice');
-  const selRes = $('#selRes');
-  const selFps = $('#selFps');
-  const numW = $('#numW');
-  const numH = $('#numH');
-  const customRes = $('#customRes');
-  const btnStart = $('#btnStart');
-  const btnStop = $('#btnStop');
-  const btnTorch = $('#btnTorch');
-  const btnCapture = $('#btnCapture');
-  const btnPdf = $('#btnPdf');
-  const btnRoi = $('#btnRoi');
-  const btnSaveProfile = $('#btnSaveProfile');
-  const btnLoadProfile = $('#btnLoadProfile');
-  const btnAutoProfile = $('#btnAutoProfile');
-  const btnDownload = $('#btnDownload');
-  const btnMirror = $('#btnMirror');
-  const btnAf = $('#btnAf');
-  const btnLock = $('#btnLock');
-  const btnUnlock = $('#btnUnlock');
+  // ---- Controles / elementos ----
+  const selDevice = $('#selDevice'), selRes = $('#selRes'), selFps = $('#selFps');
+  const numW = $('#numW'), numH = $('#numH'), customRes = $('#customRes');
+  const btnStart = $('#btnStart'), btnStop = $('#btnStop'), btnTorch = $('#btnTorch');
+  const btnCapture = $('#btnCapture'), btnPdf = $('#btnPdf'), btnRoi = $('#btnRoi');
+  const btnSaveProfile = $('#btnSaveProfile'), btnLoadProfile = $('#btnLoadProfile'), btnAutoProfile = $('#btnAutoProfile');
+  const btnDownload = $('#btnDownload'), btnMirror = $('#btnMirror');
+  const btnAf = $('#btnAf'), btnLock = $('#btnLock'), btnUnlock = $('#btnUnlock');
 
-  const rngZoom = $('#rngZoom');
-  const rngFocus = $('#rngFocus');
-  const rngExpo = $('#rngExpo');
-  const selWb = $('#selWb');
-  const rngWb = $('#rngWb');
-  const selFit = $('#selFit');
-  const selFilter = $('#selFilter');
-  const rngPreviewScale = $('#rngPreviewScale');
-  const selGrid = $('#selGrid');
+  const rngZoom = $('#rngZoom'), rngFocus = $('#rngFocus'), rngExpo = $('#rngExpo');
+  const selWb = $('#selWb'), rngWb = $('#rngWb'), selFit = $('#selFit');
+  const selFilter = $('#selFilter'), rngPreviewScale = $('#rngPreviewScale'), selGrid = $('#selGrid');
 
-  const rngUpscale = $('#rngUpscale');
-  const selSharp = $('#selSharp');
-  const selFmt = $('#selFmt');
-  const rngQ = $('#rngQ');
+  const rngUpscale = $('#rngUpscale'), selSharp = $('#selSharp'), selFmt = $('#selFmt'), rngQ = $('#rngQ');
 
-  const video = $('#video');
-  const canvas = $('#canvas');
-  const viewport = $('#viewport');
-  const grid = $('#grid');
-  const lastImg = $('#lastImg');
-  const lastMeta = $('#lastMeta');
-  const roi = $('#roi');
-  const roiInfo = $('#roiInfo');
+  const video = $('#video'), canvas = $('#canvas'), viewport = $('#viewport'), grid = $('#grid');
+  const lastImg = $('#lastImg'), lastMeta = $('#lastMeta');
+  const stDot = $('#stDot'), stText = $('#stText'), metaReq = $('#metaReq'), metaReal = $('#metaReal'), metaDev = $('#metaDev');
 
-  const stDot = $('#stDot');
-  const stText = $('#stText');
-  const metaReq = $('#metaReq');
-  const metaReal = $('#metaReal');
-  const metaDev = $('#metaDev');
+  const roi = $('#roi'), roiInfo = $('#roiInfo');
 
-  let stream = null;
-  let track = null;
-  let imageCapture = null;
-  let mirror = false;
-  let locked = false;
+  // ---- Estado de cámara ----
+  let stream=null, track=null, imageCapture=null, mirror=false, locked=false;
 
-  function setStatus(kind, text){
-    stDot.className = 'dot ' + (kind||'idle');
-    stText.textContent = text || '';
-  }
+  function setStatus(kind, text){ stDot.className='dot '+(kind||'idle'); stText.textContent=text||''; }
 
   async function listDevices(){
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cams = devices.filter(d=>d.kind==='videoinput');
-    selDevice.innerHTML = '';
-    cams.forEach((c,i)=>{
-      const opt = document.createElement('option');
-      opt.value = c.deviceId; opt.textContent = c.label || `Cámara ${i+1}`; selDevice.appendChild(opt);
-    });
-    if(cams.length===0){
-      const opt = document.createElement('option');
-      opt.textContent = 'No hay cámaras'; selDevice.appendChild(opt);
-    }
+    selDevice.innerHTML=''; cams.forEach((c,i)=>{ const o=document.createElement('option'); o.value=c.deviceId; o.textContent=c.label||`Cámara ${i+1}`; selDevice.appendChild(o); });
+    if(cams.length===0){ const o=document.createElement('option'); o.textContent='No hay cámaras'; selDevice.appendChild(o); }
   }
 
   function parseRes(){
-    let w,h;
-    const v = selRes.value;
-    if(v==='custom'){ w = parseInt(numW.value||0,10); h = parseInt(numH.value||0,10); }
-    else { [w,h] = v.split('x').map(n=>parseInt(n,10)); }
-    metaReq.textContent = `${w}×${h}@${selFps.value}fps`;
-    return {w,h};
+    let w,h; const v = selRes.value;
+    if(v==='custom'){ w=+numW.value||0; h=+numH.value||0; } else { [w,h]=v.split('x').map(n=>+n); }
+    metaReq.textContent = `${w}×${h}@${selFps.value}fps`; return {w,h};
   }
 
-  selRes.addEventListener('change',()=>{
-    customRes.style.display = (selRes.value==='custom')?'grid':'none';
-    parseRes();
-  });
-  [numW,numH,selFps].forEach(el=>el.addEventListener('input',parseRes));
+  selRes.addEventListener('change',()=>{ customRes.style.display = (selRes.value==='custom')?'grid':'none'; parseRes(); });
+  [numW,numH,selFps].forEach(el=>el&&el.addEventListener('input',parseRes));
 
-  selGrid.addEventListener('change',()=>{ grid.hidden = selGrid.value!=='on';
-      toggleThresh && toggleThresh();
-      initRoi && initRoi();
-      if(localStorage.getItem('camcapture_auto_profile')==='1'){ btnAutoProfile && (btnAutoProfile.textContent='⚙️ Auto-aplicar (ON)'); } });
+  selGrid.addEventListener('change',()=>{ grid.hidden = selGrid.value!=='on'; toggleThresh?.(); initRoi?.(); });
   selFit.addEventListener('change',()=>{ video.style.objectFit = selFit.value; });
   selFilter.addEventListener('change',applyPreviewFilter);
-  rngPreviewScale.addEventListener('input',()=>{
-    const s = parseFloat(rngPreviewScale.value||1);
-    video.style.setProperty('--vscale', `scale(${s})`);
-  });
+  rngPreviewScale.addEventListener('input',()=>{ const s=+rngPreviewScale.value||1; video.style.setProperty('--vscale',`scale(${s})`); });
 
   function applyPreviewFilter(){
     const val = selFilter.value;
-    if(val==='bw'){
-      video.style.setProperty('--vf', 'grayscale(100%) contrast(140%) brightness(110%)');
-    } else if(val==='contrast'){
-      video.style.setProperty('--vf', 'contrast(160%) brightness(110%)');
-    } else {
-      video.style.setProperty('--vf', val);
-    }
+    if(val==='bw'){ video.style.setProperty('--vf','grayscale(100%) contrast(140%) brightness(110%)'); }
+    else if(val==='contrast'){ video.style.setProperty('--vf','contrast(160%) brightness(110%)'); }
+    else { video.style.setProperty('--vf', val); }
   }
 
   async function start(){
     try{
-      await stop();
-      setStatus('warn','Solicitando permisos…');
-
-      const {w,h} = parseRes();
-      const fps = parseInt(selFps.value,10)||30;
-      const devId = selDevice.value || undefined;
-
-      const constraints = {
-        audio:false,
-        video:{
-          deviceId: devId ? {exact:devId} : undefined,
-          width: {ideal: w},
-          height:{ideal: h},
-          frameRate:{ideal: fps, max: fps},
-          focusMode: 'continuous',
-          advanced:[{facingMode:'environment'}]
-        }
-      };
-
+      await stop(); setStatus('warn','Solicitando permisos…');
+      const {w,h} = parseRes(); const fps = +selFps.value||30; const devId = selDevice.value||undefined;
+      const constraints = { audio:false, video:{ deviceId: devId?{exact:devId}:undefined, width:{ideal:w}, height:{ideal:h}, frameRate:{ideal:fps,max:fps}, focusMode:'continuous', advanced:[{facingMode:'environment'}] } };
       stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream;
-      track = stream.getVideoTracks()[0];
+      video.srcObject = stream; track = stream.getVideoTracks()[0];
       imageCapture = ('ImageCapture' in window) ? new ImageCapture(track) : null;
-
       const s = track.getSettings();
-      metaReal.textContent = `${s.width||'?'}×${s.height||'?'}@${s.frameRate?Math.round(s.frameRate):'?'}fps`;
-      metaDev.textContent = track.label || '—';
-      setStatus('ok','Cámara lista');
+      metaReal.textContent = `${s.width||'?'}×${s.height||'?'}@${s.frameRate?Math.round(s.frameRate):'?'}fps`; metaDev.textContent = track.label||'—';
+      setStatus('ok','Cámara lista'); applyCapabilities();
 
-      applyCapabilities();
+      // Zoom de previsualización al 100% en arranque
+      video.style.setProperty('--vscale', 'scale(1)');
 
       rngZoom.addEventListener('input', onZoomChange);
       rngFocus.addEventListener('input', onFocusChange);
       rngExpo.addEventListener('input', onExpoChange);
       selWb.addEventListener('change', onWbModeChange);
       rngWb.addEventListener('input', onWbTempChange);
-
-    }catch(err){
-      console.error(err);
-      setStatus('bad', 'Error al iniciar: '+ err.message);
-      alert('No se pudo iniciar la cámara: '+err.message);
-    }
+    }catch(err){ console.error(err); setStatus('bad','Error al iniciar: '+err.message); alert('No se pudo iniciar la cámara: '+err.message); }
   }
 
-  async function stop(){
-    try{
-      if(stream){ stream.getTracks().forEach(t=>t.stop()); }
-    }catch{} finally{
-      stream=null; track=null; imageCapture=null;
-      setStatus('idle','Cámara inactiva');
-    }
-  }
+  async function stop(){ try{ if(stream){ stream.getTracks().forEach(t=>t.stop()); } }catch{} finally{ stream=null; track=null; imageCapture=null; setStatus('idle','Cámara inactiva'); } }
 
-  function clamp(v, min, max){ return Math.min(max, Math.max(min, v)); }
-
-  function setupRange(rng, min, max, step, value){
-    rng.min = min; rng.max = max; rng.step = step; rng.value = value;
-  }
-
-  function setRangeEnabled(rng, enabled){ rng.disabled = !enabled; rng.style.opacity = enabled?1:0.5; }
+  function clamp(v,min,max){ return Math.min(max, Math.max(min,v)); }
+  function setupRange(rng,min,max,step,value){ rng.min=min; rng.max=max; rng.step=step; rng.value=value; }
+  function setRangeEnabled(rng,enabled){ rng.disabled=!enabled; rng.style.opacity=enabled?1:0.5; }
 
   function applyCapabilities(){
     if(!track) return;
-    const caps = track.getCapabilities ? track.getCapabilities() : {};
-    const sets = track.getSettings ? track.getSettings() : {};
+    const caps = track.getCapabilities?.()||{}, sets = track.getSettings?.()||{};
 
-    if(caps.zoom){
-      setupRange(rngZoom, caps.zoom.min, caps.zoom.max, caps.zoom.step||0.01, sets.zoom||caps.zoom.min);
-      setRangeEnabled(rngZoom,true);
-      $('#zoomVal').textContent = `${parseFloat(rngZoom.value).toFixed(2)}×`;
-    } else {
-      setupRange(rngZoom, 1, 1, 0.01, 1);
-      setRangeEnabled(rngZoom,false);
-      $('#zoomVal').textContent = 'N/D';
-    }
+    if(caps.zoom){ setupRange(rngZoom,caps.zoom.min,caps.zoom.max,caps.zoom.step||0.01,sets.zoom||caps.zoom.min); setRangeEnabled(rngZoom,true); $('#zoomVal').textContent=`${(+rngZoom.value).toFixed(2)}×`; }
+    else { setupRange(rngZoom,1,1,0.01,1); setRangeEnabled(rngZoom,false); $('#zoomVal').textContent='1.00×'; }
 
-    if(caps.focusDistance){
-      setupRange(rngFocus, caps.focusDistance.min, caps.focusDistance.max, caps.focusDistance.step||0.01, sets.focusDistance||caps.focusDistance.min);
-      setRangeEnabled(rngFocus,true);
-      $('#focusVal').textContent = parseFloat(rngFocus.value).toFixed(2);
-    } else {
-      setupRange(rngFocus,0,1,0.01,0);
-      setRangeEnabled(rngFocus,false);
-      $('#focusVal').textContent = 'auto';
-    }
+    if(caps.focusDistance){ setupRange(rngFocus,caps.focusDistance.min,caps.focusDistance.max,caps.focusDistance.step||0.01,sets.focusDistance||caps.focusDistance.min); setRangeEnabled(rngFocus,true); $('#focusVal').textContent=(+rngFocus.value).toFixed(2); }
+    else { setupRange(rngFocus,0,1,0.01,0); setRangeEnabled(rngFocus,false); $('#focusVal').textContent='auto'; }
 
-    if(caps.exposureCompensation){
-      setupRange(rngExpo, caps.exposureCompensation.min, caps.exposureCompensation.max, caps.exposureCompensation.step||0.1, sets.exposureCompensation||0);
-      setRangeEnabled(rngExpo,true);
-      $('#expoVal').textContent = rngExpo.value;
-    } else {
-      setupRange(rngExpo,0,0,0.1,0);
-      setRangeEnabled(rngExpo,false);
-      $('#expoVal').textContent = 'N/D';
-    }
+    if(caps.exposureCompensation){ setupRange(rngExpo,caps.exposureCompensation.min,caps.exposureCompensation.max,caps.exposureCompensation.step||0.1,sets.exposureCompensation||0); setRangeEnabled(rngExpo,true); $('#expoVal').textContent=rngExpo.value; }
+    else { setupRange(rngExpo,0,0,0.1,0); setRangeEnabled(rngExpo,false); $('#expoVal').textContent='N/D'; }
 
-    if(caps.whiteBalanceMode && caps.whiteBalanceMode.length){
-      selWb.disabled = false;
-      rngWb.disabled = !caps.colorTemperature;
-      if(caps.colorTemperature){
-        setupRange(rngWb, caps.colorTemperature.min, caps.colorTemperature.max, caps.colorTemperature.step||50, sets.colorTemperature||5000);
-        $('#wbVal').textContent = `${rngWb.value}K`;
-      }
-    } else {
-      selWb.disabled = true; rngWb.disabled = true; $('#wbVal').textContent = 'auto';
-    }
+    if(caps.whiteBalanceMode?.length){ selWb.disabled=false; rngWb.disabled=!caps.colorTemperature;
+      if(caps.colorTemperature){ setupRange(rngWb,caps.colorTemperature.min,caps.colorTemperature.max,caps.colorTemperature.step||50,sets.colorTemperature||5000); $('#wbVal').textContent=`${rngWb.value}K`; }
+    } else { selWb.disabled=true; rngWb.disabled=true; $('#wbVal').textContent='auto'; }
 
-    btnTorch.disabled = !(caps.torch);
+    btnTorch.disabled = !caps.torch;
+    video.style.objectFit = selFit.value; applyPreviewFilter();
 
-    video.style.objectFit = selFit.value;
-    applyPreviewFilter();
-    video.style.setProperty('--vscale', `scale(${parseFloat(rngPreviewScale.value)})`);
+    // Asegurar zoom de previsualización a 100% en capabilities
+    rngPreviewScale.value = 1;
+    video.style.setProperty('--vscale', 'scale(1)');
   }
 
-  async function onZoomChange(){
-    try{
-      if(!track) return;
-      const z = parseFloat(rngZoom.value);
-      await track.applyConstraints({advanced:[{zoom:z}]});
-      $('#zoomVal').textContent = `${z.toFixed(2)}×`;
-    }catch(err){ console.warn('zoom', err.message); }
-  }
+  async function onZoomChange(){ if(!track) return; try{ const z=+rngZoom.value; await track.applyConstraints({advanced:[{zoom:z}]}); $('#zoomVal').textContent=`${z.toFixed(2)}×`; }catch(e){ console.warn('zoom',e.message); } }
+  async function onFocusChange(){ if(!track) return; try{ const d=+rngFocus.value; await track.applyConstraints({advanced:[{focusMode:'manual',focusDistance:d}]}); $('#focusVal').textContent=d.toFixed(2); }catch(e){ console.warn('focus',e.message);} }
+  async function onExpoChange(){ if(!track) return; try{ const c=+rngExpo.value; await track.applyConstraints({advanced:[{exposureCompensation:c}]}); $('#expoVal').textContent=c.toFixed(1); }catch(e){ console.warn('expo',e.message);} }
+  async function onWbModeChange(){ if(!track) return; try{ const mode=selWb.value; const cons={advanced:[{whiteBalanceMode:mode}]}; if(mode==='manual' && !rngWb.disabled){ cons.advanced[0].colorTemperature=+rngWb.value; } await track.applyConstraints(cons);}catch(e){ console.warn('wb',e.message);} }
+  async function onWbTempChange(){ if(!track) return; try{ const k=+rngWb.value; $('#wbVal').textContent=`${k}K`; await track.applyConstraints({advanced:[{whiteBalanceMode:'manual', colorTemperature:k}]}); }catch(e){ console.warn('wb temp',e.message);} }
 
-  async function onFocusChange(){
-    try{
-      if(!track) return;
-      const d = parseFloat(rngFocus.value);
-      await track.applyConstraints({advanced:[{focusMode:'manual', focusDistance:d}]});
-      $('#focusVal').textContent = d.toFixed(2);
-    }catch(err){ console.warn('focus', err.message); }
-  }
+  async function toggleTorch(){ try{ if(!track) return; const caps=track.getCapabilities(); if(!caps.torch){ alert('La lámpara no está soportada en esta cámara.'); return; } const s=track.getSettings(); const on=!s.torch; await track.applyConstraints({advanced:[{torch:on}]}); btnTorch.textContent = on?'🔦 Lámpara (ON)':'🔦 Lámpara'; }catch(e){ alert('No se pudo cambiar la lámpara: '+e.message);} }
 
-  async function onExpoChange(){
-    try{
-      if(!track) return;
-      const c = parseFloat(rngExpo.value);
-      await track.applyConstraints({advanced:[{exposureCompensation:c}]});
-      $('#expoVal').textContent = c.toFixed(1);
-    }catch(err){ console.warn('expo', err.message); }
-  }
-
-  async function onWbModeChange(){
-    try{
-      if(!track) return;
-      const mode = selWb.value;
-      const cons = {advanced:[{whiteBalanceMode: mode}]};
-      if(mode==='manual' && !rngWb.disabled){ cons.advanced[0].colorTemperature = parseFloat(rngWb.value); }
-      await track.applyConstraints(cons);
-    }catch(err){ console.warn('wb', err.message); }
-  }
-
-  async function onWbTempChange(){
-    try{
-      if(!track) return;
-      const k = parseFloat(rngWb.value);
-      $('#wbVal').textContent = `${k}K`;
-      await track.applyConstraints({advanced:[{whiteBalanceMode:'manual', colorTemperature:k}]});
-    }catch(err){ console.warn('wb temp', err.message); }
-  }
-
-  async function toggleTorch(){
-    try{
-      if(!track) return;
-      const caps = track.getCapabilities();
-      if(!caps.torch){ alert('La lámpara no está soportada en esta cámara.'); return; }
-      const s = track.getSettings();
-      const on = !s.torch;
-      await track.applyConstraints({advanced:[{torch:on}]});
-      btnTorch.textContent = on? '🔦 Lámpara (ON)':'🔦 Lámpara';
-    }catch(err){ alert('No se pudo cambiar la lámpara: '+err.message); }
-  }
-
-  async function refocus(){
-    try{
-      if(!track) return;
-      await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
-    }catch(err){ console.warn('af', err.message); }
-  }
-
-  async function lockAEAF(lock){
-    try{
-      if(!track) return;
-      locked = lock;
-      await track.applyConstraints({advanced:[{ exposureMode: lock?'manual':'continuous', focusMode: lock?'manual':'continuous' }]});
-    }catch(err){ console.warn('lock', err.message); }
-  }
+  async function refocus(){ try{ if(!track) return; await track.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){ console.warn('af',e.message);} }
+  async function lockAEAF(lock){ try{ if(!track) return; locked=lock; await track.applyConstraints({advanced:[{exposureMode:lock?'manual':'continuous', focusMode:lock?'manual':'continuous'}]}); }catch(e){ console.warn('lock',e.message);} }
 
   function drawToCanvasFromBlob(blob, upFactor){
     return new Promise((resolve,reject)=>{
-      const img = new Image();
-      img.onload = ()=>{
-        const w = Math.round(img.width * upFactor);
-        const h = Math.round(img.height * upFactor);
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        const filt = selFilter.value;
-        if(filt==='grayscale(100%)') ctx.filter = 'grayscale(100%)';
-        else if(filt==='contrast') ctx.filter = 'contrast(160%) brightness(110%)';
-        else ctx.filter = 'none';
-        ctx.save();
-        if(mirror){ ctx.translate(w,0); ctx.scale(-1,1); }
-        ctx.drawImage(img, 0,0, w, h);
-        ctx.restore();
-        if(selFilter.value==='bw') applyThreshold(ctx, w, h, 180);
-        const s = parseInt(selSharp.value,10)||0; if(s>0) applySharpen(ctx, w, h, s);
+      const img=new Image();
+      img.onload=()=>{
+        const w=Math.round(img.width*upFactor), h=Math.round(img.height*upFactor);
+        canvas.width=w; canvas.height=h;
+        const ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        const filt=selFilter.value;
+        if(filt==='grayscale(100%)') ctx.filter='grayscale(100%)';
+        else if(filt==='contrast')   ctx.filter='contrast(160%) brightness(110%)';
+        else ctx.filter='none';
+        ctx.save(); if(mirror){ ctx.translate(w,0); ctx.scale(-1,1);} ctx.drawImage(img,0,0,w,h); ctx.restore();
+        if(selFilter.value==='bw') applyThreshold(ctx,w,h,180);
+        const s=parseInt(selSharp.value,10)||0; if(s>0) applySharpen(ctx,w,h,s);
         resolve();
       };
-      img.onerror = reject;
-      img.src = URL.createObjectURL(blob);
+      img.onerror=reject; img.src=URL.createObjectURL(blob);
     });
   }
 
   function applyThreshold(ctx,w,h,th=180){
-    const imgd = ctx.getImageData(0,0,w,h);
-    const d = imgd.data;
-    for(let i=0;i<d.length;i+=4){
-      const y = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-      const v = (y>=th)?255:0; d[i]=d[i+1]=d[i+2]=v;
-    }
+    const imgd=ctx.getImageData(0,0,w,h), d=imgd.data;
+    for(let i=0;i<d.length;i+=4){ const y=0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]; const v=(y>=th)?255:0; d[i]=d[i+1]=d[i+2]=v; }
     ctx.putImageData(imgd,0,0);
   }
 
   function applySharpen(ctx,w,h,level){
-    const gain = [0,0.5,0.8,1.1][level] || 0.5;
-    const k = [
-      0, -gain, 0,
-      -gain, 1+4*gain, -gain,
-      0, -gain, 0
-    ];
-    const src = ctx.getImageData(0,0,w,h);
-    const dst = ctx.createImageData(w,h);
-    const s = src.data, d = dst.data;
-    const ix = (x,y)=> (y*w + x)*4;
-    for(let y=1;y<h-1;y++){
-      for(let x=1;x<w-1;x++){
-        for(let c=0;c<3;c++){
-          const v =
-            k[0]*s[ix(x-1,y-1)+c] + k[1]*s[ix(x,y-1)+c] + k[2]*s[ix(x+1,y-1)+c] +
-            k[3]*s[ix(x-1,y)+c]   + k[4]*s[ix(x,y)+c]   + k[5]*s[ix(x+1,y)+c]   +
-            k[6]*s[ix(x-1,y+1)+c] + k[7]*s[ix(x,y+1)+c] + k[8]*s[ix(x+1,y+1)+c];
-          d[ix(x,y)+c] = clamp(v,0,255);
-        }
-        d[ix(x,y)+3] = 255;
-      }
-    }
+    const gain=[0,0.5,0.8,1.1][level]||0.5;
+    const k=[0,-gain,0,-gain,1+4*gain,-gain,0,-gain,0];
+    const src=ctx.getImageData(0,0,w,h), dst=ctx.createImageData(w,h);
+    const s=src.data, d=dst.data, ix=(x,y)=>(y*w+x)*4;
+    for(let y=1;y<h-1;y++){ for(let x=1;x<w-1;x++){ for(let c=0;c<3;c++){
+      const v= k[0]*s[ix(x-1,y-1)+c]+k[1]*s[ix(x,y-1)+c]+k[2]*s[ix(x+1,y-1)+c]+
+               k[3]*s[ix(x-1,y)+c]  +k[4]*s[ix(x,y)+c]  +k[5]*s[ix(x+1,y)+c]  +
+               k[6]*s[ix(x-1,y+1)+c]+k[7]*s[ix(x,y+1)+c]+k[8]*s[ix(x+1,y+1)+c];
+      d[ix(x,y)+c]=clamp(v,0,255);
+    } d[ix(x,y)+3]=255; } }
     ctx.putImageData(dst,0,0);
   }
 
-  async function capture(){
-    try{
-      if(!track){ alert('Inicia la cámara primero.'); return; }
-      setStatus('warn','Capturando…');
-      const upscale = parseFloat(rngUpscale.value)||1;
-      const t0 = performance.now();
-
-      let blob;
-      if(imageCapture && imageCapture.takePhoto){
-        blob = await imageCapture.takePhoto();
-      } else {
-        const s = track.getSettings();
-        const w = s.width||video.videoWidth; const h = s.height||video.videoHeight;
-        const off = document.createElement('canvas'); off.width = w; off.height = h;
-        const ctx = off.getContext('2d', {alpha:false, desynchronized:true});
-        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality='high';
-        ctx.save();
-        if(mirror){ ctx.translate(w,0); ctx.scale(-1,1); }
-        ctx.drawImage(video,0,0,w,h); ctx.restore();
-        blob = await new Promise(res=> off.toBlob(res, 'image/png'));
-      }
-
-      await drawToCanvasFromBlob(blob, upscale);
-
-      const fmt = selFmt.value; const q = parseFloat(rngQ.value)||0.9;
-      const outBlob = await new Promise(res=> canvas.toBlob(res, fmt, q));
-      const url = URL.createObjectURL(outBlob);
-      lastImg.src = url; lastImg.style.display = 'block';
-      const t1 = performance.now();
-      lastMeta.textContent = `${fmt.includes('jpeg')?`JPEG q=${q}`:'PNG'} · ${(outBlob.size/1024/1024).toFixed(2)} MB · ${(t1-t0|0)} ms`;
-
-      addThumb(url);
-      setStatus('ok','Captura lista');
-    }catch(err){
-      console.error(err);
-      setStatus('bad','Error al capturar: '+err.message);
-      alert('Error al capturar: '+err.message);
-    }
-  }
-
-  function addThumb(url){
-    const box = document.createElement('div'); box.className='thumb';
-    const img = document.createElement('img'); img.src=url; box.appendChild(img);
-    const meta = document.createElement('div'); meta.className='meta';
-    meta.textContent = new Date().toLocaleTimeString(); box.appendChild(meta);
-    $('#thumbs').prepend(box);
-  }
-
-  function download(){
-    if(!lastImg.src){ alert('No hay captura.'); return; }
-    const a = document.createElement('a'); a.href = lastImg.src;
-    const ts = new Date().toISOString().replace(/[:.]/g,'-');
-    a.download = `captura_${ts}.${ selFmt.value.includes('jpeg')?'jpg':'png' }`;
-    a.click();
-  }
-
-  function toggleMirror(){
-    mirror = !mirror;
-    video.style.transform = mirror ? 'scaleX(-1) var(--vscale, none)' : 'var(--vscale, none)';
-    btnMirror.textContent = mirror? '🔁 Espejo (ON)':'🔁 Espejo';
-  }
-
-  // === Etiqueta de coordenadas del ROI ===
-  function updateRoiInfo(){
-    if(!roi || !roiInfo || roi.hidden) return;
-    const vp = viewport.getBoundingClientRect();
-    const x = Math.round(roiRect.x * vp.width);
-    const y = Math.round(roiRect.y * vp.height);
-    const w = Math.round(roiRect.w * vp.width);
-    const h = Math.round(roiRect.h * vp.height);
-
-    roiInfo.textContent =
-      `x:${roiRect.x.toFixed(3)} y:${roiRect.y.toFixed(3)} w:${roiRect.w.toFixed(3)} h:${roiRect.h.toFixed(3)}  ` +
-      `|  ${x}×${y} – ${w}×${h}px`;
-    roiInfo.style.left = (x + 2) + 'px';
-    roiInfo.style.top  = (y - 8) + 'px';
-  }
-
-  // === Eventos UI (con guardas por si faltan botones opcionales) ===
-  btnStart && btnStart.addEventListener('click', start);
-  btnStop && btnStop.addEventListener('click', stop);
-  btnTorch && btnTorch.addEventListener('click', toggleTorch);
-  btnCapture && btnCapture.addEventListener('click', captureWithRoi);
-  btnDownload && btnDownload.addEventListener('click', download);
-  btnPdf && btnPdf.addEventListener('click', exportPdf);
-  btnRoi && btnRoi.addEventListener('click', toggleRoi);
-  btnSaveProfile && btnSaveProfile.addEventListener('click', saveProfile);
-  btnLoadProfile && btnLoadProfile.addEventListener('click', loadProfile);
-  btnAutoProfile && btnAutoProfile.addEventListener('click', toggleAutoProfile);
-  btnMirror && btnMirror.addEventListener('click', toggleMirror);
-  btnAf && btnAf.addEventListener('click', refocus);
-  btnLock && btnLock.addEventListener('click', ()=>lockAEAF(true));
-  btnUnlock && btnUnlock.addEventListener('click', ()=>lockAEAF(false));
-
-  // Preparar lista de cámaras
-  (async()=>{
-    try{
-      await navigator.mediaDevices.getUserMedia({video:true, audio:false}).then(s=>{
-        s.getTracks().forEach(t=>t.stop());
-      }).catch(()=>{});
-      await listDevices();
-      navigator.mediaDevices.addEventListener('devicechange', listDevices);
-      parseRes();
-      applyPreviewFilter();
-      grid.hidden = selGrid.value!=='on';
-    }catch(err){ console.warn('init', err.message); }
-  })();
-
-  // === Overrides / Extensiones ===
-  function applyThreshold(ctx,w,h,th){
-    const imgd = ctx.getImageData(0,0,w,h);
-    const d = imgd.data; th = th ?? parseInt((window.rngThresh&&rngThresh.value)||180,10);
-    for(let i=0;i<d.length;i+=4){ const y=0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]; const v=(y>=th)?255:0; d[i]=d[i+1]=d[i+2]=v; }
-    ctx.putImageData(imgd,0,0);
-  }
-  function toggleThresh(){ const show = selFilter.value==='bw'; const block = rngThresh?.closest?.('div'); if(block){ block.style.opacity = show?1:0.5; } if(typeof rngThresh!=='undefined' && rngThresh){ rngThresh.disabled=!show; $('#thVal') && ($('#thVal').textContent=rngThresh.value); } }
-
-  // ROI (corregido)
-  let dragging = null;
-  let roiEnabled = false;
-  let roiRect = {x:0.2,y:0.2,w:0.6,h:0.6};
+  // ===== ROI =====
+  let dragging=null, roiEnabled=false, roiRect={x:0.2,y:0.2,w:0.6,h:0.6};
 
   function initRoi(){
     setRoiRect(roiRect);
@@ -761,6 +436,7 @@
     window.addEventListener('mousemove', roiMouseMove);
     window.addEventListener('mouseup', roiMouseUp);
   }
+
   function toggleRoi(){
     roiEnabled=!roiEnabled;
     roi.hidden=!roiEnabled;
@@ -768,6 +444,7 @@
     btnRoi && (btnRoi.textContent = roiEnabled? '🟦 ROI (ON)':'🟦 ROI');
     if(roiEnabled){ setRoiRect(roiRect); }
   }
+
   function setRoiRect(r){
     const vp=viewport.getBoundingClientRect();
     const x=r.x*vp.width, y=r.y*vp.height, w=r.w*vp.width, h=r.h*vp.height;
@@ -779,6 +456,7 @@
     }
     updateRoiInfo();
   }
+
   function roiMouseDown(e){
     if(!roiEnabled) return;
     const t=e.target;
@@ -786,6 +464,7 @@
     else if(t.id==='roi') dragging='move';
     e.preventDefault();
   }
+
   function roiMouseMove(e){
     if(!dragging) return;
     const vp=viewport.getBoundingClientRect();
@@ -803,37 +482,50 @@
     roiRect={x,y,w,h};
     setRoiRect(roiRect);
   }
+
   function roiMouseUp(){ dragging=null; }
 
-  // Perfiles
+  // Etiqueta con fracciones, píxeles, aspect ratio y área %
+  function updateRoiInfo(){
+    if(roi.hidden || roiInfo.hidden) return;
+    const vp=viewport.getBoundingClientRect();
+    const xPx=Math.round(roiRect.x*vp.width),  yPx=Math.round(roiRect.y*vp.height);
+    const wPx=Math.round(roiRect.w*vp.width),  hPx=Math.round(roiRect.h*vp.height);
+    const ratio = (wPx && hPx) ? (wPx/hPx) : 0;
+    const areaP = (roiRect.w * roiRect.h * 100);
+    roiInfo.textContent =
+      `x:${roiRect.x.toFixed(3)} y:${roiRect.y.toFixed(3)} w:${roiRect.w.toFixed(3)} h:${roiRect.h.toFixed(3)}  |  `+
+      `${xPx},${yPx} – ${wPx}×${hPx}px  |  AR:${ratio.toFixed(3)}  |  Área:${areaP.toFixed(2)}%`;
+    roiInfo.style.left = (xPx + 2) + 'px';
+    roiInfo.style.top  = (yPx - 8) + 'px';
+  }
+
+  // ===== Perfiles / PDF / Captura =====
   const PROFILE_KEY='camcapture_profiles_v1';
   function readProfiles(){ try{ return JSON.parse(localStorage.getItem(PROFILE_KEY)||'{}'); }catch{ return {}; } }
   function writeProfiles(o){ localStorage.setItem(PROFILE_KEY, JSON.stringify(o)); }
   function saveProfile(){
     if(!track){ alert('Inicia la cámara para guardar un perfil.'); return; }
     const id=track.getSettings().deviceId||selDevice.value||'default';
-    const prof={
-      res:selRes.value,fps:selFps.value,w:numW.value,h:numH.value,
-      fit:selFit.value,filter:selFilter.value,thresh:(typeof rngThresh!=='undefined'&&rngThresh)?rngThresh.value:180,
-      upscale:rngUpscale.value,sharp:selSharp.value,fmt:selFmt.value,q:rngQ.value,
-      grid:selGrid.value, mirror, roiEnabled, roiRect
-    };
+    const prof={ res:selRes.value,fps:selFps.value,w:numW?.value,h:numH?.value,
+      fit:selFit.value,filter:selFilter.value,thresh:180, upscale:rngUpscale.value,sharp:selSharp.value,fmt:selFmt.value,q:rngQ.value,
+      grid:selGrid.value, mirror, roiEnabled, roiRect };
     const all=readProfiles(); all[id]=prof; writeProfiles(all); alert('Perfil guardado.');
   }
   function loadProfile(){
-    const id=selDevice.value||'default';
-    const p=readProfiles()[id];
+    const id=selDevice.value||'default'; const p=readProfiles()[id];
     if(!p){ alert('No hay perfil.'); return;}
-    selRes.value=p.res; selFps.value=p.fps; numW.value=p.w; numH.value=p.h;
-    selFit.value=p.fit; selFilter.value=p.filter;
-    if(typeof rngThresh!=='undefined' && rngThresh){ rngThresh.value=p.thresh; $('#thVal') && ($('#thVal').textContent=p.thresh); }
-    rngUpscale.value=p.upscale; $('#upVal') && ($('#upVal').textContent=p.upscale+'×');
+    selRes.value=p.res; selFps.value=p.fps; if(numW) numW.value=p.w; if(numH) numH.value=p.h;
+    selFit.value=p.fit; selFilter.value=p.filter; rngUpscale.value=p.upscale;
     selSharp.value=p.sharp; selFmt.value=p.fmt; rngQ.value=p.q;
     selGrid.value=p.grid; grid.hidden=selGrid.value!=='on';
     mirror=!!p.mirror; video.style.transform = mirror ? 'scaleX(-1) var(--vscale, none)' : 'var(--vscale, none)';
     roiEnabled=!!p.roiEnabled; roi.hidden=!roiEnabled; roiInfo.hidden=!roiEnabled;
-    roiRect=p.roiRect||roiRect; setRoiRect(roiRect);
-    applyPreviewFilter(); toggleThresh();
+    roiRect=p.roiRect||roiRect; setRoiRect(roiRect); applyPreviewFilter();
+
+    // Mantener zoom inicial a 100% al cargar perfil
+    rngPreviewScale.value = 1;
+    video.style.setProperty('--vscale', 'scale(1)');
   }
   function toggleAutoProfile(){
     const v=localStorage.getItem('camcapture_auto_profile')==='1'?'0':'1';
@@ -841,15 +533,12 @@
     btnAutoProfile && (btnAutoProfile.textContent = v==='1'? '⚙️ Auto-aplicar (ON)' : '⚙️ Auto-aplicar perfil');
   }
 
-  // Exportar PDF
   async function exportPdf(){
     if(!lastImg.src){ alert('No hay captura para exportar.'); return; }
-    const { jsPDF } = window.jspdf || {};
-    if(!jsPDF){ alert('jsPDF no disponible.'); return; }
+    const { jsPDF } = window.jspdf || {}; if(!jsPDF){ alert('jsPDF no disponible.'); return; }
     const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
     const img=await fetch(lastImg.src).then(r=>r.blob()).then(b=>createImageBitmap(b));
-    const pw=210,ph=297,margin=10;
-    let w=pw-margin*2,h=(img.height/img.width)*w;
+    const pw=210,ph=297,margin=10; let w=pw-margin*2,h=(img.height/img.width)*w;
     if(h>ph-margin*2){ h=ph-margin*2; w=(img.width/img.height)*h; }
     const tmp=document.createElement('canvas'); tmp.width=img.width; tmp.height=img.height;
     const ctx=tmp.getContext('2d'); ctx.drawImage(img,0,0);
@@ -859,33 +548,33 @@
     pdf.save(`captura_${new Date().toISOString().replace(/[:.]/g,'-')}.pdf`);
   }
 
-  // Captura con ROI
   async function captureWithRoi(){
     try{
       if(!track){ alert('Inicia la cámara primero.'); return; }
       setStatus('warn','Capturando…');
-      const upscale = parseFloat(rngUpscale.value)||1; const t0=performance.now();
+      const upscale=+rngUpscale.value||1; const t0=performance.now();
       let blob;
-      if(imageCapture && imageCapture.takePhoto){ blob = await imageCapture.takePhoto(); }
+      if(imageCapture?.takePhoto){ blob=await imageCapture.takePhoto(); }
       else {
-        const s = track.getSettings(); const w = s.width||video.videoWidth; const h = s.height||video.videoHeight;
-        const off = document.createElement('canvas'); off.width=w; off.height=h; const ctx=off.getContext('2d',{alpha:false,desynchronized:true});
-        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high'; ctx.save(); if(mirror){ ctx.translate(w,0); ctx.scale(-1,1);} ctx.drawImage(video,0,0,w,h); ctx.restore();
-        blob = await new Promise(res=> off.toBlob(res,'image/png'));
+        const s=track.getSettings(); const w=s.width||video.videoWidth; const h=s.height||video.videoHeight;
+        const off=document.createElement('canvas'); off.width=w; off.height=h;
+        const ctx=off.getContext('2d',{alpha:false,desynchronized:true});
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        ctx.save(); if(mirror){ ctx.translate(w,0); ctx.scale(-1,1);} ctx.drawImage(video,0,0,w,h); ctx.restore();
+        blob=await new Promise(res=>off.toBlob(res,'image/png'));
       }
-      await drawToCanvasFromBlob(blob, upscale);
+      await drawToCanvasFromBlob(blob,upscale);
       if(roiEnabled){
         const rw=canvas.width, rh=canvas.height;
         const cx=Math.round(roiRect.x*rw), cy=Math.round(roiRect.y*rh);
         const cw=Math.round(roiRect.w*rw), ch=Math.round(roiRect.h*rh);
         const cut=document.createElement('canvas'); cut.width=cw; cut.height=ch;
         const cctx=cut.getContext('2d',{alpha:false,desynchronized:true});
-        const imgd=canvas.getContext('2d').getImageData(cx,cy,cw,ch);
-        cctx.putImageData(imgd,0,0);
+        const imgd=canvas.getContext('2d').getImageData(cx,cy,cw,ch); cctx.putImageData(imgd,0,0);
         canvas.width=cw; canvas.height=ch; canvas.getContext('2d').drawImage(cut,0,0);
       }
-      const fmt=selFmt.value; const q=parseFloat(rngQ.value)||0.9;
-      const outBlob=await new Promise(res=> canvas.toBlob(res, fmt, q));
+      const fmt=selFmt.value; const q=+rngQ.value||0.9;
+      const outBlob=await new Promise(res=>canvas.toBlob(res,fmt,q));
       const url=URL.createObjectURL(outBlob);
       lastImg.src=url; lastImg.style.display='block';
       const t1=performance.now();
@@ -893,6 +582,65 @@
       addThumb(url); setStatus('ok','Captura lista');
     }catch(err){ console.error(err); setStatus('bad','Error al capturar: '+err.message); alert('Error al capturar: '+err.message); }
   }
+
+  function addThumb(url){
+    const box=document.createElement('div'); box.className='thumb';
+    const img=document.createElement('img'); img.src=url; box.appendChild(img);
+    const meta=document.createElement('div'); meta.className='meta'; meta.textContent=new Date().toLocaleTimeString(); box.appendChild(meta);
+    document.querySelector('#thumbs').prepend(box);
+  }
+
+  function download(){
+    if(!lastImg.src){ alert('No hay captura.'); return; }
+    const a=document.createElement('a'); a.href=lastImg.src;
+    const ts=new Date().toISOString().replace(/[:.]/g,'-');
+    a.download=`captura_${ts}.${ selFmt.value.includes('jpeg')?'jpg':'png' }`; a.click();
+  }
+
+  function toggleMirror(){ mirror=!mirror; video.style.transform = mirror?'scaleX(-1) var(--vscale, none)':'var(--vscale, none)'; btnMirror.textContent = mirror?'🔁 Espejo (ON)':'🔁 Espejo'; }
+
+  // === Eventos UI ===
+  btnStart?.addEventListener('click', start);
+  btnStop?.addEventListener('click', stop);
+  btnTorch?.addEventListener('click', toggleTorch);
+  btnCapture?.addEventListener('click', captureWithRoi);
+  btnDownload?.addEventListener('click', download);
+  btnPdf?.addEventListener('click', exportPdf);
+  btnRoi?.addEventListener('click', toggleRoi);
+  btnSaveProfile?.addEventListener('click', saveProfile);
+  btnLoadProfile?.addEventListener('click', loadProfile);
+  btnAutoProfile?.addEventListener('click', toggleAutoProfile);
+  btnMirror?.addEventListener('click', toggleMirror);
+  btnAf?.addEventListener('click', refocus);
+  btnLock?.addEventListener('click', ()=>lockAEAF(true));
+  btnUnlock?.addEventListener('click', ()=>lockAEAF(false));
+
+  // Preparativos
+  (async()=>{
+    try{
+      await navigator.mediaDevices.getUserMedia({video:true,audio:false}).then(s=>s.getTracks().forEach(t=>t.stop())).catch(()=>{});
+      await listDevices();
+      navigator.mediaDevices.addEventListener('devicechange', listDevices);
+      parseRes(); applyPreviewFilter();
+      grid.hidden = selGrid.value!=='on';
+
+      // Zoom inicial 100% al cargar
+      rngPreviewScale.value = 1;
+      video.style.setProperty('--vscale', 'scale(1)');
+
+      initRoi();
+    }catch(err){ console.warn('init', err.message); }
+  })();
+
+  // Umbral (si aplicara)
+  function toggleThresh(){
+    const show = selFilter.value==='bw';
+    const rngThresh = window.rngThresh; const thVal = document.querySelector('#thVal');
+    const block = rngThresh?.closest?.('div'); if(block){ block.style.opacity = show?1:0.5; }
+    if(rngThresh){ rngThresh.disabled=!show; if(thVal) thVal.textContent = rngThresh.value; }
+  }
 </script>
 </body>
 </html>
+
+
