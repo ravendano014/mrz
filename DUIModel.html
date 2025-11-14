@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>DUI — Detección + OCR + Validación + Plantillas + Export (Vista previa separada)</title>
+<title>DUI — Detección + OCR + Validación + Plantillas + Export</title>
 
 <!-- Libs -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" crossorigin="anonymous"></script>
@@ -34,7 +34,7 @@ html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-se
 .button svg{width:16px;height:16px}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 
-/* ===== Disposición separada ===== */
+/* ===== Disposición ===== */
 .layout{
   display:flex;
   justify-content:center;
@@ -61,7 +61,7 @@ html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-se
   min-width: 380px;
 }
 
-/* ===== Vista previa con marco y escala DUI ===== */
+/* ===== Vista previa con marco a escala DUI ===== */
 .preview-wrap{
   position:relative;
   display:grid;
@@ -82,7 +82,7 @@ html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-se
   border-radius:16px;border:1px solid var(--muted);
   display:grid;place-items:center;
 }
-/* Escala real del DUI: 8.56 cm × 5.40 cm (alto duplicado para vista previa) */
+/* DUI ~ 8.56 cm × 5.40 cm, alto duplicado solo para vista */
 .aspect.dui-scale{
   width:8.56cm;
   height:10.8cm;
@@ -115,7 +115,7 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
 .loading-box{display:flex;flex-direction:column;align-items:center;gap:12px;background:#0b1220;border:1px solid var(--muted);padding:18px 22px;border-radius:14px;box-shadow:var(--shadow)}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-/* ===== ROI toolbar ===== */
+/* ===== ROI toolbar + propiedades ===== */
 .roi-toolbar{
   margin-top:10px;
   display:flex;
@@ -133,6 +133,55 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
   flex:1;
   color:var(--sub);
   min-height:18px;
+}
+#roiPropsPanel{
+  margin-top:6px;
+  font-size:11px;
+  background:#020617;
+  border-radius:10px;
+  border:1px solid var(--muted-2);
+  padding:6px 8px;
+  display:none;
+}
+#roiPropsPanel label{
+  display:inline-block;
+  margin-right:6px;
+  margin-bottom:4px;
+}
+#roiPropsPanel input{
+  width:60px;
+  background:#020617;
+  border:1px solid var(--muted-2);
+  border-radius:6px;
+  color:var(--text);
+  padding:2px 4px;
+  font-size:11px;
+}
+#roiPropClass{width:120px}
+#zoomSlider{width:80px}
+
+/* ===== Lupa ===== */
+#magnifierCanvas{
+  position:absolute;
+  pointer-events:none;
+  border-radius:50%;
+  border:2px solid var(--accent);
+  box-shadow:0 0 12px rgba(0,0,0,.8);
+}
+#imageOverlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.85);
+  display:none;
+  z-index:60;
+  align-items:center;
+  justify-content:center;
+}
+#imageOverlay img,#imageOverlay canvas{
+  max-width:95vw;
+  max-height:95vh;
+  border-radius:12px;
+  box-shadow:0 0 25px rgba(0,0,0,.8);
 }
 </style>
 </head>
@@ -171,8 +220,39 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
     <div class="roi-toolbar">
       <button id="btnAddRoi" class="button button-sm" disabled>Agregar ROI</button>
       <button id="btnDeleteRoi" class="button button-sm" disabled>Eliminar ROI</button>
-      <button id="btnPropsRoi" class="button button-sm" disabled>Ver / Editar clase</button>
+      <button id="btnToggleProps" class="button button-sm" disabled>Propiedades ROI</button>
+      <button id="btnViewOriginal" class="button button-sm" disabled>Ver imagen original</button>
+      <span style="font-size:11px;color:var(--sub);display:flex;align-items:center;gap:4px">
+        Lupa
+        <input id="zoomSlider" type="range" min="1" max="4" step="0.25" value="2" />
+      </span>
       <div id="roiInfo" class="roi-info"></div>
+    </div>
+
+    <!-- Panel de propiedades de ROI -->
+    <div id="roiPropsPanel">
+      <div>
+        <label>Clase:
+          <input id="roiPropClass" type="text" />
+        </label>
+        <label>Conf:
+          <input id="roiPropConf" type="number" step="0.01" />
+        </label>
+      </div>
+      <div>
+        <label>X:
+          <input id="roiPropX" type="number" />
+        </label>
+        <label>Y:
+          <input id="roiPropY" type="number" />
+        </label>
+        <label>W:
+          <input id="roiPropW" type="number" />
+        </label>
+        <label>H:
+          <input id="roiPropH" type="number" />
+        </label>
+      </div>
     </div>
   </section>
 
@@ -210,7 +290,7 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
     <section>
       <h3>Resultados OCR (ROIs)</h3>
       <table class="table">
-        <thead><tr class="row"><th>Clase</th><th>Conf.</th><th>Texto</th></tr></thead>
+        <thead><tr class="row"><th>Clase</th><th>Conf.</th><th>Texto / Imagen</th></tr></thead>
         <tbody id="ocrBody"></tbody>
       </table>
     </section>
@@ -230,6 +310,11 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
     </section>
   </aside>
 </main>
+
+<!-- Overlay para ver imagen a tamaño original -->
+<div id="imageOverlay">
+  <img id="overlayImg" alt="Imagen original" />
+</div>
 
 <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 <div id="loading" class="loading-overlay"><div class="loading-box"><div class="spinner"></div><div>Cargando modelo…</div><div style="font-size:12px;color:var(--sub)">Puede tardar la primera vez.</div></div></div>
@@ -257,6 +342,18 @@ const kvModel = document.getElementById("kv-model"), kvBackend = document.getEle
 const kvRes = document.getElementById("kv-res"), kvFps = document.getElementById("kv-fps"), kvCam = document.getElementById("kv-cam");
 const $pills = $("#validatePills");
 const roiInfoEl = document.getElementById("roiInfo");
+const roiPropsPanel = document.getElementById("roiPropsPanel");
+const overlay = document.getElementById("imageOverlay");
+const overlayImg = document.getElementById("overlayImg");
+
+/* Props inputs */
+const roiPropClass = document.getElementById("roiPropClass");
+const roiPropConf  = document.getElementById("roiPropConf");
+const roiPropX     = document.getElementById("roiPropX");
+const roiPropY     = document.getElementById("roiPropY");
+const roiPropW     = document.getElementById("roiPropW");
+const roiPropH     = document.getElementById("roiPropH");
+const zoomSlider   = document.getElementById("zoomSlider");
 
 /* ===== Estado ===== */
 let inferEngine, workerId=null, detecting=false, stream=null;
@@ -269,6 +366,12 @@ let selectedRoiIndex = -1;
 let roiEditing = false;
 let roiAddMode = false;
 let roiDragState = null;      // {mode:'drag'|'resize'|'add', startX,startY, origRect, handleIndex}
+
+/* Lupa */
+let magnifierCanvas = null;
+let magnifierCtx = null;
+let magnifierRadius = 70;
+let magnifierZoom = 2;
 
 /* ===== Mapeo clases → campos ===== */
 const CLASS_TO_FIELD = {
@@ -283,7 +386,7 @@ const CLASS_TO_FIELD = {
   "domicilio":"domicilio","direccion":"domicilio",
   "municipio":"municipio","departamento":"departamento",
   "mrz":"mrz","pdf417":"pdf417","firma":"firma",
-  "foto":"foto_base64",      // Foto → campo foto_base64
+  "foto":"foto_base64","foto_base64":"foto_base64",
   "ocr_misc":"otros"
 };
 
@@ -331,7 +434,7 @@ function validateSexo(s){ return {valid: s==="M"||s==="F", reason: (s==="M"||s==
 
 /* ===== Helpers fechas & parsers PDF417 / MRZ ===== */
 
-// Convierte fechas MRZ YYMMDD → DD/MM/YYYY con heurística de siglo
+// MRZ YYMMDD → DD/MM/YYYY
 function mrzDateToDDMMYYYY(yyMMdd){
   if(!/^\d{6}$/.test(yyMMdd)) return yyMMdd;
   const yy = +yyMMdd.slice(0,2);
@@ -342,6 +445,44 @@ function mrzDateToDDMMYYYY(yyMMdd){
   const y = century + yy;
   if(mm < 1 || mm > 12 || dd < 1 || dd > 31) return yyMMdd;
   return `${String(dd).padStart(2,"0")}/${String(mm).padStart(2,"0")}/${y}`;
+}
+
+/* Parseo genérico por delimitadores || → pares campo/valor */
+function parseDelimitedFields(text){
+  if(!text || text.indexOf("||") === -1) return null;
+  const parts = text.split("||").map(p=>p.trim()).filter(Boolean);
+  if(parts.length < 2) return null;
+  const out = {};
+  for(let i=0;i<parts.length;i++){
+    let seg = parts[i];
+    let key="", val="";
+    if(seg.includes(":") || seg.includes("=")){
+      const m = seg.split(/[:=]/);
+      key = m[0].trim();
+      val = m.slice(1).join(":").trim();
+    }else if(i+1 < parts.length){
+      key = seg;
+      val = parts[++i];
+    }else{
+      continue;
+    }
+    const kNorm = key.toLowerCase();
+    let field;
+    if(kNorm.includes("dui")) field="dui";
+    else if(kNorm.includes("nombre") && kNorm.includes("apellido")) field="nombre_completo";
+    else if(kNorm.includes("nombre")) field="nombres";
+    else if(kNorm.includes("apellido")) field="apellidos";
+    else if(kNorm.includes("nacim")) field="fecha_nacimiento";
+    else if(kNorm.includes("expir")) field="fecha_expiracion";
+    else if(kNorm.includes("emi")) field="fecha_emision";
+    else if(kNorm.includes("sexo")||kNorm.includes("género")||kNorm.includes("genero")) field="sexo";
+    else if(kNorm.includes("nacional")) field="nacionalidad";
+    else if(kNorm.includes("mrz")) field="mrz";
+    else if(kNorm.includes("foto")) field="foto_base64";
+    else field = key.replace(/\s+/g,"_").toLowerCase();
+    out[field] = val;
+  }
+  return out;
 }
 
 /* ---------- PDF417: Licencia AAMVA ---------- */
@@ -627,6 +768,7 @@ async function startCamera(){
   if(!workerId){ toast("El modelo aún se carga…","warn"); return; }
   try{
     if(imgCanvas) imgCanvas.remove();
+    if(magnifierCanvas){ magnifierCanvas.remove(); magnifierCanvas=null; magnifierCtx=null; }
     const facingMode = $("#cameraMode").val();
     stream = await navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode}});
     $video.srcObject = stream;
@@ -680,12 +822,24 @@ function pushOcrRow(cls, conf, text){
   const td1=document.createElement('td'); td1.textContent=cls;
   const td2=document.createElement('td'); td2.textContent=conf!=null?(conf*100).toFixed(1)+'%':'—';
   const td3=document.createElement('td');
+
   const displayText = (text||'').trim();
-  if((cls||"").toLowerCase().startsWith("foto")){
-    td3.textContent = displayText ? "[imagen base64]" : "";
+  const clsLower = (cls||"").toLowerCase();
+
+  if((clsLower.startsWith("foto") || clsLower.startsWith("imagen")) &&
+     displayText.startsWith("data:image")){
+    const imgEl = document.createElement("img");
+    imgEl.src = displayText;
+    imgEl.alt = "Foto ROI";
+    imgEl.style.maxHeight = "70px";
+    imgEl.style.maxWidth  = "120px";
+    imgEl.style.borderRadius = "6px";
+    imgEl.style.border = "1px solid var(--muted-2)";
+    td3.appendChild(imgEl);
   }else{
     td3.textContent = displayText;
   }
+
   tr.append(td1,td2,td3); $ocrBody.append(tr);
   ocrRows.push({cls,conf,text:displayText});
 }
@@ -693,18 +847,63 @@ function setOcrProgress(p){ $ocrProg[0].style.width = (Math.max(0,Math.min(1,p))
 
 /* ===== Editor de ROIs ===== */
 function enableRoiToolbar(enabled){
-  $("#btnAddRoi,#btnDeleteRoi,#btnPropsRoi").prop("disabled", !enabled);
-  if(!enabled) roiInfoEl.textContent = "";
+  $("#btnAddRoi,#btnDeleteRoi,#btnToggleProps,#btnViewOriginal").prop("disabled", !enabled);
+  if(!enabled){
+    roiInfoEl.textContent = "";
+    roiPropsPanel.style.display = "none";
+  }
 }
 function updateRoiInfo(){
   if(selectedRoiIndex < 0 || !editableRois.length){
     roiInfoEl.textContent = editableRois.length ? "Selecciona un ROI." : "";
+    fillRoiProps(null);
     return;
   }
   const r = editableRois[selectedRoiIndex];
   const rect = r.rect;
   roiInfoEl.textContent = `ROI ${selectedRoiIndex+1}/${editableRois.length} — clase: ${r.cls || '(sin clase)'} — x:${Math.round(rect.x)}, y:${Math.round(rect.y)}, w:${Math.round(rect.w)}, h:${Math.round(rect.h)}`;
+  fillRoiProps(r);
 }
+function fillRoiProps(roi){
+  if(!roi){
+    roiPropClass.value = "";
+    roiPropConf.value  = "";
+    roiPropX.value     = "";
+    roiPropY.value     = "";
+    roiPropW.value     = "";
+    roiPropH.value     = "";
+    return;
+  }
+  roiPropClass.value = roi.cls || "";
+  roiPropConf.value  = roi.conf != null ? roi.conf : "";
+  roiPropX.value     = Math.round(roi.rect.x);
+  roiPropY.value     = Math.round(roi.rect.y);
+  roiPropW.value     = Math.round(roi.rect.w);
+  roiPropH.value     = Math.round(roi.rect.h);
+}
+function applyPropsToSelected(){
+  if(selectedRoiIndex < 0 || !editableRois.length) return;
+  const r = editableRois[selectedRoiIndex];
+  r.cls = roiPropClass.value.trim() || r.cls;
+  const c = parseFloat(roiPropConf.value);
+  if(!isNaN(c)) r.conf = c;
+  const nx = parseFloat(roiPropX.value);
+  const ny = parseFloat(roiPropY.value);
+  const nw = parseFloat(roiPropW.value);
+  const nh = parseFloat(roiPropH.value);
+  if(!isNaN(nx)) r.rect.x = Math.max(0, nx);
+  if(!isNaN(ny)) r.rect.y = Math.max(0, ny);
+  if(!isNaN(nw)) r.rect.w = Math.max(5, nw);
+  if(!isNaN(nh)) r.rect.h = Math.max(5, nh);
+  redrawEditableRois();
+  updateRoiInfo();
+}
+roiPropClass.addEventListener("change", applyPropsToSelected);
+roiPropConf.addEventListener("change", applyPropsToSelected);
+[roiPropX,roiPropY,roiPropW,roiPropH].forEach(input=>{
+  input.addEventListener("change", applyPropsToSelected);
+});
+
 function getCanvasPoint(evt, canvasEl){
   const rect = canvasEl.getBoundingClientRect();
   const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
@@ -736,7 +935,6 @@ function redrawEditableRois(){
     imgCtx.fillStyle = "#e5e7eb";
     imgCtx.fillText(label, rect.x+5, rect.y-6);
 
-    // handles (esquinas)
     const corners = [
       {x: rect.x,             y: rect.y            },
       {x: rect.x+rect.w,      y: rect.y            },
@@ -752,7 +950,6 @@ function redrawEditableRois(){
 }
 function hitTestRoi(pt){
   const handleRadius = 7;
-  // probar handles primero
   for(let i=editableRois.length-1; i>=0; i--){
     const rect = editableRois[i].rect;
     const corners = [
@@ -768,7 +965,6 @@ function hitTestRoi(pt){
       }
     }
   }
-  // luego el cuerpo
   for(let i=editableRois.length-1; i>=0; i--){
     const rect = editableRois[i].rect;
     if(pt.x >= rect.x && pt.x <= rect.x+rect.w && pt.y >= rect.y && pt.y <= rect.y+rect.h){
@@ -789,7 +985,6 @@ function handleRoiPointerDown(evt){
       startY: pt.y,
       tempIndex: editableRois.length
     };
-    // ROI temporal con tamaño 0
     editableRois.push({
       id: Date.now(),
       cls: "nuevo",
@@ -822,66 +1017,71 @@ function handleRoiPointerDown(evt){
   }
 }
 function handleRoiPointerMove(evt){
-  if(!roiEditing || !imgCanvas || !roiDragState) return;
+  if(!roiEditing || !imgCanvas) return;
   const pt = getCanvasPoint(evt, imgCanvas);
-  const dx = pt.x - roiDragState.startX;
-  const dy = pt.y - roiDragState.startY;
 
-  if(roiDragState.mode === "drag" && selectedRoiIndex >= 0){
-    const r = editableRois[selectedRoiIndex].rect;
-    const o = roiDragState.origRect;
-    r.x = o.x + dx;
-    r.y = o.y + dy;
-    r.x = Math.max(0, Math.min(r.x, imgCanvas.width - r.w));
-    r.y = Math.max(0, Math.min(r.y, imgCanvas.height - r.h));
-    redrawEditableRois();
-    updateRoiInfo();
-  }else if(roiDragState.mode === "resize" && selectedRoiIndex >= 0){
-    const r = editableRois[selectedRoiIndex].rect;
-    const o = roiDragState.origRect;
-    let x=o.x, y=o.y, w=o.w, h=o.h;
-    const minSize = 10;
-    switch(roiDragState.handleIndex){
-      case 0: // TL
-        x = o.x + dx;
-        y = o.y + dy;
-        w = o.w - dx;
-        h = o.h - dy;
-        break;
-      case 1: // TR
-        y = o.y + dy;
-        w = o.w + dx;
-        h = o.h - dy;
-        break;
-      case 2: // BR
-        w = o.w + dx;
-        h = o.h + dy;
-        break;
-      case 3: // BL
-        x = o.x + dx;
-        w = o.w - dx;
-        h = o.h + dy;
-        break;
+  if(roiDragState){
+    const dx = pt.x - roiDragState.startX;
+    const dy = pt.y - roiDragState.startY;
+
+    if(roiDragState.mode === "drag" && selectedRoiIndex >= 0){
+      const r = editableRois[selectedRoiIndex].rect;
+      const o = roiDragState.origRect;
+      r.x = o.x + dx;
+      r.y = o.y + dy;
+      r.x = Math.max(0, Math.min(r.x, imgCanvas.width - r.w));
+      r.y = Math.max(0, Math.min(r.y, imgCanvas.height - r.h));
+      redrawEditableRois();
+      updateRoiInfo();
+    }else if(roiDragState.mode === "resize" && selectedRoiIndex >= 0){
+      const r = editableRois[selectedRoiIndex].rect;
+      const o = roiDragState.origRect;
+      let x=o.x, y=o.y, w=o.w, h=o.h;
+      const minSize = 10;
+      switch(roiDragState.handleIndex){
+        case 0:
+          x = o.x + dx;
+          y = o.y + dy;
+          w = o.w - dx;
+          h = o.h - dy;
+          break;
+        case 1:
+          y = o.y + dy;
+          w = o.w + dx;
+          h = o.h - dy;
+          break;
+        case 2:
+          w = o.w + dx;
+          h = o.h + dy;
+          break;
+        case 3:
+          x = o.x + dx;
+          w = o.w - dx;
+          h = o.h + dy;
+          break;
+      }
+      w = Math.max(minSize, w);
+      h = Math.max(minSize, h);
+      x = Math.max(0, Math.min(x, imgCanvas.width - w));
+      y = Math.max(0, Math.min(y, imgCanvas.height - h));
+      r.x=x; r.y=y; r.w=w; r.h=h;
+      redrawEditableRois();
+      updateRoiInfo();
+    }else if(roiDragState.mode === "add"){
+      const idx = roiDragState.tempIndex;
+      const r = editableRois[idx].rect;
+      r.x = Math.min(roiDragState.startX, pt.x);
+      r.y = Math.min(roiDragState.startY, pt.y);
+      r.w = Math.abs(pt.x - roiDragState.startX);
+      r.h = Math.abs(pt.y - roiDragState.startY);
+      redrawEditableRois();
+      updateRoiInfo();
     }
-    w = Math.max(minSize, w);
-    h = Math.max(minSize, h);
-    x = Math.max(0, Math.min(x, imgCanvas.width - w));
-    y = Math.max(0, Math.min(y, imgCanvas.height - h));
-    r.x=x; r.y=y; r.w=w; r.h=h;
-    redrawEditableRois();
-    updateRoiInfo();
-  }else if(roiDragState.mode === "add"){
-    const idx = roiDragState.tempIndex;
-    const r = editableRois[idx].rect;
-    r.x = Math.min(roiDragState.startX, pt.x);
-    r.y = Math.min(roiDragState.startY, pt.y);
-    r.w = Math.abs(pt.x - roiDragState.startX);
-    r.h = Math.abs(pt.y - roiDragState.startY);
-    redrawEditableRois();
-    updateRoiInfo();
   }
+
+  updateMagnifierAtPoint(pt);
 }
-function handleRoiPointerUp(evt){
+function handleRoiPointerUp(){
   if(!roiEditing) return;
   if(roiDragState && roiDragState.mode === "add"){
     const idx = roiDragState.tempIndex;
@@ -899,29 +1099,54 @@ function handleRoiPointerUp(evt){
   redrawEditableRois();
   updateRoiInfo();
 }
-function startRoiEditor(){
-  roiEditing = true;
-  roiAddMode = false;
-  if(editableRois.length){
-    selectedRoiIndex = 0;
-    enableRoiToolbar(true);
-  }else{
-    selectedRoiIndex = -1;
-    enableRoiToolbar(false);
-  }
-  redrawEditableRois();
-  updateRoiInfo();
 
-  imgCanvas.onmousedown = (e)=>{ e.preventDefault(); handleRoiPointerDown(e); };
-  imgCanvas.onmousemove = (e)=>{ e.preventDefault(); handleRoiPointerMove(e); };
-  window.onmouseup      = (e)=>{ e.preventDefault(); handleRoiPointerUp(e); };
-
-  imgCanvas.ontouchstart = (e)=>{ e.preventDefault(); handleRoiPointerDown(e); };
-  imgCanvas.ontouchmove  = (e)=>{ e.preventDefault(); handleRoiPointerMove(e); };
-  window.ontouchend      = (e)=>{ e.preventDefault(); handleRoiPointerUp(e); };
+/* ===== Lupa ===== */
+function createMagnifier(){
+  if(magnifierCanvas){ magnifierCanvas.remove(); }
+  magnifierCanvas = document.createElement("canvas");
+  magnifierCanvas.id = "magnifierCanvas";
+  magnifierCanvas.width = magnifierRadius*2;
+  magnifierCanvas.height = magnifierRadius*2;
+  magnifierCanvas.style.display = "none";
+  const aspect = document.querySelector(".aspect");
+  aspect.appendChild(magnifierCanvas);
+  magnifierCtx = magnifierCanvas.getContext("2d");
 }
+function updateMagnifierAtPoint(pt){
+  if(!magnifierCanvas || !magnifierCtx || !imgCanvas) return;
+  if(!pt){ magnifierCanvas.style.display="none"; return; }
+  magnifierCtx.clearRect(0,0,magnifierCanvas.width,magnifierCanvas.height);
+  magnifierCtx.save();
+  magnifierCtx.beginPath();
+  magnifierCtx.arc(magnifierRadius,magnifierRadius,magnifierRadius,0,Math.PI*2);
+  magnifierCtx.clip();
+  const srcX = pt.x - magnifierRadius/magnifierZoom;
+  const srcY = pt.y - magnifierRadius/magnifierZoom;
+  const srcW = (magnifierRadius*2)/magnifierZoom;
+  const srcH = (magnifierRadius*2)/magnifierZoom;
+  magnifierCtx.drawImage(
+    imgCanvas,
+    srcX, srcY, srcW, srcH,
+    0,0,magnifierRadius*2,magnifierRadius*2
+  );
+  magnifierCtx.restore();
 
-/* ===== OCR por ROI (usa ROIs editables si existen) ===== */
+  const aspect = document.querySelector(".aspect");
+  const rectAspect = aspect.getBoundingClientRect();
+  const cx = pt.x * (rectAspect.width / imgCanvas.width);
+  const cy = pt.y * (rectAspect.height / imgCanvas.height);
+
+  const left = rectAspect.left + cx - magnifierRadius;
+  const top  = rectAspect.top  + cy - magnifierRadius;
+  magnifierCanvas.style.left = (left - rectAspect.left) + "px";
+  magnifierCanvas.style.top  = (top - rectAspect.top) + "px";
+  magnifierCanvas.style.display = "block";
+}
+zoomSlider.addEventListener("input", ()=>{
+  magnifierZoom = parseFloat(zoomSlider.value) || 2;
+});
+
+/* ===== OCR por ROI ===== */
 async function processRoi(p, index, total, srcCanvas, langs, psm){
   const span = 1/total;
   const cls = (p.cls || p.class || "").toLowerCase();
@@ -930,13 +1155,13 @@ async function processRoi(p, index, total, srcCanvas, langs, psm){
   const rect = p.rect ? {...p.rect} : bboxToRect(p.bbox);
   const crop = cropFromCanvas(srcCanvas, rect);
 
-  if(cls === "foto"){
+  if(cls === "foto" || cls === "foto_base64" || cls === "imagen"){
     try{
       const dataUrl = crop.toDataURL("image/jpeg", 0.92);
-      pushOcrRow(labelCls, conf, dataUrl);
+      pushOcrRow(labelCls || "foto", conf, dataUrl);
     }catch(err){
       console.error("Error foto base64:", err);
-      pushOcrRow(labelCls, conf, "[Error base64] " + (err && err.message ? err.message : String(err)));
+      pushOcrRow(labelCls || "foto", conf, "[Error base64] " + (err && err.message ? err.message : String(err)));
     }
     setOcrProgress((index+1)*span);
     return;
@@ -960,12 +1185,11 @@ async function processRoi(p, index, total, srcCanvas, langs, psm){
       console.error("Error ZXing PDF417:", err);
       text = "[Error PDF417] " + (err && err.message ? err.message : String(err));
     }
-    pushOcrRow(labelCls, conf, text);
+    pushOcrRow(labelCls || "pdf417", conf, text);
     setOcrProgress((index+1)*span);
     return;
   }
 
-  // MRZ y demás → Tesseract
   const { data } = await Tesseract.recognize(crop, langs, {
     logger:m=>{
       if(m.status==='recognizing text' && m.progress!=null){
@@ -975,7 +1199,7 @@ async function processRoi(p, index, total, srcCanvas, langs, psm){
     },
     tessedit_pageseg_mode:Number(psm)
   });
-  pushOcrRow(labelCls, conf, (data&&data.text)||'');
+  pushOcrRow(labelCls || cls || "roi", conf, (data&&data.text)||'');
 }
 async function runOcrOnRois(){
   const roisToUse = (editableRois && editableRois.length) ? editableRois : lastPreds;
@@ -1029,10 +1253,14 @@ function buildNormalized(){
   if(normalized.pdf417){
     const pdfParsed = parsePdf417(normalized.pdf417);
     mergeNormalized(normalized, pdfParsed);
+    const del = parseDelimitedFields(normalized.pdf417);
+    mergeNormalized(normalized, del);
   }
   if(normalized.mrz){
     const mrzParsed = parseMrz(normalized.mrz);
     mergeNormalized(normalized, mrzParsed);
+    const del = parseDelimitedFields(normalized.mrz);
+    mergeNormalized(normalized, del);
   }
 
   renderNormalizedTable(); setPillsFrom(normalized);
@@ -1154,6 +1382,7 @@ $("#fileInput").on("change", (e)=>{
     $("#btnOcr").prop("disabled", true);
     editableRois = []; selectedRoiIndex=-1; roiEditing=false; enableRoiToolbar(false); roiInfoEl.textContent="";
     if(imgCanvas){ imgCanvas.remove(); imgCanvas=null; imgCtx=null; }
+    if(magnifierCanvas){ magnifierCanvas.remove(); magnifierCanvas=null; magnifierCtx=null; }
     setDuiScalePreview();
   };
   $img.src=url; toast("Imagen cargada","ok");
@@ -1161,10 +1390,10 @@ $("#fileInput").on("change", (e)=>{
 $("#btnDetectImage").on("click", ()=>{ if($img.src) detectOnImageElement($img); else toast("Sube una imagen primero","warn"); });
 $("#btnOcr").on("click", runOcrOnRois);
 
-/* Botones ROI toolbar */
+/* Toolbar ROI */
 $("#btnAddRoi").on("click", ()=>{
   if(!imgCanvas){ toast("No hay imagen en el editor","warn"); return; }
-  if(!roiEditing){ toast("Activa primero la detección para crear ROIs","warn"); return; }
+  if(!roiEditing){ toast("Activa primero detectar para crear ROIs","warn"); return; }
   roiAddMode = true;
   toast("Haz clic y arrastra sobre la imagen para crear un ROI","ok");
 });
@@ -1180,16 +1409,22 @@ $("#btnDeleteRoi").on("click", ()=>{
   redrawEditableRois();
   updateRoiInfo();
 });
-$("#btnPropsRoi").on("click", ()=>{
-  if(selectedRoiIndex < 0 || !editableRois.length) return;
-  const roi = editableRois[selectedRoiIndex];
-  const nuevo = prompt("Clase del ROI:", roi.cls || "");
-  if(nuevo != null){
-    roi.cls = nuevo.trim();
-    redrawEditableRois();
-    updateRoiInfo();
-  }
+$("#btnToggleProps").on("click", ()=>{
+  if(!editableRois.length){ roiPropsPanel.style.display = "none"; return; }
+  roiPropsPanel.style.display = (roiPropsPanel.style.display === "none" || !roiPropsPanel.style.display) ? "block" : "none";
 });
+$("#btnViewOriginal").on("click", ()=>{
+  if(!$img.src && !imgCanvas){ toast("No hay imagen original disponible","warn"); return; }
+  if($img.src){
+    overlayImg.src = $img.src;
+  }else if(imgCanvas){
+    overlayImg.src = imgCanvas.toDataURL("image/png");
+  }
+  overlay.style.display = "flex";
+});
+
+/* Cerrar overlay imagen */
+overlay.addEventListener("click", ()=>{ overlay.style.display="none"; });
 
 /* Drag & drop */
 ['dragenter','dragover'].forEach(ev=> $("#dropzone").on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $("#dropzone").addClass('drag'); }));
@@ -1206,6 +1441,7 @@ $("#dropzone").on('drop', e=>{
       $("#btnOcr").prop("disabled", true);
       editableRois = []; selectedRoiIndex=-1; roiEditing=false; enableRoiToolbar(false); roiInfoEl.textContent="";
       if(imgCanvas){ imgCanvas.remove(); imgCanvas=null; imgCtx=null; }
+      if(magnifierCanvas){ magnifierCanvas.remove(); magnifierCanvas=null; magnifierCtx=null; }
       setDuiScalePreview();
     };
     $img.src=url; toast("Imagen cargada (drag & drop)","ok");
@@ -1218,6 +1454,7 @@ async function detectOnImageElement(img){
   stopCamera(true);
   $("canvas#overlay").remove();
   if(imgCanvas) imgCanvas.remove();
+  if(magnifierCanvas){ magnifierCanvas.remove(); magnifierCanvas=null; magnifierCtx=null; }
   editableRois = []; selectedRoiIndex=-1; roiEditing=false; enableRoiToolbar(false); roiInfoEl.textContent="";
 
   setDuiScalePreview();
@@ -1231,8 +1468,9 @@ async function detectOnImageElement(img){
   imgCtx.drawImage(img,0,0);
   $(".aspect").append(imgCanvas);
 
-  // Ocultamos la vista previa original: trabajamos solo con el canvas
   $img.style.display = "none";
+
+  createMagnifier();
 
   if(!workerId || !inferEngine){ toast("Modelo aún no listo","warn"); return; }
   try{
@@ -1244,7 +1482,6 @@ async function detectOnImageElement(img){
     if(source && source.close) try{source.close();}catch(_){}
     lastPreds = preds.map(p=>({...p}));
 
-    // Convertimos detecciones a ROIs editables
     editableRois = preds.map((p, idx)=>({
       id: idx,
       cls: p.class,
@@ -1259,6 +1496,30 @@ async function detectOnImageElement(img){
     console.error(err);
     toast("Error en detección","bad");
   }
+}
+
+function startRoiEditor(){
+  roiEditing = true;
+  roiAddMode = false;
+  if(editableRois.length){
+    selectedRoiIndex = 0;
+    enableRoiToolbar(true);
+  }else{
+    selectedRoiIndex = -1;
+    enableRoiToolbar(false);
+  }
+  redrawEditableRois();
+  updateRoiInfo();
+
+  imgCanvas.onmousedown = (e)=>{ e.preventDefault(); handleRoiPointerDown(e); };
+  imgCanvas.onmousemove = (e)=>{ e.preventDefault(); handleRoiPointerMove(e); };
+  window.onmouseup      = (e)=>{ e.preventDefault(); handleRoiPointerUp(e); };
+
+  imgCanvas.ontouchstart = (e)=>{ e.preventDefault(); handleRoiPointerDown(e); };
+  imgCanvas.ontouchmove  = (e)=>{ e.preventDefault(); handleRoiPointerMove(e); };
+  window.ontouchend      = (e)=>{ e.preventDefault(); handleRoiPointerUp(e); };
+
+  imgCanvas.addEventListener("mouseleave", ()=>{ updateMagnifierAtPoint(null); });
 }
 </script>
 </body>
