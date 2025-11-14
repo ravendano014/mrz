@@ -82,10 +82,10 @@ html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-se
   border-radius:16px;border:1px solid var(--muted);
   display:grid;place-items:center;
 }
-/* Escala real del DUI: 8.56 cm × 5.40 cm */
+/* Escala real del DUI: 8.56 cm × 5.40 cm (alto duplicado para vista previa) */
 .aspect.dui-scale{
   width:8.56cm;
-  height:10.8cm; /* Doble de alto */
+  height:10.8cm;
   margin-inline:auto;
 }
 video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:auto}
@@ -114,6 +114,26 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
 .spinner{width:56px;height:56px;border-radius:50%;border:4px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:sp 1s linear infinite}
 .loading-box{display:flex;flex-direction:column;align-items:center;gap:12px;background:#0b1220;border:1px solid var(--muted);padding:18px 22px;border-radius:14px;box-shadow:var(--shadow)}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+/* ===== ROI toolbar ===== */
+.roi-toolbar{
+  margin-top:10px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  align-items:center;
+  font-size:12px;
+}
+.button-sm{
+  height:30px;
+  font-size:12px;
+  padding:0 8px;
+}
+.roi-info{
+  flex:1;
+  color:var(--sub);
+  min-height:18px;
+}
 </style>
 </head>
 <body>
@@ -146,6 +166,14 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
       </div>
     </div>
     <div id="dropzone" class="dropzone">Arrastra una imagen aquí o usa “Subir”.</div>
+
+    <!-- Toolbar del editor de ROIs -->
+    <div class="roi-toolbar">
+      <button id="btnAddRoi" class="button button-sm" disabled>Agregar ROI</button>
+      <button id="btnDeleteRoi" class="button button-sm" disabled>Eliminar ROI</button>
+      <button id="btnPropsRoi" class="button button-sm" disabled>Ver / Editar clase</button>
+      <div id="roiInfo" class="roi-info"></div>
+    </div>
   </section>
 
   <aside class="card panel info-panel" style="display:flex;flex-direction:column;gap:14px">
@@ -228,11 +256,19 @@ const $ocrBody = $("#ocrBody"); const $ocrProg = $("#ocrProg"); const $normBody 
 const kvModel = document.getElementById("kv-model"), kvBackend = document.getElementById("kv-backend");
 const kvRes = document.getElementById("kv-res"), kvFps = document.getElementById("kv-fps"), kvCam = document.getElementById("kv-cam");
 const $pills = $("#validatePills");
+const roiInfoEl = document.getElementById("roiInfo");
 
 /* ===== Estado ===== */
 let inferEngine, workerId=null, detecting=false, stream=null;
 let canvas, ctx, prevTime, pastFrameTimes=[];
 let lastPreds=[], ocrRows=[], normalized={}, imgCanvas=null, imgCtx=null;
+
+/* Editor de ROIs */
+let editableRois = [];        // [{id, cls, conf, rect:{x,y,w,h}}]
+let selectedRoiIndex = -1;
+let roiEditing = false;
+let roiAddMode = false;
+let roiDragState = null;      // {mode:'drag'|'resize'|'add', startX,startY, origRect, handleIndex}
 
 /* ===== Mapeo clases → campos ===== */
 const CLASS_TO_FIELD = {
@@ -246,7 +282,8 @@ const CLASS_TO_FIELD = {
   "nacionalidad":"nacionalidad","lugar_nacimiento":"lugar_nacimiento",
   "domicilio":"domicilio","direccion":"domicilio",
   "municipio":"municipio","departamento":"departamento",
-  "mrz":"mrz","pdf417":"pdf417","firma":"firma","foto":"foto",
+  "mrz":"mrz","pdf417":"pdf417","firma":"firma",
+  "foto":"foto_base64",      // Foto → campo foto_base64
   "ocr_misc":"otros"
 };
 
@@ -293,38 +330,45 @@ function validateDateDDMMYYYY(s){
 function validateSexo(s){ return {valid: s==="M"||s==="F", reason: (s==="M"||s==="F")?"OK":"Use M/F"}; }
 
 /* ===== Helpers fechas & parsers PDF417 / MRZ ===== */
+
+// Convierte fechas MRZ YYMMDD → DD/MM/YYYY con heurística de siglo
 function mrzDateToDDMMYYYY(yyMMdd){
   if(!/^\d{6}$/.test(yyMMdd)) return yyMMdd;
-  const yy=+yyMMdd.slice(0,2), mm=+yyMMdd.slice(2,4), dd=+yyMMdd.slice(4,6);
-  const nowYear = new Date().getFullYear()%100;
-  let century = yy <= nowYear ? 2000 : 1900;
-  const y = century+yy;
-  if(mm<1||mm>12||dd<1||dd>31) return yyMMdd;
+  const yy = +yyMMdd.slice(0,2);
+  const mm = +yyMMdd.slice(2,4);
+  const dd = +yyMMdd.slice(4,6);
+  const nowYear = new Date().getFullYear() % 100;
+  const century = yy <= nowYear ? 2000 : 1900;
+  const y = century + yy;
+  if(mm < 1 || mm > 12 || dd < 1 || dd > 31) return yyMMdd;
   return `${String(dd).padStart(2,"0")}/${String(mm).padStart(2,"0")}/${y}`;
 }
 
-// Parseo AAMVA (licencia de conducir) desde PDF417
+/* ---------- PDF417: Licencia AAMVA ---------- */
 function parseAamvaPdf417(text){
   if(!/ANSI /i.test(text)) return null;
   const out = { pdf417_tipo:"AAMVA" };
+
   function grab(code){
     const re = new RegExp(code+"([^\\r\\n]+)");
-    const m = text.match(re);
+    const m  = text.match(re);
     return m ? m[1].trim() : "";
   }
+
   const lic = grab("DAQ");
-  if(lic) out.dui = lic;
+  if(lic) out.dui = lic.replace(/[^0-9A-Z]/gi, "");
+
   const apellido = grab("DCS");
-  const nombre = grab("DAC");
+  const nombre   = grab("DAC");
   if(apellido) out.apellidos = normalizers.nombre(apellido.replace(/</g," "));
-  if(nombre) out.nombres = normalizers.nombre(nombre.replace(/</g," "));
+  if(nombre)   out.nombres   = normalizers.nombre(nombre.replace(/</g," "));
 
   const dob = grab("DBB");
   if(dob && /^\d{8}$/.test(dob)){
     let yyyy = dob.slice(0,4), mm = dob.slice(4,6), dd = dob.slice(6,8);
-    if(+mm>12){
-      dd = dob.slice(2,4);
-      mm = dob.slice(0,2);
+    if(+mm > 12){
+      dd   = dob.slice(2,4);
+      mm   = dob.slice(0,2);
       yyyy = dob.slice(4,8);
     }
     out.fecha_nacimiento = `${dd.padStart(2,"0")}/${mm.padStart(2,"0")}/${yyyy}`;
@@ -333,9 +377,9 @@ function parseAamvaPdf417(text){
   const dba = grab("DBA");
   if(dba && /^\d{8}$/.test(dba)){
     let yyyy = dba.slice(0,4), mm = dba.slice(4,6), dd = dba.slice(6,8);
-    if(+mm>12){
-      dd = dba.slice(2,4);
-      mm = dba.slice(0,2);
+    if(+mm > 12){
+      dd   = dba.slice(2,4);
+      mm   = dba.slice(0,2);
       yyyy = dba.slice(4,8);
     }
     out.fecha_expiracion = `${dd.padStart(2,"0")}/${mm.padStart(2,"0")}/${yyyy}`;
@@ -347,39 +391,69 @@ function parseAamvaPdf417(text){
 
   const nac = grab("DCG");
   if(nac) out.nacionalidad = nac;
+
   return out;
 }
 
-// Heurístico simple para DUI salvadoreño en PDF417
+/* ---------- PDF417: DUI salvadoreño (heurístico) ---------- */
 function parseDuiSvFromPdf417(text){
   const out = { pdf417_tipo:"DUI_SV" };
-  const mDui = text.match(/(\d{9})/);
-  if(mDui) out.dui = mDui[1];
+  if(!text) return out;
 
-  const allDates = text.match(/\d{8}/g) || [];
-  if(allDates.length >= 1){
-    const f1 = allDates[0];
-    let dd = f1.slice(0,2), mm = f1.slice(2,4), yyyy = f1.slice(4,8);
-    if(+mm>12){
-      yyyy = f1.slice(0,4);
-      mm = f1.slice(4,6);
-      dd = f1.slice(6,8);
-    }
-    out.fecha_nacimiento = `${dd.padStart(2,"0")}/${mm.padStart(2,"0")}/${yyyy}`;
+  let raw = text.replace(/\r/g,"");
+  raw = raw.replace(/[|;]/g,"\n");
+
+  const lines = raw.split("\n").map(l=>l.trim()).filter(l=>l.length>0);
+
+  const mDui = raw.match(/\b(\d{9})\b/);
+  if(mDui){
+    out.dui = mDui[1];
   }
-  if(allDates.length >= 2){
-    const f2 = allDates[1];
-    let dd = f2.slice(0,2), mm = f2.slice(2,4), yyyy = f2.slice(4,8);
-    if(+mm>12){
-      yyyy = f2.slice(0,4);
-      mm = f2.slice(4,6);
-      dd = f2.slice(6,8);
+
+  const allDates = raw.match(/\b\d{8}\b/g) || [];
+  const parsedDates = allDates.map(val=>{
+    let dd = val.slice(0,2), mm = val.slice(2,4), yyyy = val.slice(4,8);
+    if(+mm > 12){
+      yyyy = val.slice(0,4);
+      mm   = val.slice(4,6);
+      dd   = val.slice(6,8);
     }
-    out.fecha_expiracion = `${dd.padStart(2,"0")}/${mm.padStart(2,"0")}/${yyyy}`;
+    return `${dd.padStart(2,"0")}/${mm.padStart(2,"0")}/${yyyy}`;
+  });
+
+  if(parsedDates[0]) out.fecha_nacimiento = parsedDates[0];
+  if(parsedDates[1]) out.fecha_emision    = parsedDates[1];
+  if(parsedDates[2]) out.fecha_expiracion = parsedDates[2];
+
+  const nameLines = lines.filter(l=>{
+    const digits = (l.match(/\d/g) || []).length;
+    return digits < l.length * 0.4;
+  });
+
+  if(nameLines.length){
+    const candidate = nameLines[0].replace(/<+/g," ").replace(/\s+/g," ").trim();
+    const parts = candidate.split(/[\/,]/);
+    let apellidoRaw = "", nombreRaw = "";
+    if(parts.length >= 2){
+      apellidoRaw = parts[0];
+      nombreRaw   = parts.slice(1).join(" ");
+    }else{
+      const tokens = candidate.split(" ");
+      if(tokens.length >= 3){
+        apellidoRaw = tokens.slice(0,2).join(" ");
+        nombreRaw   = tokens.slice(2).join(" ");
+      }else{
+        nombreRaw = candidate;
+      }
+    }
+    if(apellidoRaw) out.apellidos = normalizers.nombre(apellidoRaw);
+    if(nombreRaw)   out.nombres   = normalizers.nombre(nombreRaw);
   }
+
   return out;
 }
 
+/* ---------- Selector principal de PDF417 ---------- */
 function parsePdf417(text){
   if(!text) return null;
   const a = parseAamvaPdf417(text);
@@ -387,59 +461,65 @@ function parsePdf417(text){
   return parseDuiSvFromPdf417(text);
 }
 
-// Parser MRZ (ICAO TD1/TD2/TD3)
+/* ---------- MRZ (ICAO TD1/TD2/TD3) ---------- */
 function parseMrz(text){
   if(!text) return null;
-  const lines = text.split(/\r?\n/).map(l=>l.replace(/ /g,"").trim()).filter(l=>l.length>0);
+
+  const lines = text
+    .split(/\r?\n/)
+    .map(l => l.replace(/ /g,"").trim())
+    .filter(l => l.length > 0);
+
   if(lines.length < 2) return null;
+
   const out = {};
   let tipo = "DESCONOCIDO";
 
   function cleanName(str){
     const parts = str.split("<<");
     const apellidoRaw = (parts[0] || "").replace(/<+/g," ").trim();
-    const nombresRaw = (parts[1] || "").replace(/<+/g," ").trim();
+    const nombresRaw  = (parts[1] || "").replace(/<+/g," ").trim();
     const ap = normalizers.nombre(apellidoRaw);
     const nom = normalizers.nombre(nombresRaw);
     return { apellidos: ap, nombres: nom };
   }
 
-  if(lines.length === 3 && lines[0].length === 30){
-    // TD1
+  if(lines.length === 3 && (lines[0].length === 30 || lines[0].length === 36)){
     tipo = "TD1";
     const l1 = lines[0], l2 = lines[1], l3 = lines[2];
-    const docNumber = l2.slice(0,9).replace(/<+/g,"");
-    const nat = l2.slice(10,13).replace(/<+/g,"");
-    const dob = l2.slice(13,19);
-    const sex = l2.slice(20,21);
-    const exp = l2.slice(21,27);
-    const names = cleanName(l3);
 
-    if(docNumber) out.dui = docNumber;
-    if(nat) out.nacionalidad = nat;
-    if(dob) out.fecha_nacimiento = mrzDateToDDMMYYYY(dob);
-    if(exp) out.fecha_expiracion = mrzDateToDDMMYYYY(exp);
+    const docNumber = l1.slice(5,14).replace(/<+/g,"");
+    const nat       = l2.slice(15,18).replace(/<+/g,"");
+    const dob       = l2.slice(0,6);
+    const sex       = l2.slice(7,8);
+    const exp       = l2.slice(8,14);
+    const names     = cleanName(l3);
+
+    if(docNumber) out.dui              = docNumber;
+    if(nat)       out.nacionalidad     = nat;
+    if(dob)       out.fecha_nacimiento = mrzDateToDDMMYYYY(dob);
+    if(exp)       out.fecha_expiracion = mrzDateToDDMMYYYY(exp);
     if(names.apellidos) out.apellidos = names.apellidos;
-    if(names.nombres) out.nombres = names.nombres;
+    if(names.nombres)   out.nombres   = names.nombres;
     if(sex && /[MF]/.test(sex)) out.sexo = sex;
 
   }else if(lines.length === 2 && (lines[0].length === 36 || lines[0].length === 44)){
-    // TD2 o TD3
     tipo = lines[0].length === 36 ? "TD2" : "TD3";
     const l1 = lines[0], l2 = lines[1];
-    const docNumber = l2.slice(0,9).replace(/<+/g,"");
-    const nat = l2.slice(10,13).replace(/<+/g,"");
-    const dob = l2.slice(13,19);
-    const sex = l2.slice(20,21);
-    const exp = l2.slice(21,27);
-    const names = cleanName(l1.slice(5));
 
-    if(docNumber) out.dui = docNumber;
-    if(nat) out.nacionalidad = nat;
-    if(dob) out.fecha_nacimiento = mrzDateToDDMMYYYY(dob);
-    if(exp) out.fecha_expiracion = mrzDateToDDMMYYYY(exp);
+    const docNumber = l2.slice(0,9).replace(/<+/g,"");
+    const nat       = l2.slice(10,13).replace(/<+/g,"");
+    const dob       = l2.slice(13,19);
+    const sex       = l2.slice(20,21);
+    const exp       = l2.slice(21,27);
+    const names     = cleanName(l1.slice(5));
+
+    if(docNumber) out.dui              = docNumber;
+    if(nat)       out.nacionalidad     = nat;
+    if(dob)       out.fecha_nacimiento = mrzDateToDDMMYYYY(dob);
+    if(exp)       out.fecha_expiracion = mrzDateToDDMMYYYY(exp);
     if(names.apellidos) out.apellidos = names.apellidos;
-    if(names.nombres) out.nombres = names.nombres;
+    if(names.nombres)   out.nombres   = names.nombres;
     if(sex && /[MF]/.test(sex)) out.sexo = sex;
   }
 
@@ -473,7 +553,7 @@ const TEMPLATES = {
     }
   },
   "dui_dorso_2022": {
-    expected:["fecha_emision","fecha_expiracion","domicilio","municipio","departamento","mrz","pdf417","firma","foto"],
+    expected:["fecha_emision","fecha_expiracion","domicilio","municipio","departamento","mrz","pdf417","firma","foto_base64"],
     post:(obj)=>{
       ["fecha_emision","fecha_expiracion"].forEach(k=>{ if(obj[k]) obj[k]=normalizers.fecha(obj[k]); });
       if(obj.mrz) obj.mrz = normalizers.plain(obj.mrz);
@@ -504,13 +584,10 @@ function setPillsFrom(normal){
 }
 
 /* ===== Dibujo/Canvas ===== */
-function videoDimensions(video) {
-  const vr = video.videoWidth / video.videoHeight; let w = video.offsetWidth, h = video.offsetHeight;
-  const er = w / h; if (er > vr) w = h * vr; else h = w / vr; return { width:w, height:h };
-}
 function resizeCanvas(){
   $("canvas#overlay").remove();
   const aspectEl = document.querySelector('.aspect');
+  if(!$video.videoWidth || !$video.videoHeight) return;
   let targetW = $video.videoWidth, targetH = $video.videoHeight;
   if(aspectEl && aspectEl.classList.contains('dui-scale')){
     const rect = aspectEl.getBoundingClientRect();
@@ -528,14 +605,15 @@ function resizeCanvas(){
   canvas.css({ left:left+"px", top:top+"px" });
   $(".aspect").append(canvas);
 }
-function drawRoi(ctx, bbox, label, color="#22d3ee"){
+function drawRoi(ctx2, bbox, label, color="#22d3ee"){
   const {x,y,width,height}=bbox;
-  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(x-width/2,y-height/2,width,height);
-  const txt = label; ctx.font = "16px sans-serif"; const tw = ctx.measureText(txt).width;
-  ctx.fillStyle = color; ctx.fillRect(x-width/2, y-height/2-20, tw+8, 18);
-  ctx.fillStyle = "#000"; ctx.fillText(txt, x-width/2+4, y-height/2-6);
+  ctx2.strokeStyle = color; ctx2.lineWidth = 3; ctx2.strokeRect(x-width/2,y-height/2,width,height);
+  const txt = label; ctx2.font = "16px sans-serif"; const tw = ctx2.measureText(txt).width;
+  ctx2.fillStyle = color; ctx2.fillRect(x-width/2, y-height/2-20, tw+8, 18);
+  ctx2.fillStyle = "#000"; ctx2.fillText(txt, x-width/2+4, y-height/2-6);
 }
 function renderPredictions(preds){
+  if(!ctx) return;
   ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
   lastPreds = preds.map(p => ({...p}));
   preds.forEach(p=>{
@@ -582,22 +660,6 @@ async function detectFrame(){
   }catch(e){ console.warn(e); }
   requestAnimationFrame(detectFrame);
 }
-async function detectOnImageElement(img){
-  stopCamera(true); $("canvas#overlay").remove(); if(imgCanvas) imgCanvas.remove();
-  setDuiScalePreview();
-  imgCanvas = document.createElement("canvas"); imgCanvas.width=img.naturalWidth; imgCanvas.height=img.naturalHeight;
-  imgCanvas.style.maxWidth="100%"; imgCanvas.style.maxHeight="100%"; imgCanvas.style.height="auto";
-  imgCtx=imgCanvas.getContext("2d"); imgCtx.drawImage(img,0,0);
-  $(".aspect").append(imgCanvas);
-  if(!workerId || !inferEngine){ toast("Modelo aún no listo","warn"); return; }
-  try{
-    let source = imgCanvas; if(typeof createImageBitmap==="function"){ try{ source=await createImageBitmap(imgCanvas);}catch(_){ } }
-    const preds = await inferEngine.infer(workerId, source); if(source && source.close) try{source.close()}catch(_){}
-    imgCtx.drawImage(img,0,0); lastPreds = preds.map(p=>({...p}));
-    preds.forEach(p=> drawRoi(imgCtx, p.bbox, p.class + (p.confidence? (" "+(p.confidence*100).toFixed(1)+"%"):""), p.color||"#22d3ee") );
-    toast("Detección en imagen completa","ok"); $("#btnOcr").prop("disabled", lastPreds.length===0);
-  }catch(err){ console.error(err); toast("Error en detección","bad"); }
-}
 
 /* ===== ROI helpers & OCR ===== */
 function bboxToRect(b){ return {
@@ -629,28 +691,258 @@ function pushOcrRow(cls, conf, text){
 }
 function setOcrProgress(p){ $ocrProg[0].style.width = (Math.max(0,Math.min(1,p))*100).toFixed(0)+'%'; }
 
-/* *** Procesamiento específico por ROI *** */
+/* ===== Editor de ROIs ===== */
+function enableRoiToolbar(enabled){
+  $("#btnAddRoi,#btnDeleteRoi,#btnPropsRoi").prop("disabled", !enabled);
+  if(!enabled) roiInfoEl.textContent = "";
+}
+function updateRoiInfo(){
+  if(selectedRoiIndex < 0 || !editableRois.length){
+    roiInfoEl.textContent = editableRois.length ? "Selecciona un ROI." : "";
+    return;
+  }
+  const r = editableRois[selectedRoiIndex];
+  const rect = r.rect;
+  roiInfoEl.textContent = `ROI ${selectedRoiIndex+1}/${editableRois.length} — clase: ${r.cls || '(sin clase)'} — x:${Math.round(rect.x)}, y:${Math.round(rect.y)}, w:${Math.round(rect.w)}, h:${Math.round(rect.h)}`;
+}
+function getCanvasPoint(evt, canvasEl){
+  const rect = canvasEl.getBoundingClientRect();
+  const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+  const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+  const scaleX = canvasEl.width / rect.width;
+  const scaleY = canvasEl.height / rect.height;
+  return { x:(clientX-rect.left)*scaleX, y:(clientY-rect.top)*scaleY };
+}
+function redrawEditableRois(){
+  if(!imgCanvas || !imgCtx) return;
+  imgCtx.clearRect(0,0,imgCanvas.width,imgCanvas.height);
+  if($img && $img.src) imgCtx.drawImage($img,0,0,imgCanvas.width,imgCanvas.height);
+  const handleSize = 8;
+  editableRois.forEach((r, idx)=>{
+    const rect = r.rect;
+    const selected = idx === selectedRoiIndex;
+    imgCtx.save();
+    imgCtx.strokeStyle = selected ? "#22d3ee" : "#38bdf8";
+    imgCtx.lineWidth  = selected ? 2.5 : 1.5;
+    imgCtx.fillStyle  = "rgba(34,211,238,0.15)";
+    imgCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    imgCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+
+    imgCtx.font = "14px sans-serif";
+    imgCtx.fillStyle = "#020617";
+    const label = r.cls || "";
+    const tw = imgCtx.measureText(label).width;
+    imgCtx.fillRect(rect.x, rect.y-18, tw+10, 16);
+    imgCtx.fillStyle = "#e5e7eb";
+    imgCtx.fillText(label, rect.x+5, rect.y-6);
+
+    // handles (esquinas)
+    const corners = [
+      {x: rect.x,             y: rect.y            },
+      {x: rect.x+rect.w,      y: rect.y            },
+      {x: rect.x+rect.w,      y: rect.y+rect.h     },
+      {x: rect.x,             y: rect.y+rect.h     },
+    ];
+    imgCtx.fillStyle = selected ? "#22d3ee" : "#0ea5e9";
+    corners.forEach(c=>{
+      imgCtx.fillRect(c.x - handleSize/2, c.y - handleSize/2, handleSize, handleSize);
+    });
+    imgCtx.restore();
+  });
+}
+function hitTestRoi(pt){
+  const handleRadius = 7;
+  // probar handles primero
+  for(let i=editableRois.length-1; i>=0; i--){
+    const rect = editableRois[i].rect;
+    const corners = [
+      {x: rect.x,             y: rect.y            },
+      {x: rect.x+rect.w,      y: rect.y            },
+      {x: rect.x+rect.w,      y: rect.y+rect.h     },
+      {x: rect.x,             y: rect.y+rect.h     },
+    ];
+    for(let h=0; h<corners.length; h++){
+      const c = corners[h];
+      if(Math.abs(pt.x - c.x) <= handleRadius && Math.abs(pt.y - c.y) <= handleRadius){
+        return { index:i, handle:h };
+      }
+    }
+  }
+  // luego el cuerpo
+  for(let i=editableRois.length-1; i>=0; i--){
+    const rect = editableRois[i].rect;
+    if(pt.x >= rect.x && pt.x <= rect.x+rect.w && pt.y >= rect.y && pt.y <= rect.y+rect.h){
+      return { index:i, handle:null };
+    }
+  }
+  return null;
+}
+function handleRoiPointerDown(evt){
+  if(!roiEditing || !imgCanvas) return;
+  const pt = getCanvasPoint(evt, imgCanvas);
+  const hit = hitTestRoi(pt);
+
+  if(roiAddMode){
+    roiDragState = {
+      mode: "add",
+      startX: pt.x,
+      startY: pt.y,
+      tempIndex: editableRois.length
+    };
+    // ROI temporal con tamaño 0
+    editableRois.push({
+      id: Date.now(),
+      cls: "nuevo",
+      conf: null,
+      rect: { x: pt.x, y: pt.y, w: 0, h: 0 }
+    });
+    selectedRoiIndex = editableRois.length-1;
+    redrawEditableRois();
+    updateRoiInfo();
+    return;
+  }
+
+  if(hit){
+    selectedRoiIndex = hit.index;
+    const r = editableRois[hit.index].rect;
+    roiDragState = {
+      mode: hit.handle==null ? "drag" : "resize",
+      handleIndex: hit.handle,
+      startX: pt.x,
+      startY: pt.y,
+      origRect: { x:r.x, y:r.y, w:r.w, h:r.h }
+    };
+    redrawEditableRois();
+    updateRoiInfo();
+  }else{
+    selectedRoiIndex = -1;
+    roiDragState = null;
+    redrawEditableRois();
+    updateRoiInfo();
+  }
+}
+function handleRoiPointerMove(evt){
+  if(!roiEditing || !imgCanvas || !roiDragState) return;
+  const pt = getCanvasPoint(evt, imgCanvas);
+  const dx = pt.x - roiDragState.startX;
+  const dy = pt.y - roiDragState.startY;
+
+  if(roiDragState.mode === "drag" && selectedRoiIndex >= 0){
+    const r = editableRois[selectedRoiIndex].rect;
+    const o = roiDragState.origRect;
+    r.x = o.x + dx;
+    r.y = o.y + dy;
+    r.x = Math.max(0, Math.min(r.x, imgCanvas.width - r.w));
+    r.y = Math.max(0, Math.min(r.y, imgCanvas.height - r.h));
+    redrawEditableRois();
+    updateRoiInfo();
+  }else if(roiDragState.mode === "resize" && selectedRoiIndex >= 0){
+    const r = editableRois[selectedRoiIndex].rect;
+    const o = roiDragState.origRect;
+    let x=o.x, y=o.y, w=o.w, h=o.h;
+    const minSize = 10;
+    switch(roiDragState.handleIndex){
+      case 0: // TL
+        x = o.x + dx;
+        y = o.y + dy;
+        w = o.w - dx;
+        h = o.h - dy;
+        break;
+      case 1: // TR
+        y = o.y + dy;
+        w = o.w + dx;
+        h = o.h - dy;
+        break;
+      case 2: // BR
+        w = o.w + dx;
+        h = o.h + dy;
+        break;
+      case 3: // BL
+        x = o.x + dx;
+        w = o.w - dx;
+        h = o.h + dy;
+        break;
+    }
+    w = Math.max(minSize, w);
+    h = Math.max(minSize, h);
+    x = Math.max(0, Math.min(x, imgCanvas.width - w));
+    y = Math.max(0, Math.min(y, imgCanvas.height - h));
+    r.x=x; r.y=y; r.w=w; r.h=h;
+    redrawEditableRois();
+    updateRoiInfo();
+  }else if(roiDragState.mode === "add"){
+    const idx = roiDragState.tempIndex;
+    const r = editableRois[idx].rect;
+    r.x = Math.min(roiDragState.startX, pt.x);
+    r.y = Math.min(roiDragState.startY, pt.y);
+    r.w = Math.abs(pt.x - roiDragState.startX);
+    r.h = Math.abs(pt.y - roiDragState.startY);
+    redrawEditableRois();
+    updateRoiInfo();
+  }
+}
+function handleRoiPointerUp(evt){
+  if(!roiEditing) return;
+  if(roiDragState && roiDragState.mode === "add"){
+    const idx = roiDragState.tempIndex;
+    const r = editableRois[idx].rect;
+    if(r.w < 5 || r.h < 5){
+      editableRois.pop();
+      selectedRoiIndex = -1;
+    }else{
+      selectedRoiIndex = idx;
+    }
+    roiAddMode = false;
+    toast("ROI creado","ok");
+  }
+  roiDragState = null;
+  redrawEditableRois();
+  updateRoiInfo();
+}
+function startRoiEditor(){
+  roiEditing = true;
+  roiAddMode = false;
+  if(editableRois.length){
+    selectedRoiIndex = 0;
+    enableRoiToolbar(true);
+  }else{
+    selectedRoiIndex = -1;
+    enableRoiToolbar(false);
+  }
+  redrawEditableRois();
+  updateRoiInfo();
+
+  imgCanvas.onmousedown = (e)=>{ e.preventDefault(); handleRoiPointerDown(e); };
+  imgCanvas.onmousemove = (e)=>{ e.preventDefault(); handleRoiPointerMove(e); };
+  window.onmouseup      = (e)=>{ e.preventDefault(); handleRoiPointerUp(e); };
+
+  imgCanvas.ontouchstart = (e)=>{ e.preventDefault(); handleRoiPointerDown(e); };
+  imgCanvas.ontouchmove  = (e)=>{ e.preventDefault(); handleRoiPointerMove(e); };
+  window.ontouchend      = (e)=>{ e.preventDefault(); handleRoiPointerUp(e); };
+}
+
+/* ===== OCR por ROI (usa ROIs editables si existen) ===== */
 async function processRoi(p, index, total, srcCanvas, langs, psm){
-  const rect = bboxToRect(p.bbox);
-  const crop = cropFromCanvas(srcCanvas, rect);
-  const cls = (p.class || "").toLowerCase();
   const span = 1/total;
+  const cls = (p.cls || p.class || "").toLowerCase();
+  const labelCls = p.cls || p.class || "";
+  const conf = p.conf ?? p.confidence ?? null;
+  const rect = p.rect ? {...p.rect} : bboxToRect(p.bbox);
+  const crop = cropFromCanvas(srcCanvas, rect);
 
   if(cls === "foto"){
-    // Foto → base64 (no OCR)
     try{
       const dataUrl = crop.toDataURL("image/jpeg", 0.92);
-      pushOcrRow(p.class, p.confidence ?? null, dataUrl);
+      pushOcrRow(labelCls, conf, dataUrl);
     }catch(err){
       console.error("Error foto base64:", err);
-      pushOcrRow(p.class, p.confidence ?? null, "[Error base64] " + (err && err.message ? err.message : String(err)));
+      pushOcrRow(labelCls, conf, "[Error base64] " + (err && err.message ? err.message : String(err)));
     }
     setOcrProgress((index+1)*span);
     return;
   }
 
   if(cls === "pdf417"){
-    // PDF417 → ZXing
     let text = "";
     try{
       if(window.ZXing && ZXing.BrowserPDF417Reader){
@@ -668,12 +960,12 @@ async function processRoi(p, index, total, srcCanvas, langs, psm){
       console.error("Error ZXing PDF417:", err);
       text = "[Error PDF417] " + (err && err.message ? err.message : String(err));
     }
-    pushOcrRow(p.class, p.confidence ?? null, text);
+    pushOcrRow(labelCls, conf, text);
     setOcrProgress((index+1)*span);
     return;
   }
 
-  // Otros (incluye MRZ) → Tesseract
+  // MRZ y demás → Tesseract
   const { data } = await Tesseract.recognize(crop, langs, {
     logger:m=>{
       if(m.status==='recognizing text' && m.progress!=null){
@@ -683,11 +975,12 @@ async function processRoi(p, index, total, srcCanvas, langs, psm){
     },
     tessedit_pageseg_mode:Number(psm)
   });
-  pushOcrRow(p.class, p.confidence ?? null, (data&&data.text)||'');
+  pushOcrRow(labelCls, conf, (data&&data.text)||'');
 }
-
 async function runOcrOnRois(){
-  if(!lastPreds || lastPreds.length===0){ toast("No hay ROIs. Detecta primero.","warn"); return; }
+  const roisToUse = (editableRois && editableRois.length) ? editableRois : lastPreds;
+  if(!roisToUse || !roisToUse.length){ toast("No hay ROIs. Detecta primero.","warn"); return; }
+
   let srcCanvas=null;
   if(imgCanvas){ srcCanvas=imgCanvas; }
   else if($video && $video.srcObject){
@@ -703,9 +996,9 @@ async function runOcrOnRois(){
   const langs=$("#ocrLang").val()||"eng+spa"; const psm=$("#ocrPsm").val()||"6";
   toast("OCR en curso…","ok");
   try{
-    const total = lastPreds.length;
+    const total = roisToUse.length;
     for(let i=0;i<total;i++){
-      await processRoi(lastPreds[i], i, total, srcCanvas, langs, psm);
+      await processRoi(roisToUse[i], i, total, srcCanvas, langs, psm);
     }
     setOcrProgress(1); toast("OCR completado","ok"); buildNormalized();
   }catch(err){ console.error(err); toast("Error durante OCR","bad"); }
@@ -733,13 +1026,10 @@ function buildNormalized(){
     else normalized[field]=clean;
   }
 
-  // Post-proceso específico: PDF417 (DUI SV / AAMVA)
   if(normalized.pdf417){
     const pdfParsed = parsePdf417(normalized.pdf417);
     mergeNormalized(normalized, pdfParsed);
   }
-
-  // Post-proceso específico: MRZ (ICAO TD1/TD2/TD3)
   if(normalized.mrz){
     const mrzParsed = parseMrz(normalized.mrz);
     mergeNormalized(normalized, mrzParsed);
@@ -862,6 +1152,8 @@ $("#fileInput").on("change", (e)=>{
     $("#fps").text("0");
     document.getElementById("kv-res").textContent=`${$img.naturalWidth}×${$img.naturalHeight}`;
     $("#btnOcr").prop("disabled", true);
+    editableRois = []; selectedRoiIndex=-1; roiEditing=false; enableRoiToolbar(false); roiInfoEl.textContent="";
+    if(imgCanvas){ imgCanvas.remove(); imgCanvas=null; imgCtx=null; }
     setDuiScalePreview();
   };
   $img.src=url; toast("Imagen cargada","ok");
@@ -869,7 +1161,37 @@ $("#fileInput").on("change", (e)=>{
 $("#btnDetectImage").on("click", ()=>{ if($img.src) detectOnImageElement($img); else toast("Sube una imagen primero","warn"); });
 $("#btnOcr").on("click", runOcrOnRois);
 
-// Drag & drop
+/* Botones ROI toolbar */
+$("#btnAddRoi").on("click", ()=>{
+  if(!imgCanvas){ toast("No hay imagen en el editor","warn"); return; }
+  if(!roiEditing){ toast("Activa primero la detección para crear ROIs","warn"); return; }
+  roiAddMode = true;
+  toast("Haz clic y arrastra sobre la imagen para crear un ROI","ok");
+});
+$("#btnDeleteRoi").on("click", ()=>{
+  if(selectedRoiIndex < 0 || !editableRois.length) return;
+  editableRois.splice(selectedRoiIndex,1);
+  if(editableRois.length===0){
+    selectedRoiIndex=-1;
+    enableRoiToolbar(false);
+  }else{
+    selectedRoiIndex = Math.min(selectedRoiIndex, editableRois.length-1);
+  }
+  redrawEditableRois();
+  updateRoiInfo();
+});
+$("#btnPropsRoi").on("click", ()=>{
+  if(selectedRoiIndex < 0 || !editableRois.length) return;
+  const roi = editableRois[selectedRoiIndex];
+  const nuevo = prompt("Clase del ROI:", roi.cls || "");
+  if(nuevo != null){
+    roi.cls = nuevo.trim();
+    redrawEditableRois();
+    updateRoiInfo();
+  }
+});
+
+/* Drag & drop */
 ['dragenter','dragover'].forEach(ev=> $("#dropzone").on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $("#dropzone").addClass('drag'); }));
 ['dragleave','drop'].forEach(ev=> $("#dropzone").on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $("#dropzone").removeClass('drag'); }));
 $("#dropzone").on('drop', e=>{
@@ -882,15 +1204,62 @@ $("#dropzone").on('drop', e=>{
       $("#fps").text("0");
       document.getElementById("kv-res").textContent=`${$img.naturalWidth}×${$img.naturalHeight}`;
       $("#btnOcr").prop("disabled", true);
+      editableRois = []; selectedRoiIndex=-1; roiEditing=false; enableRoiToolbar(false); roiInfoEl.textContent="";
+      if(imgCanvas){ imgCanvas.remove(); imgCanvas=null; imgCtx=null; }
       setDuiScalePreview();
     };
     $img.src=url; toast("Imagen cargada (drag & drop)","ok");
   }
 });
 setInterval(()=>{ document.getElementById("kv-fps").textContent = $("#fps").text(); }, 500);
+
+/* ===== Detección en imagen estática + entrada al editor de ROIs ===== */
+async function detectOnImageElement(img){
+  stopCamera(true);
+  $("canvas#overlay").remove();
+  if(imgCanvas) imgCanvas.remove();
+  editableRois = []; selectedRoiIndex=-1; roiEditing=false; enableRoiToolbar(false); roiInfoEl.textContent="";
+
+  setDuiScalePreview();
+  imgCanvas = document.createElement("canvas");
+  imgCanvas.width  = img.naturalWidth;
+  imgCanvas.height = img.naturalHeight;
+  imgCanvas.style.maxWidth="100%";
+  imgCanvas.style.maxHeight="100%";
+  imgCanvas.style.height="auto";
+  imgCtx = imgCanvas.getContext("2d");
+  imgCtx.drawImage(img,0,0);
+  $(".aspect").append(imgCanvas);
+
+  // Ocultamos la vista previa original: trabajamos solo con el canvas
+  $img.style.display = "none";
+
+  if(!workerId || !inferEngine){ toast("Modelo aún no listo","warn"); return; }
+  try{
+    let source = imgCanvas;
+    if(typeof createImageBitmap==="function"){
+      try{ source=await createImageBitmap(imgCanvas);}catch(_){}
+    }
+    const preds = await inferEngine.infer(workerId, source);
+    if(source && source.close) try{source.close();}catch(_){}
+    lastPreds = preds.map(p=>({...p}));
+
+    // Convertimos detecciones a ROIs editables
+    editableRois = preds.map((p, idx)=>({
+      id: idx,
+      cls: p.class,
+      conf: p.confidence ?? null,
+      rect: bboxToRect(p.bbox)
+    }));
+
+    startRoiEditor();
+    $("#btnOcr").prop("disabled", editableRois.length===0);
+    toast("Detección completa. ROIs listos para editar.","ok");
+  }catch(err){
+    console.error(err);
+    toast("Error en detección","bad");
+  }
+}
 </script>
 </body>
 </html>
-
-
-
