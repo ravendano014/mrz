@@ -168,6 +168,8 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
   border:2px solid var(--accent);
   box-shadow:0 0 12px rgba(0,0,0,.8);
 }
+
+/* Overlay imagen original */
 #imageOverlay{
   position:fixed;
   inset:0;
@@ -177,7 +179,14 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
   align-items:center;
   justify-content:center;
 }
-#imageOverlay img,#imageOverlay canvas{
+#overlayContent{
+  max-width:95vw;
+  max-height:95vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+#overlayContent img,#overlayContent canvas{
   max-width:95vw;
   max-height:95vh;
   border-radius:12px;
@@ -222,8 +231,11 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
       <button id="btnDeleteRoi" class="button button-sm" disabled>Eliminar ROI</button>
       <button id="btnToggleProps" class="button button-sm" disabled>Propiedades ROI</button>
       <button id="btnViewOriginal" class="button button-sm" disabled>Ver imagen original</button>
-      <span style="font-size:11px;color:var(--sub);display:flex;align-items:center;gap:4px">
-        Lupa
+      <span style="font-size:11px;color:var(--sub);display:flex;align-items:center;gap:6px">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input id="toggleMagnifier" type="checkbox" checked style="width:12px;height:12px" />
+          <span>Lupa</span>
+        </label>
         <input id="zoomSlider" type="range" min="1" max="4" step="0.25" value="2" />
       </span>
       <div id="roiInfo" class="roi-info"></div>
@@ -311,9 +323,9 @@ video,canvas,img#uploaded{display:block;max-width:100%;max-height:100%;height:au
   </aside>
 </main>
 
-<!-- Overlay para ver imagen a tamaño original -->
+<!-- Overlay para ver imagen a tamaño original (con ROIs) -->
 <div id="imageOverlay">
-  <img id="overlayImg" alt="Imagen original" />
+  <div id="overlayContent"></div>
 </div>
 
 <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
@@ -344,7 +356,10 @@ const $pills = $("#validatePills");
 const roiInfoEl = document.getElementById("roiInfo");
 const roiPropsPanel = document.getElementById("roiPropsPanel");
 const overlay = document.getElementById("imageOverlay");
-const overlayImg = document.getElementById("overlayImg");
+const overlayContent = document.getElementById("overlayContent");
+const zoomSlider   = document.getElementById("zoomSlider");
+const toggleMagnifierCheckbox = document.getElementById("toggleMagnifier");
+const aspectGlobal = document.querySelector(".aspect");
 
 /* Props inputs */
 const roiPropClass = document.getElementById("roiPropClass");
@@ -353,7 +368,6 @@ const roiPropX     = document.getElementById("roiPropX");
 const roiPropY     = document.getElementById("roiPropY");
 const roiPropW     = document.getElementById("roiPropW");
 const roiPropH     = document.getElementById("roiPropH");
-const zoomSlider   = document.getElementById("zoomSlider");
 
 /* ===== Estado ===== */
 let inferEngine, workerId=null, detecting=false, stream=null;
@@ -372,6 +386,7 @@ let magnifierCanvas = null;
 let magnifierCtx = null;
 let magnifierRadius = 70;
 let magnifierZoom = 2;
+let magnifierEnabled = true;
 
 /* ===== Mapeo clases → campos ===== */
 const CLASS_TO_FIELD = {
@@ -1103,18 +1118,25 @@ function handleRoiPointerUp(){
 /* ===== Lupa ===== */
 function createMagnifier(){
   if(magnifierCanvas){ magnifierCanvas.remove(); }
+  if(!imgCanvas) return;
   magnifierCanvas = document.createElement("canvas");
   magnifierCanvas.id = "magnifierCanvas";
   magnifierCanvas.width = magnifierRadius*2;
   magnifierCanvas.height = magnifierRadius*2;
   magnifierCanvas.style.display = "none";
-  const aspect = document.querySelector(".aspect");
-  aspect.appendChild(magnifierCanvas);
+  const parent = imgCanvas.parentElement || aspectGlobal;
+  parent.appendChild(magnifierCanvas);
   magnifierCtx = magnifierCanvas.getContext("2d");
 }
 function updateMagnifierAtPoint(pt){
-  if(!magnifierCanvas || !magnifierCtx || !imgCanvas) return;
-  if(!pt){ magnifierCanvas.style.display="none"; return; }
+  if(!magnifierCanvas || !magnifierCtx || !imgCanvas || !magnifierEnabled){
+    if(magnifierCanvas) magnifierCanvas.style.display="none";
+    return;
+  }
+  if(!pt){
+    magnifierCanvas.style.display="none";
+    return;
+  }
   magnifierCtx.clearRect(0,0,magnifierCanvas.width,magnifierCanvas.height);
   magnifierCtx.save();
   magnifierCtx.beginPath();
@@ -1131,19 +1153,27 @@ function updateMagnifierAtPoint(pt){
   );
   magnifierCtx.restore();
 
-  const aspect = document.querySelector(".aspect");
-  const rectAspect = aspect.getBoundingClientRect();
-  const cx = pt.x * (rectAspect.width / imgCanvas.width);
-  const cy = pt.y * (rectAspect.height / imgCanvas.height);
+  const parent = imgCanvas.parentElement || aspectGlobal;
+  const rectParent = parent.getBoundingClientRect();
+  const scaleX = rectParent.width / imgCanvas.width;
+  const scaleY = rectParent.height / imgCanvas.height;
+  const cx = pt.x * scaleX;
+  const cy = pt.y * scaleY;
 
-  const left = rectAspect.left + cx - magnifierRadius;
-  const top  = rectAspect.top  + cy - magnifierRadius;
-  magnifierCanvas.style.left = (left - rectAspect.left) + "px";
-  magnifierCanvas.style.top  = (top - rectAspect.top) + "px";
+  const left = rectParent.left + cx - magnifierRadius;
+  const top  = rectParent.top  + cy - magnifierRadius;
+  magnifierCanvas.style.left = (left - rectParent.left) + "px";
+  magnifierCanvas.style.top  = (top - rectParent.top) + "px";
   magnifierCanvas.style.display = "block";
 }
 zoomSlider.addEventListener("input", ()=>{
   magnifierZoom = parseFloat(zoomSlider.value) || 2;
+});
+toggleMagnifierCheckbox.addEventListener("change", ()=>{
+  magnifierEnabled = toggleMagnifierCheckbox.checked;
+  if(!magnifierEnabled && magnifierCanvas){
+    magnifierCanvas.style.display="none";
+  }
 });
 
 /* ===== OCR por ROI ===== */
@@ -1409,22 +1439,53 @@ $("#btnDeleteRoi").on("click", ()=>{
   redrawEditableRois();
   updateRoiInfo();
 });
-$("#btnToggleProps").on("click", ()=>{
-  if(!editableRois.length){ roiPropsPanel.style.display = "none"; return; }
-  roiPropsPanel.style.display = (roiPropsPanel.style.display === "none" || !roiPropsPanel.style.display) ? "block" : "none";
-});
+
+/* Ver imagen original con ROIs a tamaño máximo (manteniendo propiedades) */
 $("#btnViewOriginal").on("click", ()=>{
-  if(!$img.src && !imgCanvas){ toast("No hay imagen original disponible","warn"); return; }
-  if($img.src){
-    overlayImg.src = $img.src;
-  }else if(imgCanvas){
-    overlayImg.src = imgCanvas.toDataURL("image/png");
+  if(!imgCanvas && !$img.src){
+    toast("No hay imagen original disponible","warn");
+    return;
+  }
+  overlayContent.innerHTML = "";
+  if(imgCanvas){
+    overlayContent.appendChild(imgCanvas);
+    imgCanvas.style.maxWidth = "95vw";
+    imgCanvas.style.maxHeight = "95vh";
+  }else{
+    const im = document.createElement("img");
+    im.src = $img.src;
+    overlayContent.appendChild(im);
+  }
+  if(magnifierCanvas){
+    const parent = imgCanvas ? imgCanvas.parentElement : overlayContent;
+    parent.appendChild(magnifierCanvas);
   }
   overlay.style.display = "flex";
 });
 
-/* Cerrar overlay imagen */
-overlay.addEventListener("click", ()=>{ overlay.style.display="none"; });
+/* Cerrar overlay clicando el fondo (no la imagen/canvas) y devolver canvas al aspecto */
+function closeOverlay(){
+  overlay.style.display = "none";
+  if(imgCanvas && imgCanvas.parentElement === overlayContent){
+    aspectGlobal.appendChild(imgCanvas);
+    imgCanvas.style.maxWidth = "100%";
+    imgCanvas.style.maxHeight = "100%";
+    if(magnifierCanvas){
+      aspectGlobal.appendChild(magnifierCanvas);
+    }
+  }
+}
+overlay.addEventListener("click", (e)=>{
+  if(e.target === overlay){
+    closeOverlay();
+  }
+});
+
+/* Propiedades panel toggle */
+$("#btnToggleProps").on("click", ()=>{
+  if(!editableRois.length){ roiPropsPanel.style.display = "none"; return; }
+  roiPropsPanel.style.display = (roiPropsPanel.style.display === "none" || !roiPropsPanel.style.display) ? "block" : "none";
+});
 
 /* Drag & drop */
 ['dragenter','dragover'].forEach(ev=> $("#dropzone").on(ev, e=>{ e.preventDefault(); e.stopPropagation(); $("#dropzone").addClass('drag'); }));
@@ -1466,7 +1527,7 @@ async function detectOnImageElement(img){
   imgCanvas.style.height="auto";
   imgCtx = imgCanvas.getContext("2d");
   imgCtx.drawImage(img,0,0);
-  $(".aspect").append(imgCanvas);
+  aspectGlobal.appendChild(imgCanvas);
 
   $img.style.display = "none";
 
@@ -1491,6 +1552,7 @@ async function detectOnImageElement(img){
 
     startRoiEditor();
     $("#btnOcr").prop("disabled", editableRois.length===0);
+    enableRoiToolbar(editableRois.length>0);
     toast("Detección completa. ROIs listos para editar.","ok");
   }catch(err){
     console.error(err);
